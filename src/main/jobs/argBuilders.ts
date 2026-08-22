@@ -1,5 +1,11 @@
-import type { Container } from '../../shared/models'
 import { join } from 'node:path'
+import {
+  LOSSY_AUDIO_FORMATS,
+  type AudioFormat,
+  type BitrateTier,
+  type Container,
+  type JobConfig,
+} from '../../shared/models'
 
 export const DOWNLOAD_PROGRESS_TEMPLATE =
   'download:MF|%(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s'
@@ -33,4 +39,57 @@ export function buildBaseDownloadArgs(ffmpegPath: string, outputTemplate: string
 
 export function buildVideoAudioArgs(tier: number, container: Container): string[] {
   return ['-f', `bv*[height<=${tier}]+ba/b`, '-S', 'res,fps', '--merge-output-format', container]
+}
+
+const AUDIO_FORMAT_FLAG: Record<AudioFormat, string> = {
+  mp3: 'mp3',
+  m4a: 'm4a',
+  ogg: 'vorbis',
+  flac: 'flac',
+  wav: 'wav',
+}
+
+export function buildAudioOnlyArgs(
+  audioFormat: AudioFormat,
+  bitrate: BitrateTier | null,
+): string[] {
+  const args = ['-f', 'ba/b', '-x', '--audio-format', AUDIO_FORMAT_FLAG[audioFormat]]
+  if (bitrate && LOSSY_AUDIO_FORMATS.includes(audioFormat)) {
+    args.push('--audio-quality', bitrate)
+  }
+  return args
+}
+
+export function buildAdvancedArgs(
+  videoFormatId: string,
+  audioFormatId: string,
+  container: Container | null,
+): string[] {
+  const args = ['-f', `${videoFormatId}+${audioFormatId}/b`]
+  if (container) args.push('--merge-output-format', container)
+  return args
+}
+
+export function buildDownloadArgs(
+  config: JobConfig,
+  ffmpegPath: string,
+  outputTemplate: string,
+): string[] {
+  let modeArgs: string[]
+  switch (config.mode) {
+    case 'video-audio':
+      modeArgs = buildVideoAudioArgs(config.tier ?? 1080, config.container ?? 'mp4')
+      break
+    case 'audio-only':
+      modeArgs = buildAudioOnlyArgs(config.audioFormat ?? 'mp3', config.bitrate ?? null)
+      break
+    case 'advanced':
+      modeArgs = buildAdvancedArgs(
+        config.videoFormatId ?? '',
+        config.audioFormatId ?? '',
+        config.container ?? null,
+      )
+      break
+  }
+  return [...modeArgs, ...buildBaseDownloadArgs(ffmpegPath, outputTemplate)]
 }

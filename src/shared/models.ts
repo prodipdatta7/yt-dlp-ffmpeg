@@ -54,6 +54,7 @@ export interface MediaMetadata {
 export interface PlaylistEntryPreview {
   index: number
   title: string
+  url: string
 }
 
 export interface AnalyzeResult {
@@ -68,11 +69,23 @@ export type Container = 'mp4' | 'mkv' | 'webm'
 export const CONTAINERS: readonly Container[] = ['mp4', 'mkv', 'webm']
 export const RESOLUTION_TIERS = [4320, 2160, 1440, 1080, 720, 480, 360] as const
 
+export type AudioFormat = 'mp3' | 'm4a' | 'ogg' | 'flac' | 'wav'
+export const LOSSY_AUDIO_FORMATS: readonly AudioFormat[] = ['mp3', 'm4a', 'ogg']
+export const LOSSLESS_AUDIO_FORMATS: readonly AudioFormat[] = ['flac', 'wav']
+export type BitrateTier = '320K' | '192K' | '128K'
+export const BITRATE_TIERS: readonly BitrateTier[] = ['320K', '192K', '128K']
+
+export type DownloadMode = 'video-audio' | 'audio-only' | 'advanced'
+
 export interface JobConfig {
   url: string
-  mode: 'video-audio'
+  mode: DownloadMode
   tier?: number
   container?: Container
+  audioFormat?: AudioFormat
+  bitrate?: BitrateTier
+  videoFormatId?: string
+  audioFormatId?: string
   destDir: string
 }
 

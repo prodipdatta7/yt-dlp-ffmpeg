@@ -1,11 +1,4 @@
-import type {
-  AnalyzeResult,
-  Container,
-  JobConfig,
-  JobDonePayload,
-  JobEvent,
-  MfErrorCode,
-} from './models'
+import type { AnalyzeResult, JobConfig, JobDonePayload, JobEvent, MfErrorCode } from './models'
 
 export type { MfErrorCode }
 
@@ -55,4 +48,4 @@ export interface MfApi {
   getDefaultDestDir(): Promise<string>
 }
 
-export type { Container, JobConfig, JobDonePayload, JobEvent }
+export type { Container, JobConfig, JobDonePayload, JobEvent } from './models'

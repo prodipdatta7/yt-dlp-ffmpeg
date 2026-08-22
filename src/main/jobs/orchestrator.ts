@@ -21,7 +21,7 @@ import type { LocatedBinary } from '../binaries/locator'
 import { spawnProcess, type SpawnHandle } from '../binaries/runner'
 import { classifyStderr } from '../media/classifyStderr'
 import type { Logger } from '../store/logger'
-import { buildBaseDownloadArgs, buildVideoAudioArgs, outputTemplateFor } from './argBuilders'
+import { buildDownloadArgs, outputTemplateFor } from './argBuilders'
 import {
   computeSegmentPercent,
   extractFinalPathLine,
@@ -142,8 +142,7 @@ export class DownloadOrchestrator {
     try {
       const args = [
         ...(this.deps.spawnArgPrefix ?? []),
-        ...buildVideoAudioArgs(job.config.tier ?? 1080, job.config.container ?? 'mp4'),
-        ...buildBaseDownloadArgs(ffmpegPath, outputTemplateFor(job.tempDir)),
+        ...buildDownloadArgs(job.config, ffmpegPath, outputTemplateFor(job.tempDir)),
       ]
 
       const stdoutLines: string[] = []
@@ -172,7 +171,9 @@ export class DownloadOrchestrator {
               segmentsFinished = Math.min(segmentsStarted, segmentsFinished + 1)
             }
             const nextPhase: JobPhase =
-              segmentsStarted >= 2 ? 'downloading-audio' : 'downloading-video'
+              segmentsStarted >= 2 || job.config.mode === 'audio-only'
+                ? 'downloading-audio'
+                : 'downloading-video'
             emit(nextPhase, computeSegmentPercent(progress), progress.speedBps, progress.etaSec)
           }
         },

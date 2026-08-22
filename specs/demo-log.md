@@ -2,6 +2,22 @@
 
 Visible-improvement checkpoints per `specs/Implementation_Plan.md`. One entry per completed phase.
 
+## P4 — All modes + playlist queue  `[M3 rest]` · done 2026-08-22
+
+- ModeSelector is now tri-state: **Video+Audio / Audio Only / Advanced**.
+  - Audio Only: MP3/M4A/OGG/FLAC/WAV dropdown; bitrate selector (High/Medium/Low)
+    **auto-hides for FLAC/WAV** with a "lossless" hint — AM-04 enforced in UI, argv builder,
+    AND hostile-input validation (lossless+bitrate config rejected).
+  - Advanced: two stream pickers fed by the analyzed FormatMatrix (`#id · ext · res · kbps`),
+    plus merge container; argv pairs `-f "<vid>+<aud>/b"`.
+- **Playlists work:** pasting a playlist shows entry preview; button becomes
+  "Download All (N)" → sequential queue with per-entry status rows
+  (pending/downloading/done/failed), "Stop After Current" control. AM-07 serialization
+  proven by orchestrator busy-guard test (second concurrent launch rejected).
+- Live-fire: jNQXAC9IVRw → `--audio-format mp3 --audio-quality 128K` produced an MP3;
+  ffprobe confirms `codec_name=mp3 @ 48000 Hz`.
+- Gate evidence: typecheck ✓ · lint ✓ · vitest **101/101** ✓.
+
 ## P3 — Download pipeline core (Mode A)  `[M3 core]` · done 2026-08-22
 
 - **First real download:** after analysis, resolution (8K→360p) + container (MP4/MKV/WebM)

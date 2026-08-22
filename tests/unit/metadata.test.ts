@@ -66,13 +66,15 @@ describe('mapRawInfo vs playlist fixture (AM-07)', () => {
     'https://www.youtube.com/playlist?list=PLTechEduDistributed01',
   )
 
-  it('detects playlist and previews entries sequentially', () => {
+  it('detects playlist and previews entries sequentially with urls', () => {
     expect(result.kind).toBe('playlist')
     expect(result.playlistCount).toBe(4)
     expect(result.playlistEntries?.[0]).toMatchObject({
       index: 1,
       title: 'Episode 1 — Introduction & Consistency Models',
+      url: 'https://www.youtube.com/watch?v=ep0001intro',
     })
+    expect(result.playlistEntries?.every((e) => e.url.length > 0)).toBe(true)
     expect(result.playlistEntries?.at(-1)?.title).toContain('Paxos')
     expect(result.formats).toHaveLength(0)
     expect(result.metadata.title).toBe('Distributed Systems Course')

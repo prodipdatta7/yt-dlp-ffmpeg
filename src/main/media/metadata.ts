@@ -71,7 +71,12 @@ export function mapRawInfo(raw: RawInfo, sourceUrl: string): AnalyzeResult {
   if (raw._type === 'playlist') {
     const entries: PlaylistEntryPreview[] = (raw.entries ?? [])
       .slice(0, 1000)
-      .map((e, i) => ({ index: i + 1, title: e.title ?? e.id ?? `Entry ${i + 1}` }))
+      .map((e, i) => ({
+        index: i + 1,
+        title: e.title ?? e.id ?? `Entry ${i + 1}`,
+        url: e.url ?? e.id ?? '',
+      }))
+      .filter((e) => e.url.length > 0)
     const metadata: MediaMetadata = {
       id: raw.id ?? null,
       title: raw.title ?? 'Playlist',

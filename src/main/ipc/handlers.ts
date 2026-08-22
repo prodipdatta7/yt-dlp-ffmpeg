@@ -18,7 +18,16 @@ import {
   type JobEvent,
   type PingResult,
 } from '../../shared/ipcContract'
-import { CONTAINERS, RESOLUTION_TIERS, ERROR_MESSAGES } from '../../shared/models'
+import {
+  BITRATE_TIERS,
+  CONTAINERS,
+  LOSSLESS_AUDIO_FORMATS,
+  LOSSY_AUDIO_FORMATS,
+  RESOLUTION_TIERS,
+  ERROR_MESSAGES,
+  type AudioFormat,
+  type BitrateTier,
+} from '../../shared/models'
 import { MfError } from '../media/metadata'
 import type { Logger } from '../store/logger'
 
@@ -99,14 +108,14 @@ function extractUrl(payload: unknown): string | null {
   return url
 }
 
+const FORMAT_ID_PATTERN = /^[\w.-]{1,64}$/
+
 function parseJobConfig(payload: unknown): JobConfig | null {
   if (!payload || typeof payload !== 'object') return null
   const raw = payload as Record<string, unknown>
 
   const url = extractUrl(raw.url)
   if (!url) return null
-
-  if (raw.mode !== 'video-audio') return null
 
   let tier: number | undefined
   if (raw.tier !== undefined) {
@@ -125,5 +134,55 @@ function parseJobConfig(payload: unknown): JobConfig | null {
     return null
   }
 
-  return { url, mode: 'video-audio', tier, container, destDir: raw.destDir }
+  switch (raw.mode) {
+    case 'video-audio':
+      return { url, mode: 'video-audio', tier, container, destDir: raw.destDir }
+
+    case 'audio-only': {
+      const format = raw.audioFormat
+      if (typeof format !== 'string') return null
+      const isLossy = LOSSY_AUDIO_FORMATS.includes(format as never)
+      const isLossless = LOSSLESS_AUDIO_FORMATS.includes(format as never)
+      if (!isLossy && !isLossless) return null
+
+      let bitrate: BitrateTier | undefined
+      if (raw.bitrate !== undefined) {
+        if (typeof raw.bitrate !== 'string' || !BITRATE_TIERS.includes(raw.bitrate as never))
+          return null
+        if (isLossless) return null
+        bitrate = raw.bitrate as BitrateTier
+      }
+      return {
+        url,
+        mode: 'audio-only',
+        audioFormat: format as AudioFormat,
+        bitrate,
+        destDir: raw.destDir,
+      }
+    }
+
+    case 'advanced': {
+      const videoFormatId = raw.videoFormatId
+      const audioFormatId = raw.audioFormatId
+      if (
+        typeof videoFormatId !== 'string' ||
+        typeof audioFormatId !== 'string' ||
+        !FORMAT_ID_PATTERN.test(videoFormatId) ||
+        !FORMAT_ID_PATTERN.test(audioFormatId)
+      ) {
+        return null
+      }
+      return {
+        url,
+        mode: 'advanced',
+        container,
+        videoFormatId,
+        audioFormatId,
+        destDir: raw.destDir,
+      }
+    }
+
+    default:
+      return null
+  }
 }

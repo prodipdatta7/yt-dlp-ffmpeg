@@ -1,11 +1,19 @@
 import { useEffect, useState } from 'preact/hooks'
 import { FormatMatrix } from './components/FormatMatrix'
-import { ModeSelector, type DownloadSelection } from './components/ModeSelector'
+import { ModeSelector, type JobSelection } from './components/ModeSelector'
 import { PipelineStatus } from './components/PipelineStatus'
 import { PreviewPanel } from './components/PreviewPanel'
+import { QueueList } from './components/QueueList'
 import { UrlBar } from './components/UrlBar'
-import { analyzing, analysis } from './signals/appState'
+import { analyzing, analysis, resetAnalysis } from './signals/appState'
 import { activeJob, beginJob, endJob, lastJobEvent } from './signals/jobState'
+import {
+  queueRows,
+  queueRunning,
+  resolveCurrentJob,
+  stopRequested,
+  waitForCurrentJob,
+} from './signals/queueState'
 import type { JobConfig } from '../../shared/models'
 
 const APP_VERSION = 'v0.1.0'
@@ -74,9 +82,39 @@ function EnginesStatus() {
   )
 }
 
+function configFor(url: string, selection: JobSelection): JobConfig {
+  const base = { url, destDir: selection.destDir }
+  switch (selection.mode) {
+    case 'video-audio':
+      return { ...base, mode: 'video-audio', tier: selection.tier, container: selection.container }
+    case 'audio-only':
+      return {
+        ...base,
+        mode: 'audio-only',
+        audioFormat: selection.audioFormat,
+        bitrate: selection.bitrate ?? undefined,
+      }
+    case 'advanced':
+      return {
+        ...base,
+        mode: 'advanced',
+        videoFormatId: selection.videoFormatId,
+        audioFormatId: selection.audioFormatId,
+        container: selection.container,
+      }
+  }
+}
+
+async function runSingleJob(config: JobConfig): Promise<'completed' | 'cancelled' | 'failed'> {
+  const response = await window.mf.downloadStart(config)
+  if (response.kind !== 'ok') return 'failed'
+  beginJob(config, response.jobId)
+  return waitForCurrentJob()
+}
+
 export function App() {
   const [bridgeNote, setBridgeNote] = useState('bridge: probing…')
-  const [selection, setSelection] = useState<DownloadSelection | null>(null)
+  const [selection, setSelection] = useState<JobSelection | null>(null)
 
   useEffect(() => {
     window.mf
@@ -89,6 +127,7 @@ export function App() {
     })
     const offDone = window.mf.onJobDone((done) => {
       endJob(done)
+      resolveCurrentJob(done.status)
     })
     return () => {
       offEvent()
@@ -98,23 +137,49 @@ export function App() {
 
   async function startDownload() {
     const result = analysis.value
-    if (!result || !selection || activeJob.value) return
-    const config: JobConfig = {
-      url: result.metadata.webpageUrl ?? '',
-      mode: 'video-audio',
-      tier: selection.tier,
-      container: selection.container,
-      destDir: selection.destDir,
+    if (!result || !selection || activeJob.value || queueRunning.value) return
+
+    if (result.kind === 'playlist') {
+      const entries = result.playlistEntries ?? []
+      if (entries.length === 0) return
+      stopRequested.value = false
+      queueRunning.value = true
+      queueRows.value = entries.map((e) => ({ url: e.url, title: e.title, status: 'pending' }))
+      for (let i = 0; i < entries.length; i += 1) {
+        if (stopRequested.value) break
+        queueRows.value = queueRows.value.map((r, idx) =>
+          idx === i ? { ...r, status: 'downloading' } : r,
+        )
+        const status = await runSingleJob(configFor(entries[i].url, selection))
+        queueRows.value = queueRows.value.map((r, idx) =>
+          idx === i ? { ...r, status: status === 'completed' ? 'done' : status } : r,
+        )
+        if (status !== 'completed') continue
+      }
+      queueRunning.value = false
+      return
     }
-    const response = await window.mf.downloadStart(config)
-    if (response.kind === 'ok') beginJob(config, response.jobId)
+
+    await runSingleJob(configFor(result.metadata.webpageUrl ?? '', selection))
   }
 
+  function cancelActive() {
+    stopRequested.value = true
+    const job = activeJob.value
+    if (job) void window.mf.downloadCancel(job.jobId)
+  }
+
+  const busy = activeJob.value !== null || queueRunning.value
+  const isPlaylist = analysis.value?.kind === 'playlist'
+  const advancedReady =
+    selection?.mode !== 'advanced' ||
+    (selection.videoFormatId.length > 0 && selection.audioFormatId.length > 0)
   const canStart =
-    analysis.value?.kind === 'video' &&
+    analysis.value !== null &&
     selection !== null &&
     selection.destDir.length > 0 &&
-    !activeJob.value
+    advancedReady &&
+    !busy
 
   return (
     <div class="flex h-screen flex-col bg-slate-950 text-slate-200">
@@ -129,24 +194,50 @@ export function App() {
       <main class="flex flex-1 flex-col items-center gap-6 overflow-y-auto px-6 py-8">
         <UrlBar />
         {analysis.value?.kind === 'video' && (
-          <ModeSelector onSelection={setSelection} disabled={activeJob.value !== null} />
+          <ModeSelector
+            formats={analysis.value.formats}
+            onSelection={setSelection}
+            disabled={busy}
+          />
         )}
-        <div class="flex w-full max-w-5xl justify-end">
-          <button
-            onClick={() => void startDownload()}
-            disabled={!canStart}
-            class="rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Start Production-Grade Download
-          </button>
+
+        <div class="flex w-full max-w-5xl items-center justify-between gap-3">
+          <p class="text-xs text-slate-500">
+            {isPlaylist
+              ? `Playlist — ${queueRows.value.length} entries will be processed sequentially`
+              : 'Pick a mode above, then start.'}
+          </p>
+          {busy ? (
+            <button
+              onClick={cancelActive}
+              class="rounded-lg bg-red-700 px-5 py-2 text-sm font-medium text-white hover:bg-red-600"
+            >
+              {isPlaylist ? 'Stop After Current' : 'Cancel Download'}
+            </button>
+          ) : (
+            <button
+              onClick={() => void startDownload()}
+              disabled={!canStart}
+              class="rounded-lg bg-emerald-600 px-6 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isPlaylist
+                ? `Download All (${queueRows.value.length})`
+                : 'Start Production-Grade Download'}
+            </button>
+          )}
         </div>
+
         <PipelineStatus />
+        <QueueList />
         <PreviewPanel result={analysis.value} loading={analyzing.value} />
         {analysis.value && <FormatMatrix formats={analysis.value.formats} />}
       </main>
 
       <footer class="flex items-center justify-between border-t border-slate-800 bg-slate-900 px-5 py-2 text-xs text-slate-500">
         <EnginesStatus />
+        <button onClick={() => resetAnalysis()} class="hover:text-slate-300">
+          clear
+        </button>
         <span>{bridgeNote}</span>
       </footer>
     </div>
