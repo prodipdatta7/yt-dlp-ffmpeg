@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks'
 import { analyzing, analysis, analyzeError, resetAnalysis } from '../signals/appState'
+import { settingsOpen } from '../signals/uiState'
 
 const URL_PATTERN = /^https?:\/\/\S+$/i
 
@@ -71,6 +72,14 @@ export function UrlBar() {
               class="shrink-0 rounded-lg bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600"
             >
               Import cookies.txt…
+            </button>
+          )}
+          {analyzeError.value.code === 'MF_EXTRACTOR_STALE' && (
+            <button
+              onClick={() => (settingsOpen.value = true)}
+              class="shrink-0 rounded-lg bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600"
+            >
+              Update Core Drivers…
             </button>
           )}
         </div>

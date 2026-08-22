@@ -2,6 +2,20 @@
 
 Visible-improvement checkpoints per `specs/Implementation_Plan.md`. One entry per completed phase.
 
+## P7 — Settings screen & OTA core-driver updates  `[M6]` · done 2026-08-22
+
+- **Settings screen** (⚙ in header): destination folder display + Browse, cookies status with
+  import/clear, diagnostics (open logs folder), and the **Core drivers** panel.
+- **OTA updater:** "Check for updates" queries the official yt-dlp GitHub release; when newer,
+  "Update Core Drivers → v<tag>" downloads `yt-dlp.exe` + `SHA2-256SUMS`, verifies SHA-256,
+  swaps atomically into the userData override dir, then re-runs `--version` on the swapped
+  binary before declaring success — engines reload without app restart (`getInfo` invalidated).
+- **Safety:** tampered payload → rejected at checksum, nothing written. Binary that won't run
+  post-swap → automatic rollback from `.bak`. Both proven by network-free mocked-API tests.
+- **EC-02 wired:** stale-extractor errors now show an "Update Core Drivers…" button that opens
+  Settings directly.
+- Gate evidence: typecheck ✓ · lint ✓ · vitest **141/141** ✓.
+
 ## P6 — Robustness pass: edge cases become features  `[M5]` · done 2026-08-22
 
 - **Network retry ladder (AM-05):** transient failures now show an amber banner

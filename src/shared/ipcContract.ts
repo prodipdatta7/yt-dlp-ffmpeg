@@ -15,6 +15,9 @@ export const MF_DIALOG_CHOOSE_DIR = 'mf:dialog:choose-dir' as const
 export const MF_SETTINGS_IMPORT_COOKIES = 'mf:settings:import-cookies' as const
 export const MF_SETTINGS_CLEAR_COOKIES = 'mf:settings:clear-cookies' as const
 export const MF_LOGS_OPEN = 'mf:logs:open' as const
+export const MF_UPDATER_CHECK = 'mf:updater:check' as const
+export const MF_UPDATER_APPLY = 'mf:updater:apply' as const
+export const MF_SETTINGS_GET = 'mf:settings:get' as const
 
 export interface PingResult {
   pong: string
@@ -40,6 +43,25 @@ export type AnalyzeResponse =
 export type DownloadStartResponse =
   { kind: 'ok'; jobId: string } | { kind: 'error'; code: MfErrorCode; message: string }
 
+export interface MfSettingsView {
+  lastOutputDir: string
+  cookieFileSet: boolean
+}
+
+export interface UpdaterCheckResult {
+  current: string | null
+  latest: string | null
+  updateAvailable: boolean
+  error?: string
+}
+
+export interface UpdaterApplyResult {
+  ok: boolean
+  newVersion?: string
+  rolledBack?: boolean
+  error?: string
+}
+
 export interface MfApi {
   ping(): Promise<PingResult>
   getBinariesInfo(): Promise<BinariesInfoResult>
@@ -54,6 +76,9 @@ export interface MfApi {
   importCookies(): Promise<boolean>
   clearCookies(): Promise<boolean>
   openLogsFolder(): Promise<boolean>
+  getSettings(): Promise<MfSettingsView>
+  updaterCheck(): Promise<UpdaterCheckResult>
+  updaterApply(): Promise<UpdaterApplyResult>
 }
 
 export type { Container, JobConfig, JobDonePayload, JobEvent } from './models'

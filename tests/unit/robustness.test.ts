@@ -48,14 +48,14 @@ describe('AM-05 retry ladder on network failures', () => {
 
     const orch = makeOrch(root, 'tests/fixtures/fake-bin/flaky-network.mjs', {
       retryDelaysMs: [10, 10],
-      spawnArgPrefix: ['tests/fixtures/fake-bin/flaky-network.mjs', join(root, 'state.json')]
+      spawnArgPrefix: ['tests/fixtures/fake-bin/flaky-network.mjs', join(root, 'state.json')],
     })
     const jobId = await orch.launch(
       { url, mode: 'video-audio', destDir: join(root, 'dest') },
       (e) => events.push(e),
       (d) => {
         box.value = d
-      }
+      },
     )
 
     const done = await waitForDone(box)

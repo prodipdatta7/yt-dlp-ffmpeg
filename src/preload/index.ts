@@ -12,7 +12,10 @@ import {
   MF_LOGS_OPEN,
   MF_PING,
   MF_SETTINGS_CLEAR_COOKIES,
+  MF_SETTINGS_GET,
   MF_SETTINGS_IMPORT_COOKIES,
+  MF_UPDATER_APPLY,
+  MF_UPDATER_CHECK,
   type AnalyzeResponse,
   type BinariesInfoResult,
   type DownloadStartResponse,
@@ -20,7 +23,10 @@ import {
   type JobDonePayload,
   type JobEvent,
   type MfApi,
+  type MfSettingsView,
   type PingResult,
+  type UpdaterApplyResult,
+  type UpdaterCheckResult,
 } from '../shared/ipcContract'
 
 const api: MfApi = {
@@ -48,6 +54,9 @@ const api: MfApi = {
   importCookies: (): Promise<boolean> => ipcRenderer.invoke(MF_SETTINGS_IMPORT_COOKIES),
   clearCookies: (): Promise<boolean> => ipcRenderer.invoke(MF_SETTINGS_CLEAR_COOKIES),
   openLogsFolder: (): Promise<boolean> => ipcRenderer.invoke(MF_LOGS_OPEN),
+  getSettings: (): Promise<MfSettingsView> => ipcRenderer.invoke(MF_SETTINGS_GET),
+  updaterCheck: (): Promise<UpdaterCheckResult> => ipcRenderer.invoke(MF_UPDATER_CHECK),
+  updaterApply: (): Promise<UpdaterApplyResult> => ipcRenderer.invoke(MF_UPDATER_APPLY),
 }
 
 contextBridge.exposeInMainWorld('mf', api)

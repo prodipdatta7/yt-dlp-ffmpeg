@@ -2,10 +2,12 @@ import { useEffect, useState } from 'preact/hooks'
 import { FormatMatrix } from './components/FormatMatrix'
 import { ModeSelector, type JobSelection } from './components/ModeSelector'
 import { PipelineStatus } from './components/PipelineStatus'
+import { SettingsScreen } from './components/SettingsScreen'
 import { PreviewPanel } from './components/PreviewPanel'
 import { QueueList } from './components/QueueList'
 import { UrlBar } from './components/UrlBar'
 import { analyzing, analysis, resetAnalysis } from './signals/appState'
+import { settingsOpen } from './signals/uiState'
 import { activeJob, beginJob, endJob, lastFailedConfig, lastJobEvent } from './signals/jobState'
 import {
   queueRows,
@@ -208,50 +210,67 @@ export function App() {
         <span class="rounded-full border border-slate-700 px-2 py-0.5 text-xs text-slate-400">
           {APP_VERSION}
         </span>
+        <button
+          onClick={() => (settingsOpen.value = !settingsOpen.value)}
+          title="Settings"
+          class={`ml-auto rounded-lg border px-2.5 py-1 text-xs ${
+            settingsOpen.value
+              ? 'border-sky-500 bg-sky-950 text-sky-300'
+              : 'border-slate-700 text-slate-400 hover:text-white'
+          }`}
+        >
+          ⚙ Settings
+        </button>
       </header>
 
-      <main class="flex flex-1 flex-col items-center gap-6 overflow-y-auto px-6 py-8">
-        <UrlBar />
-        {analysis.value?.kind === 'video' && (
-          <ModeSelector
-            formats={analysis.value.formats}
-            durationSec={analysis.value.metadata.durationSec}
-            onSelection={setSelection}
-            disabled={busy}
-          />
-        )}
-
-        <div class="flex w-full max-w-5xl items-center justify-between gap-3">
-          <p class="text-xs text-slate-500">
-            {isPlaylist
-              ? `Playlist — ${queueRows.value.length} entries will be processed sequentially`
-              : 'Pick a mode above, then start.'}
-          </p>
-          {busy ? (
-            <button
-              onClick={cancelActive}
-              class="rounded-lg bg-red-700 px-5 py-2 text-sm font-medium text-white hover:bg-red-600"
-            >
-              {isPlaylist ? 'Stop After Current' : 'Cancel Download'}
-            </button>
-          ) : (
-            <button
-              onClick={() => void startDownload()}
-              disabled={!canStart}
-              class="rounded-lg bg-emerald-600 px-6 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isPlaylist
-                ? `Download All (${queueRows.value.length})`
-                : 'Start Production-Grade Download'}
-            </button>
+      {settingsOpen.value ? (
+        <main class="flex flex-1 flex-col overflow-y-auto px-6 py-8">
+          <SettingsScreen />
+        </main>
+      ) : (
+        <main class="flex flex-1 flex-col items-center gap-6 overflow-y-auto px-6 py-8">
+          <UrlBar />
+          {analysis.value?.kind === 'video' && (
+            <ModeSelector
+              formats={analysis.value.formats}
+              durationSec={analysis.value.metadata.durationSec}
+              onSelection={setSelection}
+              disabled={busy}
+            />
           )}
-        </div>
 
-        <PipelineStatus onRetry={() => void retryLastFailed()} />
-        <QueueList />
-        <PreviewPanel result={analysis.value} loading={analyzing.value} />
-        {analysis.value && <FormatMatrix formats={analysis.value.formats} />}
-      </main>
+          <div class="flex w-full max-w-5xl items-center justify-between gap-3">
+            <p class="text-xs text-slate-500">
+              {isPlaylist
+                ? `Playlist — ${queueRows.value.length} entries will be processed sequentially`
+                : 'Pick a mode above, then start.'}
+            </p>
+            {busy ? (
+              <button
+                onClick={cancelActive}
+                class="rounded-lg bg-red-700 px-5 py-2 text-sm font-medium text-white hover:bg-red-600"
+              >
+                {isPlaylist ? 'Stop After Current' : 'Cancel Download'}
+              </button>
+            ) : (
+              <button
+                onClick={() => void startDownload()}
+                disabled={!canStart}
+                class="rounded-lg bg-emerald-600 px-6 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isPlaylist
+                  ? `Download All (${queueRows.value.length})`
+                  : 'Start Production-Grade Download'}
+              </button>
+            )}
+          </div>
+
+          <PipelineStatus onRetry={() => void retryLastFailed()} />
+          <QueueList />
+          <PreviewPanel result={analysis.value} loading={analyzing.value} />
+          {analysis.value && <FormatMatrix formats={analysis.value.formats} />}
+        </main>
+      )}
 
       <footer class="flex items-center justify-between gap-4 border-t border-slate-800 bg-slate-900 px-5 py-2 text-xs text-slate-500">
         <EnginesStatus />

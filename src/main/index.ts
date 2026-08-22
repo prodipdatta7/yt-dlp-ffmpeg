@@ -18,6 +18,8 @@ import { createLogger, type Logger } from './store/logger'
 import { SettingsStore } from './store/settingsStore'
 import { MfLaunchError } from './jobs/orchestrator'
 import { sweepOrphanedTempDirs } from './fsops/tempSweep'
+import { platformDir as platformDirName } from './binaries/locator'
+import { YtDlpUpdater } from './binaries/updater'
 import { createWindowOptions, getWindowSecurityFlags } from './windowOptions'
 
 function binaryCandidates(logger: Logger): BinaryCandidate[] {
@@ -120,6 +122,13 @@ app.whenReady().then(() => {
     getCookiesPath: resolveCookiesPath,
   })
 
+  const overrideDir = join(userDataDir, 'binaries', platformDirName(process.platform, process.arch))
+  const updater = new YtDlpUpdater({
+    overrideDir,
+    getCurrentVersion: async () => (await binariesService.getInfo()).ytdlp.version,
+    logger,
+  })
+
   registerIpcHandlers(
     {
       getBinariesInfo: () => binariesService.getInfo(),
@@ -198,6 +207,16 @@ app.whenReady().then(() => {
       openLogsFolder: async () => {
         const result = await shell.openPath(logsDir)
         return result.length === 0
+      },
+      getSettings: () => {
+        const s = settings.load()
+        return { lastOutputDir: s.lastOutputDir, cookieFileSet: s.cookieFileSet === true }
+      },
+      updaterCheck: () => updater.check(),
+      updaterApply: async () => {
+        const result = await updater.apply()
+        if (result.ok) binariesService.invalidate()
+        return result
       },
     },
     logger,

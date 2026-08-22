@@ -12,7 +12,10 @@ import {
   MF_LOGS_OPEN,
   MF_PING,
   MF_SETTINGS_CLEAR_COOKIES,
+  MF_SETTINGS_GET,
   MF_SETTINGS_IMPORT_COOKIES,
+  MF_UPDATER_APPLY,
+  MF_UPDATER_CHECK,
   type AnalyzeResponse,
   type BinariesInfoResult,
   type Container,
@@ -52,6 +55,19 @@ export interface IpcDeps {
   importCookies: () => Promise<boolean>
   clearCookies: () => boolean
   openLogsFolder: () => Promise<boolean>
+  getSettings: () => { lastOutputDir: string; cookieFileSet: boolean }
+  updaterCheck: () => Promise<{
+    current: string | null
+    latest: string | null
+    updateAvailable: boolean
+    error?: string
+  }>
+  updaterApply: () => Promise<{
+    ok: boolean
+    newVersion?: string
+    rolledBack?: boolean
+    error?: string
+  }>
 }
 
 function invalidUrl(): AnalyzeResponse {
@@ -112,6 +128,10 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
   ipcMain.handle(MF_SETTINGS_IMPORT_COOKIES, () => deps.importCookies())
   ipcMain.handle(MF_SETTINGS_CLEAR_COOKIES, () => deps.clearCookies())
   ipcMain.handle(MF_LOGS_OPEN, () => deps.openLogsFolder())
+
+  ipcMain.handle(MF_SETTINGS_GET, () => deps.getSettings())
+  ipcMain.handle(MF_UPDATER_CHECK, () => deps.updaterCheck())
+  ipcMain.handle(MF_UPDATER_APPLY, () => deps.updaterApply())
 }
 
 function extractUrl(payload: unknown): string | null {
