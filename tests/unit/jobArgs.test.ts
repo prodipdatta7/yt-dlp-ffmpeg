@@ -123,6 +123,18 @@ describe('buildDownloadArgs unified choke point', () => {
   const ff = 'C:/bin/ffmpeg.exe'
   const tpl = outputTemplateFor('C:/tmp')
 
+  it('ALWAYS terminates with the target URL (regression: missing URL broke every download)', () => {
+    const url = 'https://www.youtube.com/watch?v=abc123'
+    for (const config of [
+      { url, mode: 'video-audio', tier: 720, container: 'mp4', destDir: 'd' },
+      { url, mode: 'audio-only', audioFormat: 'mp3', bitrate: '320K', destDir: 'd' },
+      { url, mode: 'advanced', videoFormatId: '137', audioFormatId: '140', destDir: 'd' },
+    ] as const) {
+      const args = buildDownloadArgs(config, ff, tpl)
+      expect(args.at(-1)).toBe(url)
+    }
+  })
+
   it('routes audio-only config to the right argv prefix', () => {
     const args = buildDownloadArgs(
       { url: 'u', mode: 'audio-only', audioFormat: 'flac', destDir: 'd' },
@@ -131,6 +143,7 @@ describe('buildDownloadArgs unified choke point', () => {
     )
     expect(args.slice(0, 4)).toEqual(['-f', 'ba/b', '-x', '--audio-format'])
     expect(args).toContain('flac')
+    expect(args.at(-1)).toBe('u')
   })
 
   it('routes advanced config with ids', () => {
@@ -141,5 +154,6 @@ describe('buildDownloadArgs unified choke point', () => {
     )
     expect(args[0]).toBe('-f')
     expect(args[1]).toBe('137+140/b')
+    expect(args.at(-1)).toBe('u')
   })
 })

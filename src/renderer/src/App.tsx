@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import { FormatMatrix } from './components/FormatMatrix'
 import { ModeSelector, type JobSelection } from './components/ModeSelector'
 import { PipelineStatus } from './components/PipelineStatus'
@@ -8,7 +8,15 @@ import { QueueList } from './components/QueueList'
 import { UrlBar } from './components/UrlBar'
 import { analyzing, analysis, resetAnalysis } from './signals/appState'
 import { settingsOpen } from './signals/uiState'
-import { activeJob, beginJob, endJob, lastFailedConfig, lastJobEvent } from './signals/jobState'
+import {
+  activeJob,
+  beginJob,
+  endJob,
+  jobDone,
+  lastFailedConfig,
+  lastJobEvent,
+  launchError,
+} from './signals/jobState'
 import {
   queueRows,
   queueRunning,
@@ -113,9 +121,12 @@ function configFor(url: string, selection: JobSelection, isLive = false): JobCon
 }
 
 async function runSingleJob(config: JobConfig): Promise<'completed' | 'cancelled' | 'failed'> {
+  launchError.value = null
   const response = await window.mf.downloadStart(config)
   if (response.kind !== 'ok') {
     lastFailedConfig.value = config
+    jobDone.value = { jobId: 'launch', status: 'failed', errorCode: response.code }
+    launchError.value = response.message
     return 'failed'
   }
   beginJob(config, response.jobId)
@@ -127,6 +138,13 @@ async function runSingleJob(config: JobConfig): Promise<'completed' | 'cancelled
 export function App() {
   const [bridgeNote, setBridgeNote] = useState('bridge: probing…')
   const [selection, setSelection] = useState<JobSelection | null>(null)
+  const mainScrollRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    if (analysis.value) {
+      mainScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }, [analysis.value?.metadata.id])
   const [showNotice, setShowNotice] = useState(false)
 
   useEffect(() => {
@@ -233,8 +251,15 @@ export function App() {
           <SettingsScreen />
         </main>
       ) : (
-        <main class="flex flex-1 flex-col items-center gap-6 overflow-y-auto px-6 py-8">
+        <main
+          ref={mainScrollRef}
+          class="flex flex-1 flex-col items-center gap-5 overflow-y-auto overflow-x-hidden px-4 py-6 sm:px-6 sm:py-8"
+        >
           <UrlBar />
+
+          <PreviewPanel result={analysis.value} loading={analyzing.value} />
+          {analysis.value && <FormatMatrix formats={analysis.value.formats} />}
+
           {analysis.value?.kind === 'video' && (
             <ModeSelector
               formats={analysis.value.formats}
@@ -244,16 +269,18 @@ export function App() {
             />
           )}
 
-          <div class="flex w-full max-w-5xl items-center justify-between gap-3">
-            <p class="text-xs text-slate-500">
+          <div class="flex w-full max-w-5xl min-w-0 items-center justify-between gap-3">
+            <p class="min-w-0 truncate text-xs text-slate-500">
               {isPlaylist
                 ? `Playlist — ${queueRows.value.length} entries will be processed sequentially`
-                : 'Pick a mode above, then start.'}
+                : analysis.value
+                  ? 'Pick a mode above, then start.'
+                  : 'Paste a link and hit Analyze to begin.'}
             </p>
             {busy ? (
               <button
                 onClick={cancelActive}
-                class="rounded-lg bg-red-700 px-5 py-2 text-sm font-medium text-white hover:bg-red-600"
+                class="shrink-0 rounded-lg bg-red-700 px-5 py-2 text-sm font-medium text-white hover:bg-red-600"
               >
                 {isPlaylist ? 'Stop After Current' : 'Cancel Download'}
               </button>
@@ -261,7 +288,7 @@ export function App() {
               <button
                 onClick={() => void startDownload()}
                 disabled={!canStart}
-                class="rounded-lg bg-emerald-600 px-6 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                class="shrink-0 rounded-lg bg-emerald-600 px-6 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isPlaylist
                   ? `Download All (${queueRows.value.length})`
@@ -272,8 +299,11 @@ export function App() {
 
           <PipelineStatus onRetry={() => void retryLastFailed()} />
           <QueueList />
-          <PreviewPanel result={analysis.value} loading={analyzing.value} />
-          {analysis.value && <FormatMatrix formats={analysis.value.formats} />}
+          {launchError.value && (
+            <div class="w-full max-w-5xl rounded-lg border border-red-800 bg-red-950/50 px-3 py-2 text-sm text-red-300">
+              Could not start: {launchError.value}
+            </div>
+          )}
         </main>
       )}
 

@@ -94,5 +94,5 @@ export function buildDownloadArgs(
   }
   const base = buildBaseDownloadArgs(ffmpegPath, outputTemplate)
   if (cookiesPath) base.push('--cookies', cookiesPath)
-  return [...modeArgs, ...base]
+  return [...modeArgs, ...base, config.url]
 }

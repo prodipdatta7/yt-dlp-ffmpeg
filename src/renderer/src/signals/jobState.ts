@@ -8,6 +8,7 @@ export const jobDone = signal<JobDonePayload | null>(null)
 export function beginJob(config: JobConfig, jobId: string): void {
   jobDone.value = null
   lastJobEvent.value = null
+  launchError.value = null
   activeJob.value = { config, jobId }
 }
 
@@ -17,3 +18,4 @@ export function endJob(done: JobDonePayload): void {
 }
 
 export const lastFailedConfig = signal<JobConfig | null>(null)
+export const launchError = signal<string | null>(null)

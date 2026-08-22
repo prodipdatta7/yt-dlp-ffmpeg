@@ -22,12 +22,12 @@ export function FormatMatrix({ formats }: { formats: FormatRow[] }) {
   if (sorted.length === 0) return null
 
   return (
-    <div class="w-full max-w-5xl overflow-hidden rounded-xl border border-slate-800 bg-slate-900/70">
+    <div class="w-full max-w-5xl min-w-0 overflow-hidden rounded-xl border border-slate-800 bg-slate-900/70">
       <div class="border-b border-slate-800 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
         Available streams ({sorted.length})
       </div>
-      <div class="max-h-64 overflow-y-auto">
-        <table class="w-full text-left text-sm">
+      <div class="max-h-64 overflow-auto">
+        <table class="w-full min-w-[640px] text-left text-sm">
           <thead class="sticky top-0 bg-slate-900 text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th class="px-4 py-2 font-medium">ID</th>
