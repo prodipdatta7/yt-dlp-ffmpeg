@@ -1,0 +1,41 @@
+{
+  "name": "mediaforge-desktop",
+  "productName": "MediaForge Desktop",
+  "version": "0.1.0",
+  "description": "Zero-dependency GUI wrapper around the yt-dlp and FFmpeg CLIs.",
+  "license": "MIT",
+  "private": true,
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "npm run typecheck && electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "fetch-binaries": "node scripts/fetch-binaries.mjs"
+  },
+  "dependencies": {
+    "@preact/signals": "^2.11.1",
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@preact/preset-vite": "^2.10.6",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.2.0",
+    "electron": "^43.4.1",
+    "electron-vite": "^5.0.0",
+    "eslint": "^10.9.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.6",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^4.1.11"
+  },
+  "allowScripts": {
+    "electron@43.4.1": true
+  }
+}
