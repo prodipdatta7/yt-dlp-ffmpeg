@@ -138,13 +138,33 @@ async function runSingleJob(config: JobConfig): Promise<'completed' | 'cancelled
 export function App() {
   const [bridgeNote, setBridgeNote] = useState('bridge: probing…')
   const [selection, setSelection] = useState<JobSelection | null>(null)
+  const [selectedEntries, setSelectedEntries] = useState<ReadonlySet<string>>(new Set())
   const mainScrollRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
-    if (analysis.value) {
+    const result = analysis.value
+    if (result?.kind === 'playlist') {
+      setSelectedEntries(new Set((result.playlistEntries ?? []).map((e) => e.url)))
       mainScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
     }
   }, [analysis.value?.metadata.id])
+
+  function toggleEntry(url: string): void {
+    if (busy) return
+    setSelectedEntries((prev) => {
+      const next = new Set(prev)
+      if (next.has(url)) next.delete(url)
+      else next.add(url)
+      return next
+    })
+  }
+
+  function toggleAll(select: boolean): void {
+    if (busy) return
+    const result = analysis.value
+    if (result?.kind !== 'playlist') return
+    setSelectedEntries(select ? new Set(result.playlistEntries!.map((e) => e.url)) : new Set())
+  }
   const [showNotice, setShowNotice] = useState(false)
 
   useEffect(() => {
@@ -175,7 +195,7 @@ export function App() {
     if (!result || !selection || activeJob.value || queueRunning.value) return
 
     if (result.kind === 'playlist') {
-      const entries = result.playlistEntries ?? []
+      const entries = (result.playlistEntries ?? []).filter((e) => selectedEntries.has(e.url))
       if (entries.length === 0) return
       stopRequested.value = false
       queueRunning.value = true
@@ -215,6 +235,10 @@ export function App() {
 
   const busy = activeJob.value !== null || queueRunning.value
   const isPlaylist = analysis.value?.kind === 'playlist'
+  const playlistTotal = isPlaylist ? (analysis.value?.playlistEntries ?? []).length : 0
+  const playlistSelected = isPlaylist
+    ? (analysis.value?.playlistEntries ?? []).filter((e) => selectedEntries.has(e.url)).length
+    : 0
   const advancedReady =
     selection?.mode !== 'advanced' ||
     (selection.videoFormatId.length > 0 && selection.audioFormatId.length > 0)
@@ -223,7 +247,8 @@ export function App() {
     selection !== null &&
     selection.destDir.length > 0 &&
     advancedReady &&
-    !busy
+    !busy &&
+    (!isPlaylist || playlistSelected > 0)
 
   return (
     <div class="flex h-screen flex-col text-slate-200">
@@ -266,7 +291,13 @@ export function App() {
         >
           <UrlBar />
 
-          <PreviewPanel result={analysis.value} loading={analyzing.value} />
+          <PreviewPanel
+            result={analysis.value}
+            loading={analyzing.value}
+            selectedUrls={isPlaylist ? selectedEntries : undefined}
+            onToggleEntry={isPlaylist ? toggleEntry : undefined}
+            onToggleAll={isPlaylist ? toggleAll : undefined}
+          />
           {analysis.value && <FormatMatrix formats={analysis.value.formats} />}
 
           {analysis.value?.kind === 'video' && (
@@ -281,7 +312,7 @@ export function App() {
           <div class="flex w-full max-w-3xl min-w-0 items-center justify-between gap-3">
             <p class="min-w-0 truncate text-xs text-slate-500">
               {isPlaylist
-                ? `Playlist — ${queueRows.value.length} entries will be processed sequentially`
+                ? `${playlistSelected} of ${playlistTotal} entries will be processed sequentially`
                 : analysis.value
                   ? 'Pick a mode above, then start.'
                   : 'Paste a link and hit Analyze to begin.'}
@@ -300,7 +331,9 @@ export function App() {
                 class="mf-focus-ring shrink-0 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-400 px-6 py-2.5 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-500/25 transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
               >
                 {isPlaylist
-                  ? `Download All (${queueRows.value.length})`
+                  ? playlistSelected === playlistTotal
+                    ? `Download All (${playlistTotal})`
+                    : `Download Selected (${playlistSelected})`
                   : 'Start Production-Grade Download'}
               </button>
             )}

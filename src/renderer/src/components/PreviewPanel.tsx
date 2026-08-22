@@ -28,12 +28,46 @@ function StatTile({ label, value }: { label: string; value: string }) {
   )
 }
 
+function CheckSquare({ checked, partial = false }: { checked: boolean; partial?: boolean }) {
+  return (
+    <span
+      class={`flex size-4 shrink-0 items-center justify-center rounded border transition-colors ${
+        checked || partial
+          ? 'border-sky-400 bg-sky-500 text-white'
+          : 'border-slate-600 bg-transparent group-hover:border-slate-500'
+      }`}
+      aria-hidden="true"
+    >
+      {checked && (
+        <svg
+          viewBox="0 0 24 24"
+          class="size-3"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="3.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="m5 13 4 4L19 7" />
+        </svg>
+      )}
+      {partial && !checked && <span class="h-px w-2 rounded bg-white" />}
+    </span>
+  )
+}
+
 export function PreviewPanel({
   result,
   loading,
+  selectedUrls,
+  onToggleEntry,
+  onToggleAll,
 }: {
   result: AnalyzeResult | null
   loading: boolean
+  selectedUrls?: ReadonlySet<string>
+  onToggleEntry?: (url: string) => void
+  onToggleAll?: (select: boolean) => void
 }) {
   if (loading) {
     return (
@@ -134,13 +168,67 @@ export function PreviewPanel({
         {result.kind === 'playlist' &&
           result.playlistEntries &&
           result.playlistEntries.length > 0 && (
-            <ol class="mt-4 max-h-36 list-decimal space-y-1 overflow-y-auto rounded-lg border border-white/[0.06] bg-black/20 p-3 pl-8 text-xs text-slate-400 marker:text-slate-600">
-              {result.playlistEntries.map((entry) => (
-                <li key={entry.index} class="truncate">
-                  {entry.title}
-                </li>
-              ))}
-            </ol>
+            <div class="mt-4 rounded-lg border border-white/[0.06] bg-black/20">
+              <div class="flex items-center justify-between gap-2 border-b border-white/[0.06] px-3 py-2">
+                <button
+                  onClick={() =>
+                    onToggleAll?.(
+                      selectedUrls === undefined ||
+                        selectedUrls.size < result.playlistEntries!.length,
+                    )
+                  }
+                  disabled={!onToggleAll}
+                  class="group flex items-center gap-2 text-xs font-medium text-slate-400 transition hover:text-white"
+                >
+                  <CheckSquare
+                    checked={
+                      selectedUrls !== undefined &&
+                      selectedUrls.size === result.playlistEntries!.length
+                    }
+                    partial={
+                      selectedUrls !== undefined &&
+                      selectedUrls.size > 0 &&
+                      selectedUrls.size < result.playlistEntries!.length
+                    }
+                  />
+                  Select all
+                </button>
+                {selectedUrls !== undefined && (
+                  <span class="mf-num text-[11px] text-slate-500">
+                    {selectedUrls.size}/{result.playlistEntries.length} selected
+                  </span>
+                )}
+              </div>
+              <ol class="max-h-44 space-y-0.5 overflow-y-auto p-1.5 text-xs">
+                {result.playlistEntries.map((entry) => {
+                  const checked = selectedUrls?.has(entry.url) ?? true
+                  const row = (
+                    <>
+                      <CheckSquare checked={checked} />
+                      <span class="mf-num w-7 shrink-0 text-right text-[10px] text-slate-600">
+                        {entry.index}.
+                      </span>
+                      <span class="truncate text-slate-300">{entry.title}</span>
+                    </>
+                  )
+                  return onToggleEntry ? (
+                    <li key={entry.url}>
+                      <button
+                        onClick={() => onToggleEntry(entry.url)}
+                        title={checked ? 'Exclude from download' : 'Include in download'}
+                        class="group flex w-full items-center gap-2.5 rounded-md px-2 py-1 text-left transition hover:bg-white/[0.05]"
+                      >
+                        {row}
+                      </button>
+                    </li>
+                  ) : (
+                    <li key={entry.url} class="flex items-center gap-2.5 rounded-md px-2 py-1">
+                      {row}
+                    </li>
+                  )
+                })}
+              </ol>
+            </div>
           )}
       </div>
     </div>
