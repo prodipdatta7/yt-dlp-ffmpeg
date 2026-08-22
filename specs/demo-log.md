@@ -2,6 +2,25 @@
 
 Visible-improvement checkpoints per `specs/Implementation_Plan.md`. One entry per completed phase.
 
+## P3 — Download pipeline core (Mode A)  `[M3 core]` · done 2026-08-22
+
+- **First real download:** after analysis, resolution (8K→360p) + container (MP4/MKV/WebM)
+  dropdowns + destination folder appear; "Start Production-Grade Download" launches the job.
+- Live PipelineStatus tracker: smooth % bar, speed MB/s, ETA mm:ss, phase chips
+  (Queued → Downloading Video → Downloading Audio → Merging → Finalizing), Cancel button,
+  and a completion banner showing the saved file path.
+- Orchestrator proven end-to-end against fake binaries: two-stream phase sequencing,
+  final-path capture via `after_move:filepath`, collision-free move to destination,
+  **cleanup-on-verify** (temp wiped only after moved output verified >0 bytes — AM-06);
+  failure fixture retains `.part` partials and classifies MF_RATE_LIMITED.
+- **Live-protocol discovery:** `--print after_move:filepath` implies `--quiet`, silently killing
+  all download progress output. Fix: `--progress` flag added to base args. Verified live:
+  18 real `MF|` records parsed from an actual jNQXAC9IVRw download; merged MP4 produced.
+- ⚠️ Known upstream risk recorded: yt-dlp now warns that YouTube extraction without a JS
+  runtime (deno/node) is deprecated → some formats may be missing in production. Mitigation
+  options (ELECTRON_RUN_AS_NODE shim or bundling deno) tracked for P6/P7.
+- Gate evidence: typecheck ✓ · lint ✓ · vitest **91/91** ✓.
+
 ## P2 — URL engine & metadata module  `[M2]` · done 2026-08-22
 
 - **First user payoff:** paste a link → Analyze → spinner → thumbnail, title, channel, duration,

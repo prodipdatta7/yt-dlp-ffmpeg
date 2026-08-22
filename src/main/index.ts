@@ -4,7 +4,14 @@ import { BinariesService } from './binaries/service'
 import { platformDir, type BinaryCandidate } from './binaries/locator'
 import { registerIpcHandlers } from './ipc/handlers'
 import { AnalyzeService, MfError } from './media/metadata'
-import type { AnalyzeResponse } from '../shared/ipcContract'
+import { DownloadOrchestrator } from './jobs/orchestrator'
+import type {
+  AnalyzeResponse,
+  DownloadStartResponse,
+  JobConfig,
+  JobDonePayload,
+  JobEvent,
+} from '../shared/ipcContract'
 import { ERROR_MESSAGES } from '../shared/models'
 import { createLogger, type Logger } from './store/logger'
 import { createWindowOptions, getWindowSecurityFlags } from './windowOptions'
@@ -64,6 +71,13 @@ app.whenReady().then(() => {
     logger,
   })
 
+  const orchestrator = new DownloadOrchestrator({
+    resolveYtDlp: () => binariesService.locate('yt-dlp'),
+    resolveFfmpeg: () => binariesService.locate('ffmpeg'),
+    tempRoot: join(app.getPath('userData'), 'tmp'),
+    logger,
+  })
+
   registerIpcHandlers(
     {
       getBinariesInfo: () => binariesService.getInfo(),
@@ -79,6 +93,24 @@ app.whenReady().then(() => {
         analyzeService.cancel()
         return { ok: true }
       },
+      startDownload: async (
+        config: JobConfig,
+        sendEvent: (event: JobEvent) => void,
+        sendDone: (done: JobDonePayload) => void,
+      ): Promise<DownloadStartResponse> => {
+        try {
+          const jobId = await orchestrator.launch(config, sendEvent, sendDone)
+          return { kind: 'ok', jobId }
+        } catch (error) {
+          return {
+            kind: 'error',
+            code: 'MF_UNKNOWN',
+            message: error instanceof Error ? error.message : ERROR_MESSAGES.MF_UNKNOWN,
+          }
+        }
+      },
+      cancelDownload: (jobId: string) => ({ ok: orchestrator.cancel(jobId || undefined) }),
+      getDefaultDestDir: () => app.getPath('downloads'),
     },
     logger,
   )

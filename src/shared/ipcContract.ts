@@ -1,4 +1,11 @@
-import type { MfErrorCode } from './models'
+import type {
+  AnalyzeResult,
+  Container,
+  JobConfig,
+  JobDonePayload,
+  JobEvent,
+  MfErrorCode,
+} from './models'
 
 export type { MfErrorCode }
 
@@ -6,6 +13,11 @@ export const MF_PING = 'mf:ping' as const
 export const MF_BINARIES_INFO = 'mf:binaries:info' as const
 export const MF_ANALYZE_START = 'mf:analyze:start' as const
 export const MF_ANALYZE_CANCEL = 'mf:analyze:cancel' as const
+export const MF_DOWNLOAD_START = 'mf:download:start' as const
+export const MF_DOWNLOAD_CANCEL = 'mf:download:cancel' as const
+export const MF_JOB_EVENT = 'mf:job:event' as const
+export const MF_JOB_DONE = 'mf:job:done' as const
+export const MF_DEFAULT_DEST_DIR = 'mf:default-dest-dir' as const
 
 export interface PingResult {
   pong: string
@@ -26,12 +38,21 @@ export interface BinariesInfoResult {
 }
 
 export type AnalyzeResponse =
-  | { kind: 'ok'; result: import('./models').AnalyzeResult }
-  | { kind: 'error'; code: MfErrorCode; message: string }
+  { kind: 'ok'; result: AnalyzeResult } | { kind: 'error'; code: MfErrorCode; message: string }
+
+export type DownloadStartResponse =
+  { kind: 'ok'; jobId: string } | { kind: 'error'; code: MfErrorCode; message: string }
 
 export interface MfApi {
   ping(): Promise<PingResult>
   getBinariesInfo(): Promise<BinariesInfoResult>
   analyzeStart(url: string): Promise<AnalyzeResponse>
   analyzeCancel(): Promise<{ ok: boolean }>
+  downloadStart(config: JobConfig): Promise<DownloadStartResponse>
+  downloadCancel(jobId: string): Promise<{ ok: boolean }>
+  onJobEvent(listener: (event: JobEvent) => void): () => void
+  onJobDone(listener: (done: JobDonePayload) => void): () => void
+  getDefaultDestDir(): Promise<string>
 }
+
+export type { Container, JobConfig, JobDonePayload, JobEvent }

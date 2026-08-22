@@ -63,3 +63,34 @@ export interface AnalyzeResult {
   playlistCount?: number
   playlistEntries?: PlaylistEntryPreview[]
 }
+
+export type Container = 'mp4' | 'mkv' | 'webm'
+export const CONTAINERS: readonly Container[] = ['mp4', 'mkv', 'webm']
+export const RESOLUTION_TIERS = [4320, 2160, 1440, 1080, 720, 480, 360] as const
+
+export interface JobConfig {
+  url: string
+  mode: 'video-audio'
+  tier?: number
+  container?: Container
+  destDir: string
+}
+
+export type JobPhase =
+  'queued' | 'downloading-video' | 'downloading-audio' | 'merging' | 'finalizing' | 'done'
+
+export interface JobEvent {
+  jobId: string
+  phase: JobPhase
+  percent: number | null
+  speedBps: number | null
+  etaSec: number | null
+  message?: string
+}
+
+export interface JobDonePayload {
+  jobId: string
+  status: 'completed' | 'cancelled' | 'failed'
+  errorCode?: MfErrorCode
+  outputPath?: string
+}

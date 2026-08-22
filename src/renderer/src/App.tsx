@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'preact/hooks'
 import { FormatMatrix } from './components/FormatMatrix'
+import { ModeSelector, type DownloadSelection } from './components/ModeSelector'
+import { PipelineStatus } from './components/PipelineStatus'
 import { PreviewPanel } from './components/PreviewPanel'
 import { UrlBar } from './components/UrlBar'
 import { analyzing, analysis } from './signals/appState'
+import { activeJob, beginJob, endJob, lastJobEvent } from './signals/jobState'
+import type { JobConfig } from '../../shared/models'
 
 const APP_VERSION = 'v0.1.0'
 
@@ -72,13 +76,45 @@ function EnginesStatus() {
 
 export function App() {
   const [bridgeNote, setBridgeNote] = useState('bridge: probing…')
+  const [selection, setSelection] = useState<DownloadSelection | null>(null)
 
   useEffect(() => {
     window.mf
       .ping()
       .then((r) => setBridgeNote(`bridge ok · ${new Date(r.ts).toLocaleTimeString()}`))
       .catch(() => setBridgeNote('bridge error'))
+
+    const offEvent = window.mf.onJobEvent((event) => {
+      lastJobEvent.value = event
+    })
+    const offDone = window.mf.onJobDone((done) => {
+      endJob(done)
+    })
+    return () => {
+      offEvent()
+      offDone()
+    }
   }, [])
+
+  async function startDownload() {
+    const result = analysis.value
+    if (!result || !selection || activeJob.value) return
+    const config: JobConfig = {
+      url: result.metadata.webpageUrl ?? '',
+      mode: 'video-audio',
+      tier: selection.tier,
+      container: selection.container,
+      destDir: selection.destDir,
+    }
+    const response = await window.mf.downloadStart(config)
+    if (response.kind === 'ok') beginJob(config, response.jobId)
+  }
+
+  const canStart =
+    analysis.value?.kind === 'video' &&
+    selection !== null &&
+    selection.destDir.length > 0 &&
+    !activeJob.value
 
   return (
     <div class="flex h-screen flex-col bg-slate-950 text-slate-200">
@@ -90,8 +126,21 @@ export function App() {
         </span>
       </header>
 
-      <main class="flex flex-1 flex-col items-center gap-8 overflow-y-auto px-6 py-8">
+      <main class="flex flex-1 flex-col items-center gap-6 overflow-y-auto px-6 py-8">
         <UrlBar />
+        {analysis.value?.kind === 'video' && (
+          <ModeSelector onSelection={setSelection} disabled={activeJob.value !== null} />
+        )}
+        <div class="flex w-full max-w-5xl justify-end">
+          <button
+            onClick={() => void startDownload()}
+            disabled={!canStart}
+            class="rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Start Production-Grade Download
+          </button>
+        </div>
+        <PipelineStatus />
         <PreviewPanel result={analysis.value} loading={analyzing.value} />
         {analysis.value && <FormatMatrix formats={analysis.value.formats} />}
       </main>
