@@ -1,0 +1,35 @@
+{
+  "_type": "playlist",
+  "id": "PLTechEduDistributed01",
+  "title": "Distributed Systems Course",
+  "uploader": "TechEdu Labs",
+  "channel": "TechEdu Labs",
+  "webpage_url": "https://www.youtube.com/playlist?list=PLTechEduDistributed01",
+  "extractor_key": "YoutubeTab",
+  "entries": [
+    {
+      "_type": "url",
+      "id": "ep0001intro",
+      "title": "Episode 1 — Introduction & Consistency Models",
+      "url": "https://www.youtube.com/watch?v=ep0001intro"
+    },
+    {
+      "_type": "url",
+      "id": "ep0002gfs",
+      "title": "Episode 2 — The Google File System",
+      "url": "https://www.youtube.com/watch?v=ep0002gfs"
+    },
+    {
+      "_type": "url",
+      "id": "ep0003mapreduce",
+      "title": "Episode 3 — MapReduce & Dataflow",
+      "url": "https://www.youtube.com/watch?v=ep0003mapreduce"
+    },
+    {
+      "_type": "url",
+      "id": "ep0004paxos",
+      "title": "Episode 4 — Paxos and Raft",
+      "url": "https://www.youtube.com/watch?v=ep0004paxos"
+    }
+  ]
+}

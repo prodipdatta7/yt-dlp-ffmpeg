@@ -1,0 +1,28 @@
+{
+  "id": "liveStream01",
+  "_type": "video",
+  "title": "24/7 Community Coding Live",
+  "uploader": "TechEdu Labs",
+  "channel": "TechEdu Labs",
+  "duration": null,
+  "view_count": 4211,
+  "concurrent_view_count": 812,
+  "upload_date": null,
+  "thumbnail": "https://i.ytimg.com/vi/liveStream01/hqdefault_live.jpg",
+  "webpage_url": "https://www.youtube.com/watch?v=liveStream01",
+  "is_live": true,
+  "live_status": "is_live",
+  "release_timestamp": 1755800000,
+  "extractor_key": "Youtube",
+  "formats": [
+    {
+      "format_id": "93",
+      "ext": "mp4",
+      "vcodec": "avc1.64001f",
+      "acodec": "mp4a.40.2",
+      "height": 720,
+      "fps": 30,
+      "tbr": 2000.0
+    }
+  ]
+}

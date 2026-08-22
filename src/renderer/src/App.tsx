@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'preact/hooks'
-import type { BinariesInfoResult, BinaryInfo, BinaryKind } from '../../shared/ipcContract'
+import { FormatMatrix } from './components/FormatMatrix'
+import { PreviewPanel } from './components/PreviewPanel'
+import { UrlBar } from './components/UrlBar'
+import { analyzing, analysis } from './signals/appState'
 
 const APP_VERSION = 'v0.1.0'
 
@@ -16,7 +19,13 @@ function LogoMark() {
   )
 }
 
-function EngineBadge({ label, info }: { label: string; info: BinaryInfo }) {
+function EngineBadge({
+  label,
+  info,
+}: {
+  label: string
+  info: { version: string | null; source: string | null }
+}) {
   if (!info.version || !info.source) {
     return (
       <span class="flex items-center gap-1.5">
@@ -40,7 +49,10 @@ function EngineBadge({ label, info }: { label: string; info: BinaryInfo }) {
 }
 
 function EnginesStatus() {
-  const [info, setInfo] = useState<BinariesInfoResult | null>(null)
+  const [info, setInfo] = useState<{
+    ytdlp: { version: string | null; source: string | null }
+    ffmpeg: { version: string | null; source: string | null }
+  } | null>(null)
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
@@ -50,11 +62,10 @@ function EnginesStatus() {
   if (failed) return <span class="text-red-400">engine status unavailable</span>
   if (!info) return <span>engines: probing…</span>
 
-  const order: Record<BinaryKind, BinaryInfo> = { 'yt-dlp': info.ytdlp, ffmpeg: info.ffmpeg }
   return (
     <span class="flex items-center gap-4">
-      <EngineBadge label="yt-dlp" info={order['yt-dlp']} />
-      <EngineBadge label="ffmpeg" info={order.ffmpeg} />
+      <EngineBadge label="yt-dlp" info={info.ytdlp} />
+      <EngineBadge label="ffmpeg" info={info.ffmpeg} />
     </span>
   )
 }
@@ -79,25 +90,10 @@ export function App() {
         </span>
       </header>
 
-      <main class="flex flex-1 flex-col items-center justify-center gap-6 px-6">
-        <p class="text-sm text-slate-400">Paste a link to begin</p>
-        <div class="flex w-full max-w-xl gap-2">
-          <input
-            type="url"
-            placeholder="https://…"
-            disabled
-            class="flex-1 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm outline-none placeholder:text-slate-600 focus:border-sky-500 disabled:opacity-60"
-          />
-          <button
-            disabled
-            class="rounded-lg bg-sky-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50"
-          >
-            Analyze
-          </button>
-        </div>
-        <p class="text-xs text-slate-600">
-          URL analysis lands in Phase P2 · download pipeline in P3
-        </p>
+      <main class="flex flex-1 flex-col items-center gap-8 overflow-y-auto px-6 py-8">
+        <UrlBar />
+        <PreviewPanel result={analysis.value} loading={analyzing.value} />
+        {analysis.value && <FormatMatrix formats={analysis.value.formats} />}
       </main>
 
       <footer class="flex items-center justify-between border-t border-slate-800 bg-slate-900 px-5 py-2 text-xs text-slate-500">

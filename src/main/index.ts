@@ -3,6 +3,9 @@ import { app, BrowserWindow } from 'electron'
 import { BinariesService } from './binaries/service'
 import { platformDir, type BinaryCandidate } from './binaries/locator'
 import { registerIpcHandlers } from './ipc/handlers'
+import { AnalyzeService, MfError } from './media/metadata'
+import type { AnalyzeResponse } from '../shared/ipcContract'
+import { ERROR_MESSAGES } from '../shared/models'
 import { createLogger, type Logger } from './store/logger'
 import { createWindowOptions, getWindowSecurityFlags } from './windowOptions'
 
@@ -56,7 +59,29 @@ app.whenReady().then(() => {
     logger,
   })
 
-  registerIpcHandlers({ getBinariesInfo: () => binariesService.getInfo() })
+  const analyzeService = new AnalyzeService({
+    resolveYtDlp: () => binariesService.locate('yt-dlp'),
+    logger,
+  })
+
+  registerIpcHandlers(
+    {
+      getBinariesInfo: () => binariesService.getInfo(),
+      analyze: async (url): Promise<AnalyzeResponse> => {
+        try {
+          return { kind: 'ok', result: await analyzeService.analyze(url) }
+        } catch (error) {
+          const code = error instanceof MfError ? error.code : 'MF_UNKNOWN'
+          return { kind: 'error', code, message: ERROR_MESSAGES[code] }
+        }
+      },
+      cancelAnalyze: () => {
+        analyzeService.cancel()
+        return { ok: true }
+      },
+    },
+    logger,
+  )
   createMainWindow()
 
   app.on('activate', () => {

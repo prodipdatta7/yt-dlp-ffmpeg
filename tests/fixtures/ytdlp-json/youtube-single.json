@@ -1,0 +1,92 @@
+{
+  "id": "dQw4w9WgXcQ",
+  "_type": "video",
+  "title": "Deep Dive into Distributed Systems",
+  "uploader": "TechEdu Labs",
+  "channel": "TechEdu Labs",
+  "duration": 5055,
+  "view_count": 1234567,
+  "upload_date": "20240615",
+  "thumbnail": "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg",
+  "webpage_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+  "extractor_key": "Youtube",
+  "formats": [
+    {
+      "format_id": "140",
+      "ext": "m4a",
+      "vcodec": "none",
+      "acodec": "mp4a.40.2",
+      "abr": 129.54,
+      "tbr": 130.4,
+      "filesize": 81920000
+    },
+    {
+      "format_id": "251",
+      "ext": "webm",
+      "vcodec": "none",
+      "acodec": "opus",
+      "abr": 160.1,
+      "tbr": 161.0,
+      "filesize_approx": 101200000
+    },
+    {
+      "format_id": "22",
+      "ext": "mp4",
+      "vcodec": "avc1.64001F",
+      "acodec": "mp4a.40.2",
+      "height": 720,
+      "fps": 30,
+      "abr": 192.0,
+      "tbr": 1100.0,
+      "filesize": 692060160
+    },
+    {
+      "format_id": "137",
+      "ext": "mp4",
+      "vcodec": "avc1.640028",
+      "acodec": "none",
+      "height": 1080,
+      "fps": 30,
+      "tbr": 2646.0,
+      "filesize": 1670686720
+    },
+    {
+      "format_id": "299",
+      "ext": "mp4",
+      "vcodec": "avc1.64002a",
+      "acodec": "none",
+      "height": 1080,
+      "fps": 60,
+      "tbr": 4500.0,
+      "filesize_approx": 2840000000
+    },
+    {
+      "format_id": "271",
+      "ext": "webm",
+      "vcodec": "vp9",
+      "acodec": "none",
+      "height": 1440,
+      "fps": 30,
+      "tbr": 12000.0,
+      "filesize_approx": 7568000000
+    },
+    {
+      "format_id": "315",
+      "ext": "webm",
+      "vcodec": "vp9",
+      "acodec": "none",
+      "height": 2160,
+      "fps": 60,
+      "tbr": 28000.0,
+      "filesize": 17660000000
+    },
+    {
+      "format_id": "sb2",
+      "ext": "mhtml",
+      "vcodec": "sb2",
+      "acodec": "none",
+      "height": 120,
+      "format_note": "storyboard"
+    }
+  ]
+}

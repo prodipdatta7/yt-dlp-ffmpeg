@@ -2,6 +2,23 @@
 
 Visible-improvement checkpoints per `specs/Implementation_Plan.md`. One entry per completed phase.
 
+## P2 — URL engine & metadata module  `[M2]` · done 2026-08-22
+
+- **First user payoff:** paste a link → Analyze → spinner → thumbnail, title, channel, duration,
+  views, upload date render; full stream FormatMatrix table (ID/ext/codecs/res/fps/bitrate/~size)
+  sorted by resolution; Cancel button kills the probe mid-flight.
+- Playlist URLs show a "Playlist · N entries" badge with the entry list (queue lands in P4).
+- Live URLs flagged with a red LIVE chip (recording workflow lands in P6).
+- Invalid input shows inline hint; dead links surface catalog messages, never raw stderr —
+  verified live: `BaW_jenozKc` now returns "Video unavailable" → mapped to
+  MF_OFFLINE_OR_PRIVATE message; happy path verified on `jNQXAC9IVRw` (Me at the zoo,
+  19s, 24 formats parsed).
+- Retry strategy implemented: full URL first, tracking params stripped only on extractor-class
+  failure (never blind-strip).
+- Fixtures committed: youtube-single / playlist / live `-J` dumps drive parser tests.
+- Gate evidence: typecheck ✓ · lint ✓ · vitest **70/70** ✓ (45 new: urlCleaner table-driven,
+  classifyStderr per §10 row, fixture mapping, cancel <500ms scripted, service validation).
+
 ## P1 — Binary manager & process runner  `[M1]` · done 2026-08-22
 
 - Footer status strip now shows **live engine badges**: `yt-dlp: v2026.08.19 [BUNDLED]` /
