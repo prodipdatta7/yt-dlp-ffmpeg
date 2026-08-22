@@ -89,6 +89,8 @@ export interface JobConfig {
   destDir: string
   estimatedBytes?: number
   isLive?: boolean
+  /** Playlist downloads nest into a sanitized subfolder named after this title. */
+  playlistTitle?: string
 }
 
 export type JobPhase =

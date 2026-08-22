@@ -57,6 +57,7 @@ interface ActiveJob {
   handle: SpawnHandle | null
   cancelRequested: boolean
   tempDir: string
+  destDir: string
 }
 
 export class MfLaunchError extends Error {
@@ -143,7 +144,11 @@ export class DownloadOrchestrator {
       throw new MfLaunchError(null, 'Media engines are not installed.')
     }
 
-    const freeBytes = await freeDiskSpaceBytes(config.destDir)
+    const effectiveDestDir = config.playlistTitle
+      ? join(config.destDir, sanitizeFileName(config.playlistTitle))
+      : config.destDir
+
+    const freeBytes = await freeDiskSpaceBytes(effectiveDestDir)
     if (isDiskSpaceInsufficient(freeBytes, config.estimatedBytes)) {
       this.deps.logger?.warn('preflight disk-space abort', {
         freeBytes,
@@ -156,7 +161,14 @@ export class DownloadOrchestrator {
     const tempDir = tempDirForUrl(this.deps.tempRoot, config.url)
     mkdirSync(tempDir, { recursive: true })
 
-    const job: ActiveJob = { id: jobId, config, handle: null, cancelRequested: false, tempDir }
+    const job: ActiveJob = {
+      id: jobId,
+      config,
+      handle: null,
+      cancelRequested: false,
+      tempDir,
+      destDir: effectiveDestDir,
+    }
     this.activeJob = job
     this.deps.logger?.info('job launched', { jobId, mode: config.mode, tier: config.tier })
     sendEvent({ jobId, phase: 'queued', percent: null, speedBps: null, etaSec: null })
@@ -297,8 +309,8 @@ export class DownloadOrchestrator {
         return
       }
 
-      mkdirSync(job.config.destDir, { recursive: true })
-      const target = collisionFreeTarget(job.config.destDir, basename(finalSource))
+      mkdirSync(job.destDir, { recursive: true })
+      const target = collisionFreeTarget(job.destDir, basename(finalSource))
       try {
         renameSync(finalSource, target)
       } catch {
@@ -325,8 +337,8 @@ export class DownloadOrchestrator {
     const partSource = findLargestPartFile(job.tempDir)
     if (!partSource) return null
     const finalName = sanitizeFileName(basename(partSource).replace(/\.part$/i, ''))
-    mkdirSync(job.config.destDir, { recursive: true })
-    const target = collisionFreeTarget(job.config.destDir, finalName)
+    mkdirSync(job.destDir, { recursive: true })
+    const target = collisionFreeTarget(job.destDir, finalName)
     try {
       renameSync(partSource, target)
     } catch {

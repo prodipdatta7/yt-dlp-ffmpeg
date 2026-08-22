@@ -178,9 +178,29 @@ function parseJobConfig(payload: unknown): JobConfig | null {
     estimatedBytes = raw.estimatedBytes
   }
 
+  let playlistTitle: string | undefined
+  if (raw.playlistTitle !== undefined) {
+    if (
+      typeof raw.playlistTitle !== 'string' ||
+      raw.playlistTitle.length === 0 ||
+      raw.playlistTitle.length > 300
+    ) {
+      return null
+    }
+    playlistTitle = raw.playlistTitle
+  }
+
   switch (raw.mode) {
     case 'video-audio':
-      return { url, mode: 'video-audio', tier, container, destDir: raw.destDir, estimatedBytes }
+      return {
+        url,
+        mode: 'video-audio',
+        tier,
+        container,
+        destDir: raw.destDir,
+        estimatedBytes,
+        playlistTitle,
+      }
 
     case 'audio-only': {
       const format = raw.audioFormat
@@ -203,6 +223,7 @@ function parseJobConfig(payload: unknown): JobConfig | null {
         bitrate,
         destDir: raw.destDir,
         estimatedBytes,
+        playlistTitle,
       }
     }
 
@@ -225,6 +246,7 @@ function parseJobConfig(payload: unknown): JobConfig | null {
         audioFormatId,
         destDir: raw.destDir,
         estimatedBytes,
+        playlistTitle,
       }
     }
 

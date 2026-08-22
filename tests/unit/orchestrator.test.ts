@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { DownloadOrchestrator } from '../../src/main/jobs/orchestrator'
+import { sanitizeFileName } from '../../src/main/fsops/sanitizer'
 import type { JobDonePayload, JobEvent } from '../../src/shared/ipcContract'
 
 function tempRoot(): string {
@@ -116,6 +117,32 @@ describe('DownloadOrchestrator', () => {
     const jobDirs = readdirSafe(root).filter((n) => n.startsWith('job-'))
     expect(jobDirs.length).toBeGreaterThan(0)
     expect(existsSync(join(root, jobDirs[0]))).toBe(true)
+  }, 30_000)
+
+  it('nests playlist downloads into a sanitized subfolder named after the playlist', async () => {
+    const root = tempRoot()
+    const box: DoneBox = { value: null }
+
+    const orch = makeOrch(root, 'tests/fixtures/fake-bin/fake-ytdlp-download.mjs')
+    await orch.launch(
+      {
+        url: 'https://x.test/playlist/1',
+        mode: 'video-audio' as const,
+        tier: 360,
+        container: 'mp4' as const,
+        destDir: join(root, 'dest'),
+        playlistTitle: 'AC/DC: Best?*Mix <2026>',
+      },
+      () => undefined,
+      (d) => {
+        box.value = d
+      },
+    )
+
+    const done = await waitForDone(box)
+    expect(done.status).toBe('completed')
+    const expectedFolder = join(root, 'dest', sanitizeFileName('AC/DC: Best?*Mix <2026>'))
+    expect(done.outputPath!.startsWith(expectedFolder)).toBe(true)
   }, 30_000)
 
   it('cancel with no active job returns false safely', () => {

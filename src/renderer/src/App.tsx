@@ -92,12 +92,18 @@ function EnginesStatus() {
   )
 }
 
-function configFor(url: string, selection: JobSelection, isLive = false): JobConfig {
+function configFor(
+  url: string,
+  selection: JobSelection,
+  isLive = false,
+  playlistTitle?: string,
+): JobConfig {
   const base = {
     url,
     destDir: selection.destDir,
     estimatedBytes: selection.estimatedBytes ?? undefined,
     isLive,
+    playlistTitle: playlistTitle || undefined,
   }
   switch (selection.mode) {
     case 'video-audio':
@@ -205,7 +211,9 @@ export function App() {
         queueRows.value = queueRows.value.map((r, idx) =>
           idx === i ? { ...r, status: 'downloading' } : r,
         )
-        const status = await runSingleJob(configFor(entries[i].url, selection))
+        const status = await runSingleJob(
+          configFor(entries[i].url, selection, false, result.metadata.title),
+        )
         queueRows.value = queueRows.value.map((r, idx) =>
           idx === i ? { ...r, status: status === 'completed' ? 'done' : status } : r,
         )
@@ -310,9 +318,14 @@ export function App() {
           )}
 
           <div class="flex w-full max-w-3xl min-w-0 items-center justify-between gap-3">
-            <p class="min-w-0 truncate text-xs text-slate-500">
-              {isPlaylist
-                ? `${playlistSelected} of ${playlistTotal} entries will be processed sequentially`
+            <p
+              class="min-w-0 truncate text-xs text-slate-500"
+              title={
+                isPlaylist ? `Saves into ${selection?.destDir ?? ''}\\<playlist name>` : undefined
+              }
+            >
+              {isPlaylist && analysis.value
+                ? `${playlistSelected} of ${playlistTotal} entries · saving into "${analysis.value.metadata.title}"`
                 : analysis.value
                   ? 'Pick a mode above, then start.'
                   : 'Paste a link and hit Analyze to begin.'}
