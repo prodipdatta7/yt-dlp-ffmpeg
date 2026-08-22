@@ -1,0 +1,398 @@
+# AGENTS.md — MediaForge Desktop
+
+Engineering guide for AI agents and humans working in this repository. It converts the product
+spec (`specs/MediaForge_Desktop_PRD.md`) into an executable, milestone-driven implementation plan,
+including binding corrections where the PRD was technically inaccurate.
+
+**Rule zero:** Before implementing any feature, read the corresponding PRD section **and** its
+amendments in §2 of this file. If they conflict, this file wins.
+
+---
+
+## 1. Project Overview
+
+MediaForge Desktop is an Electron GUI wrapper around the CLIs of **yt-dlp** and **FFmpeg**.
+It lets non-technical users download/transcode media with zero host dependencies (both binaries
+ship inside the app), while power users retain raw access to stream formats.
+
+Core flows:
+
+1. Paste URL → validate → extract metadata (`yt-dlp -J`) → show preview + format matrix.
+2. Pick mode (Video+Audio / Audio-only / Advanced) + quality + destination folder.
+3. Download streams to a temp dir (yt-dlp) → mux/transcode (FFmpeg, invoked by yt-dlp) → move
+   final file to destination → clean temp.
+4. Real-time progress, speed, ETA, phase labels surfaced to the UI at all times.
+
+## 2. PRD Amendment Log (binding corrections)
+
+These amend the PRD. Traceability: `AM-nn` may appear in commit messages and tests.
+
+| ID | PRD § | Correction |
+|----|-------|------------|
+| AM-01 | 3.6 | Do NOT regex-scrape human-readable stdout. Use machine-parseable interfaces: `-J` (metadata JSON), `--newline` + `--progress-template` (download/postprocess progress), `--print after_move:filepath` (final path). See §7. |
+| AM-02 | 5.1 | Never construct shell command strings. Execute via `spawn(binPath, argsArray)` with `shell:false, windowsHide:true`. URLs are passed as one argv element — injection-safe by construction. No string concatenation of user input ever reaches a shell. |
+| AM-03 | 6.3 | Never swap/update binaries inside the install directory (`Program Files` needs admin; modifying a signed `.app` breaks its signature). Updated binaries are written atomically to `<userData>/binaries/<platform>/` and the loader resolves **userData override → bundled binary**. Verify SHA-256 against official checksums before swapping; keep `.bak` for rollback. |
+| AM-04 | 3.3B | Bitrate tiers (320/192/128 kbps) apply only to lossy targets (MP3, M4A/AAC, Vorbis/OGG). When FLAC or WAV is selected, hide/disable the bitrate selector and transcode from best source audio. |
+| AM-05 | EC-04 | The app cannot reconnect the OS network. "Retry loop" means: detect failure, retry spawning `yt-dlp` (default resume via `.part` files) up to N=3 times with backoff (5s/15s/30s), then surface the **Resume Download** button. |
+| AM-06 | EC-03 + 3.5 | Cleanup rule: delete temp files **only after verifying** the final output exists and is > 0 bytes. On any failure, retain partials (enables resume). Pre-flight disk space check before starting a job; abort early with required-bytes message when estimable. |
+| AM-07 | 7 | Playlists ARE in scope as a *sequential queue*: if metadata reports `_type: playlist`, enumerate entries (`--flat-playlist`) and enqueue them one-at-a-time through the normal single-job pipeline, with per-entry status rows. Never more than one concurrent child job. |
+| AM-08 | EC-02/EC-07 | A Settings screen exists (referenced but unspecified in PRD): default output folder, cookie-file import, check-for-updates, open logs folder, version info. See §9/M6. |
+| AM-09 | 3.2 | Cancel semantics defined for ALL phases: cancel kills the child process **tree** (win32: `taskkill /PID <pid> /T /F`), keeps partial files, resets UI to idle. Applies mid-analysis and mid-download. |
+| AM-10 | 5.2 | Memory ceilings cover **Electron processes only** (measured via `app.getAppMetrics()` sum: main + renderer + gpu + utility). FFmpeg/yt-dlp are separate OS processes — excluded from the ceiling but RSS-logged during performance tests. Idle target ≤120MB, peak ≤450MB. |
+| AM-11 | — | Additions the PRD omitted: structured logging with redaction (§11.3), error catalog mapping CLI stderr → user messages (§10), licensing/distribution notes (§14), filename safety delegated primarily to yt-dlp flags `--windows-filenames --trim-filenames` with app-side sanitizer as defense-in-depth (§7.4). |
+| AM-12 | 5.3 | Tailwind CSS v4 is sanctioned as a **build-time-only** styling layer (compiles to static CSS before packaging ⇒ zero runtime weight, honors §5.3's actual target of installer/runtime size). Plain CSS / CSS Modules remain allowed side-by-side where utility classes don't fit. React remains banned — renderer framework stays Preact (AM rationale: identical rendering, ~10× smaller runtime). No UI kits/icon libraries still applies; use inline SVG icons. |
+
+## 3. Locked Technology Decisions
+
+Do not introduce alternatives without updating this section first.
+
+| Concern | Decision | Notes |
+|---|---|---|
+| Shell | Electron (latest stable major) | Main + preload + renderer |
+| Build tooling | `electron-vite` + TypeScript (strict) | One toolchain for main/preload/renderer |
+| Renderer framework | **Preact** (+ JSX) | Per owner decision; tiny runtime honors PRD §5.3 |
+| State management | `@preact/signals` | Signals only; no Redux/Zustand |
+| Styling | Tailwind CSS v4 (build-time only) + plain CSS / CSS Modules | Per AM-12: Tailwind compiles to static CSS pre-packaging, so it adds zero runtime weight. No UI kits, no icon libraries (inline SVG only) |
+| Packaging | `electron-builder`, target `nsis` (win32 x64) | Phase 1 ships Windows only |
+| Persistence | Hand-rolled JSON store in `<userData>` (atomic write + backup) | No electron-store dependency |
+| Unit testing | Vitest | Pure functions must be testable without Electron |
+| Lint/format | ESLint (flat config, `typescript-eslint`) + Prettier | CI-equivalent local gate |
+| Runtime deps budget | Renderer: Preact + signals ONLY. Main: none beyond Electron itself unless justified in the PR. Build-time tooling (Tailwind, etc.) exempt — it must not ship in the bundle | Keeps installer small (PRD §5.3) |
+| Node.js | ≥ 20 LTS | |
+
+## 4. Architecture
+
+Three-process model mandated by PRD §5.1:
+
+```
+┌─────────────────────────────┐        ┌──────────────────────────┐
+│ Renderer (Preact, sandboxed)│  IPC   │ Preload (contextBridge)  │
+│ No Node, no fs, no net      │◄──────►│ Exposes typed mf.* API   │
+└─────────────────────────────┘        └───────────┬──────────────┘
+                                                   │ ipcMain.handle/on
+                                       ┌───────────▼──────────────┐
+                                       │ Main process             │
+                                       │ • BinaryLocator          │
+                                       │ • ProcessRunner (spawn)  │
+                                       │ • JobOrchestrator        │
+                                       │ • ProgressParser         │
+                                       │ • SettingsStore          │
+                                       │ • UpdaterService         │
+                                       │ • DialogService          │
+                                       └───────────┬──────────────┘
+                                    spawn(args[])  │  stdout/stderr lines
+                                       ┌───────────▼──────────────┐
+                                       │ yt-dlp.exe / ffmpeg.exe  │
+                                       └──────────────────────────┘
+```
+
+Hard boundaries:
+
+- The renderer performs **zero** filesystem/network/shell operations. All privileged work goes
+  through the preload bridge (`window.mf.*`), implemented exclusively with
+  `ipcRenderer.invoke` / event subscription.
+- Only the main process spawns child processes and touches disk/network.
+- Remote content (thumbnails) is loaded by the renderer as plain `<img src="https://…">` only;
+  CSP must allow images but nothing else remote (§8).
+
+## 5. Directory Layout
+
+```
+mediaforge/
+├── AGENTS.md                      ← this file
+├── specs/
+│   └── MediaForge_Desktop_PRD.md  ← product source of truth
+├── package.json
+├── electron.vite.config.ts
+├── electron-builder.yml
+├── tsconfig.json                  (+ per-target refs)
+├── binaries/                      ← dev-time binaries, GITIGNORED (see §13)
+│   └── win32/{yt-dlp.exe, ffmpeg.exe}
+├── resources/                     ← packaged assets (icon, license texts)
+├── scripts/
+│   └── fetch-binaries.mjs         ← dev helper: download current stable binaries
+└── src/
+    ├── main/
+    │   ├── index.ts               ← app lifecycle, window, close-guard (EC-05)
+    │   ├── binaries/              ← locator.ts, runner.ts, versions.ts, updater.ts
+    │   ├── jobs/                  ← orchestrator.ts, argBuilders.ts, progressParser.ts
+    │   ├── media/                 ← metadata.ts (-J parse → typed model), urlCleaner.ts
+    │   ├── fsops/                 ← paths.ts, sanitizer.ts, diskSpace.ts
+    │   ├── store/                 ← settingsStore.ts, logger.ts
+    │   └── ipc/                   ← handlers.ts (all channels registered here)
+    ├── preload/
+    │   └── index.ts               ← contextBridge exposing `mf` API, nothing else
+    ├── shared/
+    │   ├── ipcContract.ts         ← channel names + request/response types (single source)
+    │   └── models.ts              ← FormatMatrix, JobConfig, JobEvent, Settings, ErrorCode
+    └── renderer/
+        ├── index.html             ← includes CSP meta tag
+        └── src/
+            ├── main.tsx           ← Preact mount
+            ├── App.tsx            ← screens: Input, Preview/Config, PipelineStatus, Settings
+            ├── components/        ← UrlBar, FormatMatrix, ModeSelector, ProgressBar, LogLine…
+            ├── signals/           ← appState, jobState
+            └── styles/            ← *.css (modules)
+```
+
+Rules: every module above is importable standalone for unit tests (no top-level Electron
+side effects outside `main/index.ts`). Shared types live in `shared/` and are imported by both
+processes — the IPC contract is compile-time enforced.
+
+## 6. Security Rules (non-negotiable)
+
+Violations block merge regardless of feature completeness.
+
+1. BrowserWindow: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`,
+   `webSecurity: true`. Load only local files; `navigate`/`new-window` events denied except
+   explicitly whitelisted external opens via shell (`mf.openExternal`, https-only).
+2. Preload exposes ONE object (`window.mf`) with named methods; it must not leak `ipcRenderer`,
+   `ipcMain`, `remote`, paths, or environment to the renderer.
+3. Every `ipcMain.handle` validates argument shape/type/range in the handler before use.
+   Treat renderer input as hostile.
+4. Child processes: `spawn(binaryAbsPath, args[], {shell:false, windowsHide:true})` (AM-02).
+   Binary path always comes from `BinaryLocator`, never from input.
+5. CSP in `index.html`: `default-src 'self'; img-src 'self' https: data:; style-src 'self';
+   script-src 'self'; connect-src 'none'`. No inline handlers/styles.
+6. Cookies: imported `cookies.txt` is copied into `<userData>/cookies.txt`, passed via
+   `--cookies`, never logged, never transmitted anywhere. Provide "clear stored cookies".
+7. Updater downloads execute only after SHA-256 verification against the official checksums
+   published by the yt-dlp project (AM-03). Reject mismatch → rollback.
+8. Logs redact URL query strings and never contain cookie contents or raw env (§11.3).
+9. No telemetry, no crash reporting, no analytics. Network egress is limited to: user-requested
+   media hosts (via yt-dlp), thumbnail hosts, GitHub API/releases (updater only).
+
+## 7. External CLI Integration Contract
+
+Single choke point: `src/main/jobs/argBuilders.ts` builds argv arrays; `runner.ts` executes them.
+No other file composes CLI arguments.
+
+### 7.1 Metadata extraction
+
+```text
+yt-dlp -J --no-warnings <URL>
+# playlist enumeration (AM-07):
+yt-dlp -J --no-warnings --flat-playlist <URL>
+```
+
+Parse stdout as JSON into `MediaMetadata` (title, duration sec, uploader, view_count,
+upload_date, thumbnail, `is_live`/`live_status`, `formats[]` → FormatMatrix rows:
+format_id, ext, vcodec/acodec, height, fps, abr/tbr, filesize/filesize_approx).
+
+### 7.2 Download job (base args, order-insensitive)
+
+```text
+--newline
+--no-colors
+--windows-filenames
+--trim-filenames 200
+--ffmpeg-location <resolved ffmpeg.exe>      # lets yt-dlp drive ffmpeg for mux/transcode
+-o "<tempJobDir>/%(title).200B [%(id)s].%(ext)s"
+--progress-template "download:MF|%(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s"
+--progress-template "postprocess:MFPOST|%(progress._percent_str)s"
+--print after_move:filepath
+```
+
+Progress protocol: lines beginning `MF|` are pipe-delimited machine records → `JobEvent`;
+`MFPOST|NN.N%` covers the merge/transcode phase. Any `[Merger]`/`[ExtractAudio]` line also flips
+phase label to `merging` defensively. `after_move:filepath` output line (last non-MF line after
+completion) is authoritative for the final file path.
+
+### 7.3 Mode selection args
+
+| Mode | Args appended |
+|------|---------------|
+| Video+Audio, resolution tier H ∈ {4320,2160,1440,1080,720,480,360}, container C ∈ {mp4,mkv,webm} | `-f "bv*[height<=H]+ba/b" -S "res,fps" --merge-output-format C` |
+| Audio-only, lossy (MP3/M4A/OGG), bitrate Q ∈ {320K,192K,128K} | `-f ba/b -x --audio-format mp3|m4a|vorbis --audio-quality Q` (OGG → vorbis ⇒ `.ogg`) |
+| Audio-only, lossless (FLAC/WAV) | `-f ba/b -x --audio-format flac|wav` — NO bitrate flag (AM-04) |
+| Advanced | `-f "<video_format_id>+<audio_format_id>"` (fallback `/b`), merge container from dropdown |
+
+### 7.4 Filename handling
+
+Primary: yt-dlp's own `--windows-filenames --trim-filenames 200`. App-side sanitizer
+(`fsops/sanitizer.ts`, used for final rename/destination collision logic) strips `\ / : * ? " < > |`,
+control chars 0–31, trailing dots/spaces, reserved device names (CON, PRN, AUX, COM1-9, LPT1-9),
+caps length at 200 chars, replaces emoji/non-BMP with `-`. Collision policy: append `_1.._n`
+(case-insensitive compare, extension preserved) — PRD §3.4.
+
+### 7.5 Process control
+
+- Version probe: `yt-dlp --version`, `ffmpeg -version` (parsed once at startup, cached).
+- Cancel/resume: kill process tree (win32 `taskkill /PID x /T /F`) — AM-09. Resume =
+  re-spawn same argv; yt-dlp default `--continue` resumes `.part` files (AM-05).
+- Retry ladder on network-class errors (§10): 5s → 15s → 30s → expose Resume button.
+- Temp job dir: `<userData>/tmp/job-<uuid>/`, wiped on success-after-verify or via
+  startup sweep of orphaned dirs older than 24h (AM-06).
+
+### 7.6 Updater (yt-dlp only; FFmpeg updates out of scope for v1)
+
+1. `GET https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest` (main process).
+2. Compare bundled vs release tag (versions are date-based; simple string compare ok).
+3. Download `yt-dlp.exe` + the project's official SHA2-256SUMS asset; hash-check locally.
+4. Atomic replace into `<userData>/binaries/win32/yt-dlp.exe` (tmp file + rename), keep `.bak`.
+5. Next launch resolves the override first (AM-03). Failure at any step → keep bundled binary.
+
+## 8. IPC Contract
+
+All channel names + payload types live in `src/shared/ipcContract.ts`. Handlers validate inputs.
+
+| Direction | Channel | Payload → Result |
+|---|---|---|
+| R→M invoke | `analyze:start` | `{url}` → `AnalyzeResult` (metadata + FormatMatrix) or `{error: ErrorCode}` |
+| R→M invoke | `analyze:cancel` | `{}` → `{ok}` |
+| R→M invoke | `download:start` | `JobConfig{url, mode, tier?, container?, audioFormat?, bitrate?, formatIds?, destDir}` → `{jobId}` |
+| R→M invoke | `download:cancel` | `{jobId}` → `{ok}` |
+| R→M invoke | `dialog:chooseDirectory` | `{}` → `{path|null}` (native dialog, defaults last-used) |
+| R→M invoke | `settings:get` / `settings:set` | `Settings` / `Partial<Settings>` → `Settings` |
+| R→M invoke | `binaries:getInfo` | `{}` → `{ytdlp:{version,source:bundled\|override}, ffmpeg:{version}}` |
+| R→M invoke | `updater:check` / `updater:apply` | `{}` → `{current,latest}` / `{ok,newVersion}` |
+| M→R event | `job:event` | `JobEvent{jobId, phase, percent, speedBps, etaSec, message?}` |
+| M→R event | `job:done` | `{jobId, status: completed\|cancelled\|failed, errorCode?, outputPath?}` |
+
+Phases (PRD §3.6 labels): `analyzing → downloading-video → downloading-audio → merging → finalizing → done`.
+For single-stream jobs the two download phases collapse to one.
+
+## 9. Milestone Plan (spec-driven)
+
+Build strictly in order; each milestone ends green (typecheck + lint + tests) before the next.
+Each lists PRD coverage and acceptance criteria (AC). A milestone is DONE only when every AC has
+an automated or scripted-manual verification noted next to it.
+
+> Phased execution detail — work breakdowns, demo checkpoints, and effort sizing per milestone —
+> lives in `specs/Implementation_Plan.md` (P0–P8 ≡ M0–M7).
+
+### M0 — Scaffold & guardrails
+Scope: repo init, `electron-vite` + TS strict + Preact scaffold, empty window, CSP, ESLint/Prettier/Vitest wired, shared contract skeleton, gitignore (incl. `/binaries`).
+AC: `npm run dev` opens window · security flags asserted by unit test reading window options factory · `npm run typecheck && npm run lint && npm run test` all pass.
+
+### M1 — Binary manager & process runner (PRD §5.1, §6.1–6.2)
+Scope: `BinaryLocator` (resolution: `<userData>/binaries/win32` → bundled `resources/binaries/win32` → dev override env `MEDIAFORGE_BIN_DIR`), version probes, `ProcessRunner` spawn wrapper (utf-8 decode, line emitter, windowsHide, kill-tree), logger.
+AC: locator order covered by tests incl. override precedence (AM-03) · runner executes a fake fixture exe and emits parsed stdout lines · kill-tree test terminates spawned children.
+
+### M2 — URL engine & metadata module (PRD §3.1–3.2)
+Scope: validation (empty/no-scheme rejection), tracking-param strip with retry strategy (try full URL first, strip only on extraction failure — never blind-strip), `media/metadata.ts` mapping `-J` JSON → typed model + FormatMatrix, cancellation, error classification via §10 catalog.
+AC: table-driven tests for validator/cleaner · parser tested against checked-in real-world `-J` fixtures (YouTube single, playlist, live) · classifyStderr unit tests per catalog row · cancel aborts within 500ms (scripted).
+
+### M3 — Download pipeline modes A/B/C (PRD §3.3, §3.5–3.6)
+Scope: arg builders (§7.3), temp staging, orchestrator emitting `job:event`s, phase labels, final-path capture, cleanup-on-verify, sequential playlist queue (AM-07), Advanced mode format-ID pairing from matrix.
+AC: snapshot tests per mode's argv · integration test downloads a small public CC clip end-to-end producing expected container · progress parser feeds synthetic `MF|` fixtures → correct percentages/ETA · temp dir verified empty post-success · second queued entry starts only after first completes.
+
+### M4 — Filesystem integration (PRD §3.4)
+Scope: browse dialog defaulting to OS Downloads, persist last-used across restarts, app-side sanitizer (§7.4), collision auto-rename, pre-flight disk space check (AM-06).
+AC: sanitizer tests incl. CON/PRN/trailing-dot/control-char/200-char cases · collision `_1/_2` test · persistence survives simulated restart (fresh store read) · low-space preflight aborts before spawn with EC-03 message.
+
+### M5 — Robustness pass (PRD §4, all ECs per amended matrix §10)
+Scope: EC-01…EC-07 behaviors, close-guard modal (EC-05), Resume button (EC-04/AM-05), live detection → recording workflow with explicit stop control (EC-06), cookies.txt import flow (EC-07/§6), orphaned-temp sweep.
+AC: one scripted/manual repro per EC documented in `specs/ec-verifications.md` and passing · close-guard blocks quit while job active · killed-mid-download job resumes to completion via Resume.
+
+### M6 — Settings & OTA updater (PRD §6.3, AM-03/AM-08)
+Scope: Settings screen (§9/M6 list), `UpdaterService` (§7.6) with checksum gate + atomic swap + rollback + "Update Core Drivers" surface wired to EC-02 prompt.
+AC: updater against mocked release API (vitest, no network) · tampered-binary test rejects swap and rolls back · swapped override visible in `binaries:getInfo` after relaunch.
+
+### M7 — Package, measure, ship (PRD §5.2–5.3, §6)
+Scope: electron-builder NSIS config bundling binaries, icon/licensing page (§14), memory profiling harness (AM-10 methodology), installer size report, clean-VM smoke matrix.
+AC: installer builds and installs on clean Win10 + Win11 VM · happy-path download works there · idle RSS ≤120MB and peak Electron RSS ≤450MB recorded in `specs/perf-report.md` (or deviations approved) · installer size reported vs ≤180MB budget.
+
+## 10. Error Catalog & Edge Case Matrix (amended)
+
+`classifyStderr(stderrLines): ErrorCode` — extend this table whenever new patterns appear; every
+code maps to exactly one user-facing string.
+
+| Code | Trigger patterns (stderr/stdout) | Behavior (per PRD §4 as amended) |
+|---|---|---|
+| `MF_OFFLINE_OR_PRIVATE` | `Video unavailable`, `has been removed`, `Private video`, `members-only` | EC-01 message, input re-enabled |
+| `MF_AGE_RESTRICTED` | `Sign in to confirm your age`, `age-restricted` | EC-07 modal + link to cookie import in Settings |
+| `MF_BOT_CHECK` | `Sign in to confirm you're not a bot` | Same as EC-07 flow |
+| `MF_NETWORK` | `getaddrinfo`, `ENOTFOUND`, `Connection reset`, `timed out`, `Unable to download webpage` | Retry ladder 5/15/30s → Resume button (AM-05) |
+| `MF_RATE_LIMITED` | `HTTP Error 429`, `403` | Backoff + message suggesting later retry |
+| `MF_EXTRACTOR_STALE` | `Unable to extract`, `Unsupported URL` after URL validated OK | EC-02: point to Update Core Drivers |
+| `MF_DISK_FULL` | `ENOSPC`, `No space left` | EC-03: halt, state missing bytes if known, keep partials |
+| `MF_LIVE_STREAM` | metadata `is_live/live_status=is_live` | EC-06: switch to recording workflow + Stop control |
+| `MF_CANCELLED` | internal | Keep partials, idle UI (AM-09) |
+| `MF_UNKNOWN` | fallback | Generic message + open-logs action |
+
+Disk-full during write is additionally caught via pre-flight estimate + spawn error handling.
+
+## 11. Supporting Subsystems
+
+**11.1 Settings schema:** `{ lastOutputDir: string, defaultOutputDir: 'Downloads', cookieFileSet: boolean, theme?: 'system' }` — atomic JSON writes (`write-tmp-then-rename`), corrupted file → rebuild defaults, never crash.
+
+**11.2 Window close-guard (EC-05):** active job ⇒ intercept `close`, show Confirm-Cancel /
+Run-in-Background modal; background mode hides window, job continues, tray indicator shown.
+
+**11.3 Logging:** `<userData>/logs/mf-YYYY-MM-DD.log` (main) + per-job child logs; retention 7 days;
+levels DEBUG/INFO/WARN/ERROR; redact URL queries, cookies, absolute user paths optional-off;
+every `MF_*` error logs full sanitized stderr under DEBUG for diagnostics.
+
+## 12. Testing Requirements
+
+- **Unit (Vitest):** urlCleaner, argBuilders (snapshot argv), progressParser (synthetic streams),
+  sanitizer, classifyStderr, locator precedence, settingsStore atomicity. No Electron imports —
+  keep logic in pure modules.
+- **Integration:** runner against stub executables in `tests/fixtures/fake-bin/` (scripts that
+  emit canned `MF|` lines, hang, exit non-zero, etc.). Real-network tests are opt-in
+  (`MF_E2E_REAL=1`) and hit one small public Creative Commons clip only.
+- **Fixtures:** committed real `-J` dumps (redacted) for YouTube-single / playlist / live.
+- **Manual matrices:** EC repro scripts (M5), clean-VM smoke (M7) — recorded in `specs/`.
+- Every bug fix ships with the regression test that would have caught it.
+
+## 13. Commands
+
+```bash
+npm install
+npm run fetch-binaries   # dev only: downloads current stable yt-dlp.exe + ffmpeg essentials build → ./binaries/win32 (gitignored; never commit binaries)
+npm run dev              # electron-vite dev (HMR renderer, watch main)
+npm run typecheck
+npm run lint             # eslint + prettier --check
+npm run test             # vitest run
+npm run build            # typecheck + electron-vite build
+npm run dist             # build + electron-builder --win nsis
+MEDIAFORGE_BIN_DIR=D:\path\to\bins   # dev override for BinaryLocator
+```
+
+Gate before any commit: `npm run typecheck && npm run lint && npm run test`.
+
+## 14. Licensing & Distribution Notes
+
+- Bundle FFmpeg **LGPL-based** builds where possible (no `--enable-gpl` components) to minimize
+  obligations; ship `resources/LICENSES/` with yt-dlp (Unlicense), FFmpeg license, Electron.
+- yt-dlp.exe is a PyInstaller onefile (~17MB) — acceptable size cost; do not substitute pip installs.
+- Windows code signing (OV at minimum) strongly recommended before public distribution — unsigned
+  installers trigger SmartScreen. Placeholder config now, cert decision before M7 exit.
+- Respect robots/ToS realities: app is a passive client; add first-run notice that users are
+  responsible for complying with source-site terms (legal hygiene, no nagging).
+
+## 15. Cross-Platform Extension Guide (post-v1)
+
+Both tools officially ship native builds for every target below — compatibility is confirmed;
+extension work is packaging/signing only. Platform map (extend `BinaryLocator`):
+
+| `process.platform` | `process.arch` | Binary dir | yt-dlp artifact | FFmpeg artifact |
+|---|---|---|---|---|
+| `win32` | `x64` | `win32/` (v1) | `yt-dlp.exe` | gyan/BtbN essentials `ffmpeg.exe` |
+| `darwin` | `arm64` | `darwin-arm64/` | `yt-dlp_macos` (universal zipapp) | static arm64 build (vendor & pin) |
+| `darwin` | `x64` | `darwin-x64/` | `yt-dlp_macos` | static x86_64 build (evermeet.cx, pin) |
+| `linux` | `x64` | `linux-x64/` | `yt-dlp_linux` | johnvansickle static / BtbN |
+| `linux` | `arm64` | `linux-aarch64/` | `yt-dlp_linux_aarch64` | BtbN arm64 static |
+
+macOS specifics: chmod +x via electron-builder `afterPack` hook; Gatekeeper — proper path is
+signing + notarizing the whole bundle (ad-hoc sign + `xattr -dr com.apple.quarantine` at
+first-run is the fallback, worse UX); the AM-03 userData-override design already prevents
+signature invalidation by the updater. Linux specifics: preserve exec bits in package scripts;
+AppImage recommended first, then deb/rpm; optionally fall back to discovered system
+`/usr/bin/ffmpeg` if bundled missing. Revisit AM-03 wording per-platform when adding targets.
+
+## 16. Out of Scope (v1)
+
+From PRD §7 plus agreed additions: parallel/concurrent jobs; timeline editing; cloud sync;
+subtitles/captions handling; i18n (English-only v1); accessibility beyond baseline semantic HTML;
+telemetry/crash reporting; FFmpeg self-updating; macOS/Linux builds (documented in §15, not shipped).
+
+## 17. Definition of Done (any change)
+
+1. Typecheck, lint, tests green (`npm run …` gate, §13).
+2. New behavior has tests matching its milestone AC (§9) or an updated scripted-manual repro.
+3. Touching IPC/spawn/fs? Re-audit §6 checklist items affected.
+4. No new runtime dependency without a PR-note justifying it against §3 budget.
+5. User-visible errors render catalog messages (§10), never raw CLI stderr.
+6. Docs: update amendment log (§2) if behavior intentionally diverges from the PRD.
