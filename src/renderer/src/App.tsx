@@ -127,8 +127,13 @@ async function runSingleJob(config: JobConfig): Promise<'completed' | 'cancelled
 export function App() {
   const [bridgeNote, setBridgeNote] = useState('bridge: probing…')
   const [selection, setSelection] = useState<JobSelection | null>(null)
+  const [showNotice, setShowNotice] = useState(false)
 
   useEffect(() => {
+    window.mf
+      .getSettings()
+      .then((s) => setShowNotice(!s.firstRunNoticeSeen))
+      .catch(() => undefined)
     window.mf
       .ping()
       .then((r) => setBridgeNote(`bridge ok · ${new Date(r.ts).toLocaleTimeString()}`))
@@ -290,6 +295,24 @@ export function App() {
         </span>
         <span>{bridgeNote}</span>
       </footer>
+
+      {showNotice && (
+        <div class="flex items-center justify-between gap-4 border-t border-amber-900/60 bg-amber-950/40 px-5 py-2 text-xs text-amber-200">
+          <p>
+            MediaForge is a passive download client. You are responsible for complying with the
+            terms of service and copyright of the sites you download from.
+          </p>
+          <button
+            onClick={() => {
+              setShowNotice(false)
+              void window.mf.markFirstRunSeen()
+            }}
+            class="shrink-0 rounded-lg border border-amber-700 px-3 py-1 font-medium hover:bg-amber-900/50"
+          >
+            Understood
+          </button>
+        </div>
+      )}
     </div>
   )
 }

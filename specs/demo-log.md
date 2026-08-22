@@ -2,6 +2,26 @@
 
 Visible-improvement checkpoints per `specs/Implementation_Plan.md`. One entry per completed phase.
 
+## P8 — Package, measure, ship  `[M7]` · done 2026-08-22
+
+- **Installer ships:** `dist/MediaForge Desktop-Setup-0.1.0.exe` — **149.7 MB** vs the ≤180 MB
+  budget ✅ (installed footprint 486 MB; ffmpeg LGPL 110 MB + yt-dlp 17 MB dominate).
+  First build came in at 183 MB; fixed by excluding unused ffprobe.exe from the bundle.
+- **App icon:** generated procedurally (`scripts/make-icon.mjs` → multi-size ICO incl. 256px).
+- **Packaged smoke (workstation):** installed-tree exe launches, logs `packaged:true`, both
+  engines resolve `source:"bundled"` offline.
+- **First-run ToS notice:** dismissible amber bar (site ToS/copyright responsibility) persisted
+  via settings — legal hygiene per AGENTS.md §14.
+- **Memory probe harness:** `MF_MEMORY_PROBE=1` samples `getAppMetrics()` every 2 s →
+  `logs/mem.jsonl`. Dev-mode idle recorded: summed working set 348–376 MB
+  (Browser 96 / GPU 139 / Utility 48 / Tab 86). Flagged **DEVIATION-PENDING**: summed working
+  sets double-count shared pages + dev-mode renderer overhead; packaged clean-VM re-measure
+  with private WS is the authoritative follow-up. Peak-during-download likewise pending VM run.
+- **Docs finalized:** `specs/perf-report.md` (size ✅ / memory methodology + deviation),
+  `specs/clean-vm-smoke.md` (13-step Win10/Win11 matrix with memory fill-in table).
+- Code signing: placeholder — no cert configured; SmartScreen expected until OV cert applied.
+- Gate evidence: typecheck ✓ · lint ✓ · vitest **141/141** ✓.
+
 ## P7 — Settings screen & OTA core-driver updates  `[M6]` · done 2026-08-22
 
 - **Settings screen** (⚙ in header): destination folder display + Browse, cookies status with

@@ -1,0 +1,37 @@
+appId: com.mediaforge.desktop
+productName: MediaForge Desktop
+copyright: Copyright © 2026 MediaForge contributors
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - out/**
+  - package.json
+
+extraResources:
+  - from: binaries/win32
+    to: binaries/win32
+    filter:
+      - yt-dlp.exe
+      - ffmpeg.exe
+  - from: resources/LICENSES
+    to: LICENSES
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: build/icon.ico
+  # Code signing placeholder — supply an OV certificate before public distribution.
+  # Without cert config, electron-builder skips signing but still embeds icon + metadata.
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  artifactName: ${productName}-Setup-${version}.${ext}

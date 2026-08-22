@@ -4,6 +4,9 @@
   "version": "0.1.0",
   "description": "Zero-dependency GUI wrapper around the yt-dlp and FFmpeg CLIs.",
   "license": "MIT",
+  "author": {
+    "name": "MediaForge contributors"
+  },
   "private": true,
   "main": "./out/main/index.js",
   "scripts": {
@@ -14,7 +17,9 @@
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "test": "vitest run",
-    "fetch-binaries": "node scripts/fetch-binaries.mjs"
+    "fetch-binaries": "node scripts/fetch-binaries.mjs",
+    "make-icon": "node scripts/make-icon.mjs",
+    "dist": "npm run build && electron-builder --win nsis --publish never"
   },
   "dependencies": {
     "@preact/signals": "^2.11.1",
@@ -26,6 +31,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.2.0",
     "electron": "^43.4.1",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "eslint": "^10.9.0",
     "eslint-config-prettier": "^10.1.8",

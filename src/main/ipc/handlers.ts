@@ -14,6 +14,7 @@ import {
   MF_SETTINGS_CLEAR_COOKIES,
   MF_SETTINGS_GET,
   MF_SETTINGS_IMPORT_COOKIES,
+  MF_SETTINGS_MARK_FIRST_RUN,
   MF_UPDATER_APPLY,
   MF_UPDATER_CHECK,
   type AnalyzeResponse,
@@ -55,7 +56,8 @@ export interface IpcDeps {
   importCookies: () => Promise<boolean>
   clearCookies: () => boolean
   openLogsFolder: () => Promise<boolean>
-  getSettings: () => { lastOutputDir: string; cookieFileSet: boolean }
+  getSettings: () => { lastOutputDir: string; cookieFileSet: boolean; firstRunNoticeSeen: boolean }
+  markFirstRunSeen: () => boolean
   updaterCheck: () => Promise<{
     current: string | null
     latest: string | null
@@ -130,6 +132,7 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
   ipcMain.handle(MF_LOGS_OPEN, () => deps.openLogsFolder())
 
   ipcMain.handle(MF_SETTINGS_GET, () => deps.getSettings())
+  ipcMain.handle(MF_SETTINGS_MARK_FIRST_RUN, () => deps.markFirstRunSeen())
   ipcMain.handle(MF_UPDATER_CHECK, () => deps.updaterCheck())
   ipcMain.handle(MF_UPDATER_APPLY, () => deps.updaterApply())
 }

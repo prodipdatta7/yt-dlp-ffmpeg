@@ -1,4 +1,4 @@
-import { existsSync, copyFileSync, rmSync } from 'node:fs'
+import { existsSync, copyFileSync, rmSync, appendFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, BrowserWindow, dialog, Menu, Tray, shell, nativeImage } from 'electron'
 import { BinariesService } from './binaries/service'
@@ -129,6 +129,42 @@ app.whenReady().then(() => {
     logger,
   })
 
+  if (process.env.MF_MEMORY_PROBE === '1') {
+    const probePath = join(logsDir, 'mem.jsonl')
+    if (!existsSync(probePath)) {
+      try {
+        writeFileSync(probePath, `${JSON.stringify({ note: 'AM-10 probe', unit: 'MB' })}\n`)
+      } catch {
+        /* best-effort */
+      }
+    }
+    setInterval(() => {
+      try {
+        const byType: Record<string, number> = {}
+        let electronSum = 0
+        for (const metric of app.getAppMetrics()) {
+          const mb = (metric.memory?.workingSetSize ?? 0) / 1024
+          electronSum += mb
+          const type = String(metric.type ?? 'unknown')
+          byType[type] = Math.round(((byType[type] ?? 0) + mb) * 10) / 10
+        }
+        appendFileSync(
+          probePath,
+          `${JSON.stringify({
+            t: new Date().toISOString(),
+            mainRssMB: Math.round((process.memoryUsage().rss / 1024 / 1024) * 10) / 10,
+            electronSumMB: Math.round(electronSum * 10) / 10,
+            byType,
+            busy: orchestrator.isBusy(),
+          })}\n`,
+        )
+      } catch {
+        /* best-effort */
+      }
+    }, 2000).unref()
+    logger.info('memory probe enabled', { file: 'logs/mem.jsonl' })
+  }
+
   registerIpcHandlers(
     {
       getBinariesInfo: () => binariesService.getInfo(),
@@ -210,7 +246,15 @@ app.whenReady().then(() => {
       },
       getSettings: () => {
         const s = settings.load()
-        return { lastOutputDir: s.lastOutputDir, cookieFileSet: s.cookieFileSet === true }
+        return {
+          lastOutputDir: s.lastOutputDir,
+          cookieFileSet: s.cookieFileSet === true,
+          firstRunNoticeSeen: s.firstRunNoticeSeen === true,
+        }
+      },
+      markFirstRunSeen: () => {
+        settings.save({ ...settings.load(), firstRunNoticeSeen: true })
+        return true
       },
       updaterCheck: () => updater.check(),
       updaterApply: async () => {

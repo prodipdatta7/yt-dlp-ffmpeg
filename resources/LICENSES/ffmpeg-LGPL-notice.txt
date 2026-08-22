@@ -1,0 +1,22 @@
+FFmpeg — https://ffmpeg.org
+Bundled build: BtbN "win64-lgpl" static build (https://github.com/BtbN/FFmpeg-Builds)
+License: GNU Lesser General Public License v2.1+
+
+This application distributes an FFmpeg binary built with the
+"--enable-lgpl" configuration (no GPL components), therefore the terms of the
+GNU Lesser General Public License version 2.1 apply to that binary.
+
+LGPL compliance summary for this distribution:
+  1. The FFmpeg binary is shipped unmodified from the upstream LGPL build.
+  2. Source code for the exact build is available at:
+     https://github.com/BtbN/FFmpeg-Builds/releases (matching release tag).
+  3. The library is dynamically replaceable: users may substitute their own
+     ffmpeg.exe via the documented override location:
+       %APPDATA%/MediaForge Desktop/binaries/win32/ffmpeg.exe
+
+The full text of the GNU LGPL v2.1 is available at:
+https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
+
+FFmpeg incorporates numerous third-party libraries under their own licenses;
+the complete list and license texts are published in the source repository
+under "LICENSE.md" of the respective build.

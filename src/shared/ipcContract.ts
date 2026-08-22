@@ -18,6 +18,7 @@ export const MF_LOGS_OPEN = 'mf:logs:open' as const
 export const MF_UPDATER_CHECK = 'mf:updater:check' as const
 export const MF_UPDATER_APPLY = 'mf:updater:apply' as const
 export const MF_SETTINGS_GET = 'mf:settings:get' as const
+export const MF_SETTINGS_MARK_FIRST_RUN = 'mf:settings:mark-first-run' as const
 
 export interface PingResult {
   pong: string
@@ -46,6 +47,7 @@ export type DownloadStartResponse =
 export interface MfSettingsView {
   lastOutputDir: string
   cookieFileSet: boolean
+  firstRunNoticeSeen: boolean
 }
 
 export interface UpdaterCheckResult {
@@ -77,6 +79,7 @@ export interface MfApi {
   clearCookies(): Promise<boolean>
   openLogsFolder(): Promise<boolean>
   getSettings(): Promise<MfSettingsView>
+  markFirstRunSeen(): Promise<boolean>
   updaterCheck(): Promise<UpdaterCheckResult>
   updaterApply(): Promise<UpdaterApplyResult>
 }

@@ -4,10 +4,11 @@ import { dirname } from 'node:path'
 export interface AppSettings {
   lastOutputDir: string
   cookieFileSet?: boolean
+  firstRunNoticeSeen?: boolean
 }
 
 export function defaultSettings(): AppSettings {
-  return { lastOutputDir: '', cookieFileSet: false }
+  return { lastOutputDir: '', cookieFileSet: false, firstRunNoticeSeen: false }
 }
 
 function isAppSettings(value: unknown): value is AppSettings {
@@ -15,6 +16,9 @@ function isAppSettings(value: unknown): value is AppSettings {
   const raw = value as Record<string, unknown>
   if (typeof raw.lastOutputDir !== 'string') return false
   if (raw.cookieFileSet !== undefined && typeof raw.cookieFileSet !== 'boolean') return false
+  if (raw.firstRunNoticeSeen !== undefined && typeof raw.firstRunNoticeSeen !== 'boolean') {
+    return false
+  }
   return true
 }
 

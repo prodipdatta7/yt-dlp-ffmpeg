@@ -14,6 +14,7 @@ import {
   MF_SETTINGS_CLEAR_COOKIES,
   MF_SETTINGS_GET,
   MF_SETTINGS_IMPORT_COOKIES,
+  MF_SETTINGS_MARK_FIRST_RUN,
   MF_UPDATER_APPLY,
   MF_UPDATER_CHECK,
   type AnalyzeResponse,
@@ -55,6 +56,7 @@ const api: MfApi = {
   clearCookies: (): Promise<boolean> => ipcRenderer.invoke(MF_SETTINGS_CLEAR_COOKIES),
   openLogsFolder: (): Promise<boolean> => ipcRenderer.invoke(MF_LOGS_OPEN),
   getSettings: (): Promise<MfSettingsView> => ipcRenderer.invoke(MF_SETTINGS_GET),
+  markFirstRunSeen: (): Promise<boolean> => ipcRenderer.invoke(MF_SETTINGS_MARK_FIRST_RUN),
   updaterCheck: (): Promise<UpdaterCheckResult> => ipcRenderer.invoke(MF_UPDATER_CHECK),
   updaterApply: (): Promise<UpdaterApplyResult> => ipcRenderer.invoke(MF_UPDATER_APPLY),
 }
