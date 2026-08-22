@@ -1,5 +1,6 @@
+import { existsSync, copyFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { app, BrowserWindow, dialog } from 'electron'
+import { app, BrowserWindow, dialog, Menu, Tray, shell, nativeImage } from 'electron'
 import { BinariesService } from './binaries/service'
 import { platformDir, type BinaryCandidate } from './binaries/locator'
 import { registerIpcHandlers } from './ipc/handlers'
@@ -16,6 +17,7 @@ import { ERROR_MESSAGES } from '../shared/models'
 import { createLogger, type Logger } from './store/logger'
 import { SettingsStore } from './store/settingsStore'
 import { MfLaunchError } from './jobs/orchestrator'
+import { sweepOrphanedTempDirs } from './fsops/tempSweep'
 import { createWindowOptions, getWindowSecurityFlags } from './windowOptions'
 
 function binaryCandidates(logger: Logger): BinaryCandidate[] {
@@ -57,11 +59,43 @@ function createMainWindow(): BrowserWindow {
   return win
 }
 
+let mainWindow: BrowserWindow | null = null
+let tray: Tray | null = null
+let forceClose = false
+
+async function ensureTray(win: BrowserWindow): Promise<void> {
+  if (tray) return
+  const icon = await app
+    .getFileIcon(app.getPath('exe'), { size: 'small' })
+    .catch(() => nativeImage.createEmpty())
+  tray = new Tray(icon)
+  tray.setToolTip('MediaForge Desktop — download running in background')
+  const show = (): void => {
+    win.show()
+    disposeTray()
+  }
+  tray.setContextMenu(Menu.buildFromTemplate([{ label: 'Show MediaForge', click: show }]))
+  tray.on('click', show)
+}
+
+function disposeTray(): void {
+  tray?.destroy()
+  tray = null
+}
+
 app.whenReady().then(() => {
-  const logger = createLogger({ dir: join(app.getPath('userData'), 'logs') })
+  const userDataDir = app.getPath('userData')
+  const logsDir = join(userDataDir, 'logs')
+  const tempRoot = join(userDataDir, 'tmp')
+  const cookiesFile = join(userDataDir, 'cookies.txt')
+
+  const logger = createLogger({ dir: logsDir })
   logger.info(`app starting v${app.getVersion()}`, { packaged: app.isPackaged })
 
-  const settings = new SettingsStore(join(app.getPath('userData'), 'settings.json'))
+  const settings = new SettingsStore(join(userDataDir, 'settings.json'))
+
+  const swept = sweepOrphanedTempDirs(tempRoot)
+  if (swept > 0) logger.info('orphaned temp dirs swept', { count: swept })
 
   const binariesService = new BinariesService({
     platform: process.platform,
@@ -70,16 +104,20 @@ app.whenReady().then(() => {
     logger,
   })
 
+  const resolveCookiesPath = (): string | null => (existsSync(cookiesFile) ? cookiesFile : null)
+
   const analyzeService = new AnalyzeService({
     resolveYtDlp: () => binariesService.locate('yt-dlp'),
     logger,
+    getCookiesPath: resolveCookiesPath,
   })
 
   const orchestrator = new DownloadOrchestrator({
     resolveYtDlp: () => binariesService.locate('yt-dlp'),
     resolveFfmpeg: () => binariesService.locate('ffmpeg'),
-    tempRoot: join(app.getPath('userData'), 'tmp'),
+    tempRoot,
     logger,
+    getCookiesPath: resolveCookiesPath,
   })
 
   registerIpcHandlers(
@@ -131,10 +169,68 @@ app.whenReady().then(() => {
         logger.info('destination folder chosen', { dirSet: true })
         return chosen
       },
+      importCookies: async () => {
+        const result = await dialog.showOpenDialog({
+          title: 'Import cookies.txt (Netscape format)',
+          filters: [{ name: 'cookies.txt', extensions: ['txt'] }],
+          properties: ['openFile'],
+        })
+        if (result.canceled || result.filePaths.length === 0) return false
+        try {
+          copyFileSync(result.filePaths[0], cookiesFile)
+          settings.save({ ...settings.load(), cookieFileSet: true })
+          logger.info('cookies file imported')
+          return true
+        } catch {
+          return false
+        }
+      },
+      clearCookies: () => {
+        try {
+          rmSync(cookiesFile, { force: true })
+          settings.save({ ...settings.load(), cookieFileSet: false })
+          logger.info('cookies cleared')
+          return true
+        } catch {
+          return false
+        }
+      },
+      openLogsFolder: async () => {
+        const result = await shell.openPath(logsDir)
+        return result.length === 0
+      },
     },
     logger,
   )
-  createMainWindow()
+
+  mainWindow = createMainWindow()
+
+  mainWindow.on('close', (event) => {
+    if (forceClose || !orchestrator.isBusy()) return
+    event.preventDefault()
+    void dialog
+      .showMessageBox(mainWindow!, {
+        type: 'warning',
+        title: 'Download in progress',
+        message: 'A download is still running.',
+        detail: 'Closing now will abort your active download.',
+        buttons: ['Run in Background', 'Cancel Download & Exit', 'Stay'],
+        defaultId: 0,
+        cancelId: 2,
+        noLink: true,
+      })
+      .then(({ response }) => {
+        if (response === 0) {
+          mainWindow?.hide()
+          void ensureTray(mainWindow!)
+        } else if (response === 1) {
+          orchestrator.cancel()
+          forceClose = true
+          mainWindow?.close()
+          app.quit()
+        }
+      })
+  })
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow()

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   copyFileSync,
   existsSync,
@@ -19,9 +19,9 @@ import type {
 } from '../../shared/models'
 import { ERROR_MESSAGES } from '../../shared/models'
 import type { LocatedBinary } from '../binaries/locator'
-import { spawnProcess, type SpawnHandle } from '../binaries/runner'
+import { spawnProcess, type RunResult, type SpawnHandle } from '../binaries/runner'
 import { freeDiskSpaceBytes, isDiskSpaceInsufficient } from '../fsops/diskSpace'
-import { collisionFreeTarget } from '../fsops/sanitizer'
+import { collisionFreeTarget, sanitizeFileName } from '../fsops/sanitizer'
 import { classifyStderr } from '../media/classifyStderr'
 import type { Logger } from '../store/logger'
 import { buildDownloadArgs, outputTemplateFor } from './argBuilders'
@@ -33,6 +33,8 @@ import {
   parsePostprocessLine,
 } from './progressParser'
 
+export const DEFAULT_RETRY_DELAYS_MS: readonly number[] = [5000, 15000, 30000]
+
 export interface OrchestratorDeps {
   resolveYtDlp(): Promise<LocatedBinary | null>
   resolveFfmpeg(): Promise<LocatedBinary | null>
@@ -40,6 +42,10 @@ export interface OrchestratorDeps {
   logger?: Logger
   /** Test seam: argv elements prepended before the built download args. */
   spawnArgPrefix?: readonly string[]
+  /** Retry ladder for MF_NETWORK failures; empty array disables retries. */
+  retryDelaysMs?: readonly number[]
+  /** cookies.txt path appended as --cookies when present. */
+  getCookiesPath?: () => string | null
 }
 
 export type SendEvent = (event: JobEvent) => void
@@ -77,6 +83,34 @@ function findLargestCompletedFile(dir: string): string | null {
     }
   }
   return best !== null && bestSize > 0 ? best : null
+}
+
+function findLargestPartFile(dir: string): string | null {
+  let best: string | null = null
+  let bestSize = -1
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith('.part')) continue
+    const full = join(dir, name)
+    try {
+      const size = statSync(full).size
+      if (size > bestSize) {
+        best = full
+        bestSize = size
+      }
+    } catch {
+      return null
+    }
+  }
+  return best !== null && bestSize > 0 ? best : null
+}
+
+function tempDirForUrl(tempRoot: string, url: string): string {
+  const hash = createHash('sha1').update(url).digest('hex').slice(0, 16)
+  return join(tempRoot, `job-${hash}`)
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 export class DownloadOrchestrator {
@@ -119,7 +153,7 @@ export class DownloadOrchestrator {
     }
 
     const jobId = randomUUID()
-    const tempDir = join(this.deps.tempRoot, `job-${jobId}`)
+    const tempDir = tempDirForUrl(this.deps.tempRoot, config.url)
     mkdirSync(tempDir, { recursive: true })
 
     const job: ActiveJob = { id: jobId, config, handle: null, cancelRequested: false, tempDir }
@@ -154,65 +188,109 @@ export class DownloadOrchestrator {
     }
 
     try {
-      const args = [
-        ...(this.deps.spawnArgPrefix ?? []),
-        ...buildDownloadArgs(job.config, ffmpegPath, outputTemplateFor(job.tempDir)),
-      ]
+      const delays = this.deps.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS
+      const cookiesPath = this.deps.getCookiesPath?.() ?? null
+      const allStdoutLines: string[] = []
 
-      const stdoutLines: string[] = []
-      const stderrLines: string[] = []
+      let attempt = 0
+      let result: RunResult | null = null
+      for (;;) {
+        attempt += 1
+        const stdoutLines: string[] = []
+        const stderrLines: string[] = []
 
-      const handle = spawnProcess(ytdlpPath, args, {
-        onStdoutLine: (line) => {
-          stdoutLines.push(line)
+        if (job.cancelRequested) break
 
-          const post = parsePostprocessLine(line)
-          if (post !== null) {
-            emit('merging', Math.min(100, post), null, null)
-            return
-          }
-          if (isPostprocessorLine(line)) {
-            emit('merging', lastPercent, null, null)
-            return
-          }
+        const args = [
+          ...(this.deps.spawnArgPrefix ?? []),
+          ...buildDownloadArgs(job.config, ffmpegPath, outputTemplateFor(job.tempDir), cookiesPath),
+        ]
 
-          const progress = parseDownloadLine(line)
-          if (progress) {
-            if (progress.status === 'downloading' && segmentsStarted === segmentsFinished) {
-              segmentsStarted += 1
+        const handle = spawnProcess(ytdlpPath, args, {
+          onStdoutLine: (line) => {
+            stdoutLines.push(line)
+            allStdoutLines.push(line)
+
+            const post = parsePostprocessLine(line)
+            if (post !== null) {
+              emit('merging', Math.min(100, post), null, null)
+              return
             }
-            if (progress.status === 'finished') {
-              segmentsFinished = Math.min(segmentsStarted, segmentsFinished + 1)
+            if (isPostprocessorLine(line)) {
+              emit('merging', lastPercent, null, null)
+              return
             }
-            const nextPhase: JobPhase =
-              segmentsStarted >= 2 || job.config.mode === 'audio-only'
-                ? 'downloading-audio'
-                : 'downloading-video'
-            emit(nextPhase, computeSegmentPercent(progress), progress.speedBps, progress.etaSec)
-          }
-        },
-        onStderrLine: (line) => stderrLines.push(line),
-      })
 
-      job.handle = handle
-      const result = await handle.result
-      job.handle = null
+            const progress = parseDownloadLine(line)
+            if (progress) {
+              if (progress.status === 'downloading' && segmentsStarted === segmentsFinished) {
+                segmentsStarted += 1
+              }
+              if (progress.status === 'finished') {
+                segmentsFinished = Math.min(segmentsStarted, segmentsFinished + 1)
+              }
+              const nextPhase: JobPhase =
+                segmentsStarted >= 2 || job.config.mode === 'audio-only'
+                  ? 'downloading-audio'
+                  : 'downloading-video'
+              emit(nextPhase, computeSegmentPercent(progress), progress.speedBps, progress.etaSec)
+            }
+          },
+          onStderrLine: (line) => stderrLines.push(line),
+        })
 
-      if (job.cancelRequested) {
-        this.finish(job, sendDone, { status: 'cancelled' })
-        return
+        job.handle = handle
+        result = await handle.result
+        job.handle = null
+
+        if (job.cancelRequested) break
+
+        if (result.code === 0) break
+
+        const code: MfErrorCode = classifyStderr(stderrLines.slice(-40))
+        if (code !== 'MF_NETWORK' || attempt > delays.length) {
+          this.deps.logger?.warn('download failed', {
+            jobId,
+            code,
+            exitCode: result.code,
+            attempts: attempt,
+          })
+          this.finish(job, sendDone, { status: 'failed', errorCode: code })
+          return
+        }
+
+        const delayMs = delays[attempt - 1]
+        this.deps.logger?.info('network failure — retry scheduled', { jobId, attempt, delayMs })
+        sendEvent({
+          jobId,
+          phase: 'queued',
+          percent: lastPercent,
+          speedBps: null,
+          etaSec: null,
+          message: `Network issue — retrying in ${Math.round(delayMs / 1000)}s (attempt ${attempt} of ${delays.length})…`,
+        })
+        await sleep(delayMs)
       }
 
-      if (result.code !== 0) {
-        const code: MfErrorCode = classifyStderr(stderrLines.slice(-40))
-        this.deps.logger?.warn('download failed', { jobId, code, exitCode: result.code })
-        this.finish(job, sendDone, { status: 'failed', errorCode: code })
+      if (result && job.cancelRequested) {
+        if (job.config.isLive) {
+          const saved = this.finalizeLiveRecording(job)
+          if (saved) {
+            this.deps.logger?.info('live recording saved on stop', { jobId, target: saved })
+            this.finish(job, sendDone, { status: 'completed', outputPath: saved })
+          } else {
+            this.finish(job, sendDone, { status: 'cancelled' })
+          }
+        } else {
+          this.finish(job, sendDone, { status: 'cancelled' })
+        }
         return
       }
 
       emit('finalizing', 100, null, null)
 
-      const finalSource = extractFinalPathLine(stdoutLines) ?? findLargestCompletedFile(job.tempDir)
+      const finalSource =
+        extractFinalPathLine(allStdoutLines) ?? findLargestCompletedFile(job.tempDir)
       if (!finalSource || !existsSync(finalSource) || statSync(finalSource).size <= 0) {
         this.deps.logger?.error('final output missing after success', { jobId })
         this.finish(job, sendDone, { status: 'failed', errorCode: 'MF_UNKNOWN' })
@@ -241,6 +319,23 @@ export class DownloadOrchestrator {
       this.deps.logger?.error('orchestrator error', { jobId, error: String(error) })
       this.finish(job, sendDone, { status: 'failed', errorCode: 'MF_UNKNOWN' })
     }
+  }
+
+  private finalizeLiveRecording(job: ActiveJob): string | null {
+    const partSource = findLargestPartFile(job.tempDir)
+    if (!partSource) return null
+    const finalName = sanitizeFileName(basename(partSource).replace(/\.part$/i, ''))
+    mkdirSync(job.config.destDir, { recursive: true })
+    const target = collisionFreeTarget(job.config.destDir, finalName)
+    try {
+      renameSync(partSource, target)
+    } catch {
+      copyFileSync(partSource, target)
+      unlinkSync(partSource)
+    }
+    if (!existsSync(target) || statSync(target).size <= 0) return null
+    rmSync(job.tempDir, { recursive: true, force: true })
+    return target
   }
 
   private finish(

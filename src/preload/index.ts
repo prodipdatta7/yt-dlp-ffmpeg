@@ -9,7 +9,10 @@ import {
   MF_DIALOG_CHOOSE_DIR,
   MF_JOB_DONE,
   MF_JOB_EVENT,
+  MF_LOGS_OPEN,
   MF_PING,
+  MF_SETTINGS_CLEAR_COOKIES,
+  MF_SETTINGS_IMPORT_COOKIES,
   type AnalyzeResponse,
   type BinariesInfoResult,
   type DownloadStartResponse,
@@ -42,6 +45,9 @@ const api: MfApi = {
   },
   getDefaultDestDir: (): Promise<string> => ipcRenderer.invoke(MF_DEFAULT_DEST_DIR),
   chooseDestDir: (): Promise<string | null> => ipcRenderer.invoke(MF_DIALOG_CHOOSE_DIR),
+  importCookies: (): Promise<boolean> => ipcRenderer.invoke(MF_SETTINGS_IMPORT_COOKIES),
+  clearCookies: (): Promise<boolean> => ipcRenderer.invoke(MF_SETTINGS_CLEAR_COOKIES),
+  openLogsFolder: (): Promise<boolean> => ipcRenderer.invoke(MF_LOGS_OPEN),
 }
 
 contextBridge.exposeInMainWorld('mf', api)

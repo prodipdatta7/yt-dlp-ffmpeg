@@ -9,7 +9,10 @@ import {
   MF_DIALOG_CHOOSE_DIR,
   MF_JOB_DONE,
   MF_JOB_EVENT,
+  MF_LOGS_OPEN,
   MF_PING,
+  MF_SETTINGS_CLEAR_COOKIES,
+  MF_SETTINGS_IMPORT_COOKIES,
   type AnalyzeResponse,
   type BinariesInfoResult,
   type Container,
@@ -46,6 +49,9 @@ export interface IpcDeps {
   cancelDownload: (jobId: string) => { ok: boolean }
   getDefaultDestDir: () => string
   chooseDirectory: () => Promise<string | null>
+  importCookies: () => Promise<boolean>
+  clearCookies: () => boolean
+  openLogsFolder: () => Promise<boolean>
 }
 
 function invalidUrl(): AnalyzeResponse {
@@ -102,6 +108,10 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
   ipcMain.handle(MF_DEFAULT_DEST_DIR, () => deps.getDefaultDestDir())
 
   ipcMain.handle(MF_DIALOG_CHOOSE_DIR, () => deps.chooseDirectory())
+
+  ipcMain.handle(MF_SETTINGS_IMPORT_COOKIES, () => deps.importCookies())
+  ipcMain.handle(MF_SETTINGS_CLEAR_COOKIES, () => deps.clearCookies())
+  ipcMain.handle(MF_LOGS_OPEN, () => deps.openLogsFolder())
 }
 
 function extractUrl(payload: unknown): string | null {

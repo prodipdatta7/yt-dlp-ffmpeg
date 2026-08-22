@@ -74,6 +74,7 @@ export function buildDownloadArgs(
   config: JobConfig,
   ffmpegPath: string,
   outputTemplate: string,
+  cookiesPath?: string | null,
 ): string[] {
   let modeArgs: string[]
   switch (config.mode) {
@@ -91,5 +92,7 @@ export function buildDownloadArgs(
       )
       break
   }
-  return [...modeArgs, ...buildBaseDownloadArgs(ffmpegPath, outputTemplate)]
+  const base = buildBaseDownloadArgs(ffmpegPath, outputTemplate)
+  if (cookiesPath) base.push('--cookies', cookiesPath)
+  return [...modeArgs, ...base]
 }

@@ -31,7 +31,7 @@ function fmtEta(sec: number | null): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-export function PipelineStatus() {
+export function PipelineStatus({ onRetry }: { onRetry?: () => void }) {
   const job = activeJob.value
   const done = jobDone.value
   if (!job && !done) return null
@@ -39,6 +39,7 @@ export function PipelineStatus() {
   const event: JobEvent | null = lastJobEvent.value
   const phaseIndex = event ? PHASE_ORDER.indexOf(event.phase) : -1
   const percent = event?.percent ?? (done?.status === 'completed' ? 100 : null)
+  const isLiveJob = job?.config.isLive === true
 
   function cancel() {
     if (job) void window.mf.downloadCancel(job.jobId)
@@ -48,17 +49,29 @@ export function PipelineStatus() {
     <div class="w-full max-w-5xl rounded-xl border border-slate-800 bg-slate-900/70 p-5">
       <div class="flex items-center justify-between gap-3">
         <span class="text-sm font-medium text-slate-200">
-          {event ? PHASE_LABELS[event.phase] : done ? 'Finished' : 'Preparing…'}
+          {event
+            ? isLiveJob && event.phase !== 'queued'
+              ? 'Recording Live Stream'
+              : PHASE_LABELS[event.phase]
+            : done
+              ? 'Finished'
+              : 'Preparing…'}
         </span>
         {job && (
           <button
             onClick={cancel}
-            class="rounded-lg bg-red-700 px-4 py-1.5 text-xs font-medium text-white hover:bg-red-600"
+            class={`rounded-lg px-4 py-1.5 text-xs font-medium text-white ${isLiveJob ? 'bg-amber-600 hover:bg-amber-500' : 'bg-red-700 hover:bg-red-600'}`}
           >
-            Cancel Download
+            {isLiveJob ? 'Stop Recording & Save' : 'Cancel Download'}
           </button>
         )}
       </div>
+
+      {event?.message && (
+        <p class="mt-2 rounded-lg border border-amber-800 bg-amber-950/50 px-3 py-1.5 text-xs text-amber-300">
+          {event.message} — partial files are kept and will resume automatically.
+        </p>
+      )}
 
       <div class="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-slate-800">
         <div
@@ -94,7 +107,7 @@ export function PipelineStatus() {
 
       {done && (
         <div
-          class={`mt-3 rounded-lg border px-3 py-2 text-sm ${
+          class={`mt-3 flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${
             done.status === 'completed'
               ? 'border-emerald-800 bg-emerald-950/50 text-emerald-300'
               : done.status === 'cancelled'
@@ -102,11 +115,29 @@ export function PipelineStatus() {
                 : 'border-red-800 bg-red-950/50 text-red-300'
           }`}
         >
-          {done.status === 'completed' && (
-            <span title={done.outputPath}>Saved to {done.outputPath}</span>
+          <span>
+            {done.status === 'completed' && (
+              <span title={done.outputPath}>Saved to {done.outputPath}</span>
+            )}
+            {done.status === 'cancelled' && <span>Download cancelled — partial files kept.</span>}
+            {done.status === 'failed' && (
+              <span>
+                {done.errorCode === 'MF_NETWORK'
+                  ? 'Network dropped — the download can resume where it stopped.'
+                  : done.errorCode === 'MF_RATE_LIMITED'
+                    ? 'The platform is rate-limiting requests. Try again shortly.'
+                    : 'Download failed. Check the logs for details.'}
+              </span>
+            )}
+          </span>
+          {done.status === 'failed' && onRetry && (
+            <button
+              onClick={onRetry}
+              class="shrink-0 rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-sky-500"
+            >
+              {done.errorCode === 'MF_NETWORK' ? 'Resume Download' : 'Retry Download'}
+            </button>
           )}
-          {done.status === 'cancelled' && <span>Download cancelled — partial files kept.</span>}
-          {done.status === 'failed' && <span>Download failed. Check the logs for details.</span>}
         </div>
       )}
     </div>

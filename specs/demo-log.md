@@ -2,6 +2,24 @@
 
 Visible-improvement checkpoints per `specs/Implementation_Plan.md`. One entry per completed phase.
 
+## P6 — Robustness pass: edge cases become features  `[M5]` · done 2026-08-22
+
+- **Network retry ladder (AM-05):** transient failures now show an amber banner
+  "Network issue — retrying in 5s (attempt 1 of 3)…" and re-spawn identical argv into a
+  deterministic per-URL temp dir, so `.part` files resume natively. After the ladder exhausts,
+  a **Resume Download** button restarts into the same dir. Proven by stateful flaky fixture
+  (fails twice → succeeds; exactly two retry events; attempt counter = 3).
+- **Close-guard (EC-05):** closing mid-job raises Run in Background / Cancel Download & Exit /
+  Stay. Background mode hides to a tray icon with Show action; job keeps streaming progress.
+- **Live recording (EC-06):** live URLs enter recording mode — amber **Stop Recording & Save**
+  control finalizes the `.part` capture as a verified completed file.
+- **Cookies (EC-07):** age-gate/bot-check errors now embed an "Import cookies.txt…" button;
+  footer adds import/clear/logs actions; cookies flow into analyze + download argv via
+  `--cookies`, never logged.
+- **Orphan sweep:** startup removes `tmp/job-*` dirs older than 24 h.
+- Full evidence matrix: `specs/ec-verifications.md`.
+- Gate evidence: typecheck ✓ · lint ✓ · vitest **131/131** ✓.
+
 ## P5 — Filesystem integration  `[M4]` · done 2026-08-22
 
 - **Browse…** button opens the native folder picker, defaulting to last-used folder

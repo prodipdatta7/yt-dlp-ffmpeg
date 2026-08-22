@@ -129,6 +129,7 @@ export function mapRawInfo(raw: RawInfo, sourceUrl: string): AnalyzeResult {
 export interface AnalyzeServiceOptions {
   resolveYtDlp: () => Promise<LocatedBinary | null>
   logger?: Logger
+  getCookiesPath?: () => string | null
 }
 
 const RETRYABLE_CODES = new Set(['MF_EXTRACTOR_STALE', 'MF_UNKNOWN'])
@@ -173,7 +174,7 @@ export class AnalyzeService {
   }
 
   private async runOnce(binaryPath: string, url: string): Promise<AnalyzeResult> {
-    const args = buildAnalyzeArgs(url)
+    const args = buildAnalyzeArgs(url, this.opts.getCookiesPath?.() ?? null)
     const stdoutLines: string[] = []
     const stderrLines: string[] = []
 

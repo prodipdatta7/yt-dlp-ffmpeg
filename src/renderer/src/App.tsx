@@ -6,7 +6,7 @@ import { PreviewPanel } from './components/PreviewPanel'
 import { QueueList } from './components/QueueList'
 import { UrlBar } from './components/UrlBar'
 import { analyzing, analysis, resetAnalysis } from './signals/appState'
-import { activeJob, beginJob, endJob, lastJobEvent } from './signals/jobState'
+import { activeJob, beginJob, endJob, lastFailedConfig, lastJobEvent } from './signals/jobState'
 import {
   queueRows,
   queueRunning,
@@ -82,11 +82,12 @@ function EnginesStatus() {
   )
 }
 
-function configFor(url: string, selection: JobSelection): JobConfig {
+function configFor(url: string, selection: JobSelection, isLive = false): JobConfig {
   const base = {
     url,
     destDir: selection.destDir,
     estimatedBytes: selection.estimatedBytes ?? undefined,
+    isLive,
   }
   switch (selection.mode) {
     case 'video-audio':
@@ -111,9 +112,14 @@ function configFor(url: string, selection: JobSelection): JobConfig {
 
 async function runSingleJob(config: JobConfig): Promise<'completed' | 'cancelled' | 'failed'> {
   const response = await window.mf.downloadStart(config)
-  if (response.kind !== 'ok') return 'failed'
+  if (response.kind !== 'ok') {
+    lastFailedConfig.value = config
+    return 'failed'
+  }
   beginJob(config, response.jobId)
-  return waitForCurrentJob()
+  const status = await waitForCurrentJob()
+  if (status === 'failed') lastFailedConfig.value = config
+  return status
 }
 
 export function App() {
@@ -164,7 +170,16 @@ export function App() {
       return
     }
 
-    await runSingleJob(configFor(result.metadata.webpageUrl ?? '', selection))
+    await runSingleJob(
+      configFor(result.metadata.webpageUrl ?? '', selection, result.metadata.isLive),
+    )
+  }
+
+  async function retryLastFailed() {
+    const config = lastFailedConfig.value
+    if (!config || busy) return
+    lastFailedConfig.value = null
+    await runSingleJob(config)
   }
 
   function cancelActive() {
@@ -232,17 +247,28 @@ export function App() {
           )}
         </div>
 
-        <PipelineStatus />
+        <PipelineStatus onRetry={() => void retryLastFailed()} />
         <QueueList />
         <PreviewPanel result={analysis.value} loading={analyzing.value} />
         {analysis.value && <FormatMatrix formats={analysis.value.formats} />}
       </main>
 
-      <footer class="flex items-center justify-between border-t border-slate-800 bg-slate-900 px-5 py-2 text-xs text-slate-500">
+      <footer class="flex items-center justify-between gap-4 border-t border-slate-800 bg-slate-900 px-5 py-2 text-xs text-slate-500">
         <EnginesStatus />
-        <button onClick={() => resetAnalysis()} class="hover:text-slate-300">
-          clear
-        </button>
+        <span class="flex items-center gap-3">
+          <button onClick={() => void window.mf.importCookies()} class="hover:text-slate-300">
+            import cookies
+          </button>
+          <button onClick={() => void window.mf.clearCookies()} class="hover:text-slate-300">
+            clear
+          </button>
+          <button onClick={() => void window.mf.openLogsFolder()} class="hover:text-slate-300">
+            logs folder
+          </button>
+          <button onClick={() => resetAnalysis()} class="hover:text-slate-300">
+            clear result
+          </button>
+        </span>
         <span>{bridgeNote}</span>
       </footer>
     </div>

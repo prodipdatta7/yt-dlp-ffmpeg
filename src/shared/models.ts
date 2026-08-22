@@ -88,6 +88,7 @@ export interface JobConfig {
   audioFormatId?: string
   destDir: string
   estimatedBytes?: number
+  isLive?: boolean
 }
 
 export type JobPhase =

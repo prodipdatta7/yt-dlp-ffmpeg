@@ -12,6 +12,9 @@ export const MF_JOB_EVENT = 'mf:job:event' as const
 export const MF_JOB_DONE = 'mf:job:done' as const
 export const MF_DEFAULT_DEST_DIR = 'mf:default-dest-dir' as const
 export const MF_DIALOG_CHOOSE_DIR = 'mf:dialog:choose-dir' as const
+export const MF_SETTINGS_IMPORT_COOKIES = 'mf:settings:import-cookies' as const
+export const MF_SETTINGS_CLEAR_COOKIES = 'mf:settings:clear-cookies' as const
+export const MF_LOGS_OPEN = 'mf:logs:open' as const
 
 export interface PingResult {
   pong: string
@@ -48,6 +51,9 @@ export interface MfApi {
   onJobDone(listener: (done: JobDonePayload) => void): () => void
   getDefaultDestDir(): Promise<string>
   chooseDestDir(): Promise<string | null>
+  importCookies(): Promise<boolean>
+  clearCookies(): Promise<boolean>
+  openLogsFolder(): Promise<boolean>
 }
 
 export type { Container, JobConfig, JobDonePayload, JobEvent } from './models'

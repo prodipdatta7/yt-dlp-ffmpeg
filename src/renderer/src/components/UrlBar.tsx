@@ -62,8 +62,17 @@ export function UrlBar() {
         <p class="text-xs text-red-400">Enter a full link starting with http:// or https://</p>
       )}
       {analyzeError.value && (
-        <div class="rounded-lg border border-red-800 bg-red-950/60 px-4 py-3 text-sm text-red-300">
-          {analyzeError.value.message}
+        <div class="flex items-center justify-between gap-3 rounded-lg border border-red-800 bg-red-950/60 px-4 py-3 text-sm text-red-300">
+          <span>{analyzeError.value.message}</span>
+          {(analyzeError.value.code === 'MF_AGE_RESTRICTED' ||
+            analyzeError.value.code === 'MF_BOT_CHECK') && (
+            <button
+              onClick={() => void window.mf.importCookies()}
+              class="shrink-0 rounded-lg bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600"
+            >
+              Import cookies.txt…
+            </button>
+          )}
         </div>
       )}
     </div>

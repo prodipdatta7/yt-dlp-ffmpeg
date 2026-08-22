@@ -15,3 +15,5 @@ export function endJob(done: JobDonePayload): void {
   jobDone.value = done
   activeJob.value = null
 }
+
+export const lastFailedConfig = signal<JobConfig | null>(null)
