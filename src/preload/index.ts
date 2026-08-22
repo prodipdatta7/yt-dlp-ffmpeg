@@ -6,6 +6,7 @@ import {
   MF_DOWNLOAD_CANCEL,
   MF_DOWNLOAD_START,
   MF_DEFAULT_DEST_DIR,
+  MF_DIALOG_CHOOSE_DIR,
   MF_JOB_DONE,
   MF_JOB_EVENT,
   MF_PING,
@@ -40,6 +41,7 @@ const api: MfApi = {
     return () => ipcRenderer.removeListener(MF_JOB_DONE, wrapped)
   },
   getDefaultDestDir: (): Promise<string> => ipcRenderer.invoke(MF_DEFAULT_DEST_DIR),
+  chooseDestDir: (): Promise<string | null> => ipcRenderer.invoke(MF_DIALOG_CHOOSE_DIR),
 }
 
 contextBridge.exposeInMainWorld('mf', api)

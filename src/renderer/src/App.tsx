@@ -83,7 +83,11 @@ function EnginesStatus() {
 }
 
 function configFor(url: string, selection: JobSelection): JobConfig {
-  const base = { url, destDir: selection.destDir }
+  const base = {
+    url,
+    destDir: selection.destDir,
+    estimatedBytes: selection.estimatedBytes ?? undefined,
+  }
   switch (selection.mode) {
     case 'video-audio':
       return { ...base, mode: 'video-audio', tier: selection.tier, container: selection.container }
@@ -196,6 +200,7 @@ export function App() {
         {analysis.value?.kind === 'video' && (
           <ModeSelector
             formats={analysis.value.formats}
+            durationSec={analysis.value.metadata.durationSec}
             onSelection={setSelection}
             disabled={busy}
           />

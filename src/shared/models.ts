@@ -87,6 +87,7 @@ export interface JobConfig {
   videoFormatId?: string
   audioFormatId?: string
   destDir: string
+  estimatedBytes?: number
 }
 
 export type JobPhase =

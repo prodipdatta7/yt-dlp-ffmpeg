@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useMemo, useState } from 'preact/hooks'
 import {
   BITRATE_TIERS,
   CONTAINERS,
@@ -10,6 +10,7 @@ import {
   type DownloadMode,
   type FormatRow,
 } from '../../../shared/models'
+import { estimateJobBytes } from '../utils/estimate'
 
 export interface JobSelection {
   mode: DownloadMode
@@ -20,6 +21,7 @@ export interface JobSelection {
   videoFormatId: string
   audioFormatId: string
   destDir: string
+  estimatedBytes: number | null
 }
 
 const MODE_LABELS: Array<{ id: DownloadMode; label: string }> = [
@@ -36,10 +38,12 @@ const labelClass = 'flex flex-col gap-1.5 text-xs uppercase tracking-wide text-s
 
 export function ModeSelector({
   formats,
+  durationSec,
   onSelection,
   disabled,
 }: {
   formats: FormatRow[]
+  durationSec: number | null
   onSelection: (selection: JobSelection) => void
   disabled: boolean
 }) {
@@ -59,6 +63,36 @@ export function ModeSelector({
       .catch(() => undefined)
   }, [])
 
+  const isLossless = LOSSLESS_AUDIO_FORMATS.includes(audioFormat)
+  const videoStreams = formats.filter((f) => f.vcodec !== null)
+  const audioStreams = formats.filter((f) => f.acodec !== null)
+
+  const estimatedBytes = useMemo(
+    () =>
+      estimateJobBytes(formats, {
+        mode,
+        durationSec,
+        tier,
+        container,
+        audioFormat,
+        bitrate: isLossless ? null : bitrate,
+        videoFormatId,
+        audioFormatId,
+      }),
+    [
+      formats,
+      mode,
+      durationSec,
+      tier,
+      container,
+      audioFormat,
+      bitrate,
+      videoFormatId,
+      audioFormatId,
+      isLossless,
+    ],
+  )
+
   useEffect(() => {
     if (destDir) {
       onSelection({
@@ -66,17 +100,33 @@ export function ModeSelector({
         tier,
         container,
         audioFormat,
-        bitrate: LOSSLESS_AUDIO_FORMATS.includes(audioFormat) ? null : bitrate,
+        bitrate: isLossless ? null : bitrate,
         videoFormatId,
         audioFormatId,
         destDir,
+        estimatedBytes,
       })
     }
-  }, [mode, tier, container, audioFormat, bitrate, videoFormatId, audioFormatId, destDir])
+  }, [
+    mode,
+    tier,
+    container,
+    audioFormat,
+    bitrate,
+    videoFormatId,
+    audioFormatId,
+    destDir,
+    estimatedBytes,
+  ])
 
-  const isLossless = LOSSLESS_AUDIO_FORMATS.includes(audioFormat)
-  const videoStreams = formats.filter((f) => f.vcodec !== null)
-  const audioStreams = formats.filter((f) => f.acodec !== null)
+  async function browse() {
+    try {
+      const dir = await window.mf.chooseDestDir()
+      if (dir) setDestDir(dir)
+    } catch {
+      return
+    }
+  }
 
   function streamLabel(f: FormatRow): string {
     const res = f.height ? `${f.height}p${f.fps ? f.fps : ''}` : 'audio'
@@ -238,18 +288,34 @@ export function ModeSelector({
           </>
         )}
 
-        <label class={`${labelClass} sm:col-span-1`}>
+        <label class={`${labelClass} sm:col-span-2`}>
           Destination folder
-          <input
-            type="text"
-            value={destDir}
-            onInput={(e) => setDestDir((e.target as HTMLInputElement).value)}
-            disabled={disabled}
-            placeholder="C:\Users\…\Downloads"
-            class={selectClass()}
-          />
+          <div class="flex gap-2">
+            <input
+              type="text"
+              value={destDir}
+              onInput={(e) => setDestDir((e.target as HTMLInputElement).value)}
+              disabled={disabled}
+              placeholder="C:\Users\…\Downloads"
+              class={selectClass() + ' flex-1'}
+            />
+            <button
+              onClick={() => void browse()}
+              disabled={disabled}
+              class="shrink-0 rounded-lg border border-slate-600 px-3 text-sm text-slate-300 hover:border-sky-500 hover:text-white"
+            >
+              Browse…
+            </button>
+          </div>
         </label>
       </div>
+
+      {estimatedBytes !== null && (
+        <p class="text-xs text-slate-500">
+          Estimated download size ≈ {(estimatedBytes / 1024 / 1024).toFixed(0)} MB (from stream
+          metadata)
+        </p>
+      )}
     </div>
   )
 }

@@ -9,7 +9,7 @@ import {
   statSync,
   unlinkSync,
 } from 'node:fs'
-import { basename, extname, join } from 'node:path'
+import { basename, join } from 'node:path'
 import type {
   JobConfig,
   JobDonePayload,
@@ -17,8 +17,11 @@ import type {
   JobPhase,
   MfErrorCode,
 } from '../../shared/models'
+import { ERROR_MESSAGES } from '../../shared/models'
 import type { LocatedBinary } from '../binaries/locator'
 import { spawnProcess, type SpawnHandle } from '../binaries/runner'
+import { freeDiskSpaceBytes, isDiskSpaceInsufficient } from '../fsops/diskSpace'
+import { collisionFreeTarget } from '../fsops/sanitizer'
 import { classifyStderr } from '../media/classifyStderr'
 import type { Logger } from '../store/logger'
 import { buildDownloadArgs, outputTemplateFor } from './argBuilders'
@@ -50,16 +53,14 @@ interface ActiveJob {
   tempDir: string
 }
 
-function collisionFreeTarget(destDir: string, fileName: string): string {
-  const ext = extname(fileName)
-  const stem = basename(fileName, ext)
-  let candidate = join(destDir, fileName)
-  let n = 1
-  while (existsSync(candidate)) {
-    candidate = join(destDir, `${stem}_${n}${ext}`)
-    n += 1
+export class MfLaunchError extends Error {
+  constructor(
+    public readonly code: MfErrorCode | null,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'MfLaunchError'
   }
-  return candidate
 }
 
 function findLargestCompletedFile(dir: string): string | null {
@@ -98,11 +99,24 @@ export class DownloadOrchestrator {
   }
 
   async launch(config: JobConfig, sendEvent: SendEvent, sendDone: SendDone): Promise<string> {
-    if (this.activeJob) throw new MfLaunchError('A download is already running.')
+    if (this.activeJob) {
+      throw new MfLaunchError(null, 'A download is already running.')
+    }
 
     const ytDlp = await this.deps.resolveYtDlp()
     const ffmpeg = await this.deps.resolveFfmpeg()
-    if (!ytDlp || !ffmpeg) throw new MfLaunchError('Media engines are not installed.')
+    if (!ytDlp || !ffmpeg) {
+      throw new MfLaunchError(null, 'Media engines are not installed.')
+    }
+
+    const freeBytes = await freeDiskSpaceBytes(config.destDir)
+    if (isDiskSpaceInsufficient(freeBytes, config.estimatedBytes)) {
+      this.deps.logger?.warn('preflight disk-space abort', {
+        freeBytes,
+        estimatedBytes: config.estimatedBytes,
+      })
+      throw new MfLaunchError('MF_DISK_FULL', ERROR_MESSAGES.MF_DISK_FULL)
+    }
 
     const jobId = randomUUID()
     const tempDir = join(this.deps.tempRoot, `job-${jobId}`)
@@ -238,5 +252,3 @@ export class DownloadOrchestrator {
     if (this.activeJob?.id === job.id) this.activeJob = null
   }
 }
-
-export class MfLaunchError extends Error {}

@@ -6,6 +6,7 @@ import {
   MF_DOWNLOAD_CANCEL,
   MF_DOWNLOAD_START,
   MF_DEFAULT_DEST_DIR,
+  MF_DIALOG_CHOOSE_DIR,
   MF_JOB_DONE,
   MF_JOB_EVENT,
   MF_PING,
@@ -44,6 +45,7 @@ export interface IpcDeps {
   ) => Promise<DownloadStartResponse>
   cancelDownload: (jobId: string) => { ok: boolean }
   getDefaultDestDir: () => string
+  chooseDirectory: () => Promise<string | null>
 }
 
 function invalidUrl(): AnalyzeResponse {
@@ -98,6 +100,8 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
   })
 
   ipcMain.handle(MF_DEFAULT_DEST_DIR, () => deps.getDefaultDestDir())
+
+  ipcMain.handle(MF_DIALOG_CHOOSE_DIR, () => deps.chooseDirectory())
 }
 
 function extractUrl(payload: unknown): string | null {
@@ -134,9 +138,16 @@ function parseJobConfig(payload: unknown): JobConfig | null {
     return null
   }
 
+  let estimatedBytes: number | undefined
+  if (raw.estimatedBytes !== undefined) {
+    if (typeof raw.estimatedBytes !== 'number' || !Number.isFinite(raw.estimatedBytes)) return null
+    if (raw.estimatedBytes < 0 || raw.estimatedBytes > 1e13) return null
+    estimatedBytes = raw.estimatedBytes
+  }
+
   switch (raw.mode) {
     case 'video-audio':
-      return { url, mode: 'video-audio', tier, container, destDir: raw.destDir }
+      return { url, mode: 'video-audio', tier, container, destDir: raw.destDir, estimatedBytes }
 
     case 'audio-only': {
       const format = raw.audioFormat
@@ -158,6 +169,7 @@ function parseJobConfig(payload: unknown): JobConfig | null {
         audioFormat: format as AudioFormat,
         bitrate,
         destDir: raw.destDir,
+        estimatedBytes,
       }
     }
 
@@ -179,6 +191,7 @@ function parseJobConfig(payload: unknown): JobConfig | null {
         videoFormatId,
         audioFormatId,
         destDir: raw.destDir,
+        estimatedBytes,
       }
     }
 

@@ -2,6 +2,21 @@
 
 Visible-improvement checkpoints per `specs/Implementation_Plan.md`. One entry per completed phase.
 
+## P5 — Filesystem integration  `[M4]` · done 2026-08-22
+
+- **Browse…** button opens the native folder picker, defaulting to last-used folder
+  (persisted in `%APPDATA%/MediaForge Desktop/settings.json` via atomic write-tmp-rename);
+  choice survives restarts (simulated-restart test proves fresh-instance read-back).
+- Destination defaults to OS Downloads on first run.
+- App-side sanitizer as defense-in-depth: illegal chars → `-`, control chars stripped,
+  emoji/non-BMP → `-`, trailing dots/spaces removed, reserved device names prefixed
+  (`CON.mp4` → `_CON.mp4`), 200-char cap preserving the extension.
+- Collision auto-rename `_1.._n` with case-insensitive compare — re-downloading the same
+  video never overwrites.
+- **Low-disk pre-flight (AM-06):** renderer estimates bytes from stream metadata (shown in
+  UI); main aborts before spawn with EC-03 message when free space < estimate + 50 MB margin.
+- Gate evidence: typecheck ✓ · lint ✓ · vitest **125/125** ✓.
+
 ## P4 — All modes + playlist queue  `[M3 rest]` · done 2026-08-22
 
 - ModeSelector is now tri-state: **Video+Audio / Audio Only / Advanced**.

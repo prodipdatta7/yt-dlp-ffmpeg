@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, dialog } from 'electron'
 import { BinariesService } from './binaries/service'
 import { platformDir, type BinaryCandidate } from './binaries/locator'
 import { registerIpcHandlers } from './ipc/handlers'
@@ -14,6 +14,8 @@ import type {
 } from '../shared/ipcContract'
 import { ERROR_MESSAGES } from '../shared/models'
 import { createLogger, type Logger } from './store/logger'
+import { SettingsStore } from './store/settingsStore'
+import { MfLaunchError } from './jobs/orchestrator'
 import { createWindowOptions, getWindowSecurityFlags } from './windowOptions'
 
 function binaryCandidates(logger: Logger): BinaryCandidate[] {
@@ -59,6 +61,8 @@ app.whenReady().then(() => {
   const logger = createLogger({ dir: join(app.getPath('userData'), 'logs') })
   logger.info(`app starting v${app.getVersion()}`, { packaged: app.isPackaged })
 
+  const settings = new SettingsStore(join(app.getPath('userData'), 'settings.json'))
+
   const binariesService = new BinariesService({
     platform: process.platform,
     arch: process.arch,
@@ -102,6 +106,9 @@ app.whenReady().then(() => {
           const jobId = await orchestrator.launch(config, sendEvent, sendDone)
           return { kind: 'ok', jobId }
         } catch (error) {
+          if (error instanceof MfLaunchError && error.code) {
+            return { kind: 'error', code: error.code, message: ERROR_MESSAGES[error.code] }
+          }
           return {
             kind: 'error',
             code: 'MF_UNKNOWN',
@@ -110,7 +117,20 @@ app.whenReady().then(() => {
         }
       },
       cancelDownload: (jobId: string) => ({ ok: orchestrator.cancel(jobId || undefined) }),
-      getDefaultDestDir: () => app.getPath('downloads'),
+      getDefaultDestDir: () => settings.load().lastOutputDir || app.getPath('downloads'),
+      chooseDirectory: async () => {
+        const current = settings.load()
+        const result = await dialog.showOpenDialog({
+          title: 'Choose download destination',
+          defaultPath: current.lastOutputDir || app.getPath('downloads'),
+          properties: ['openDirectory', 'createDirectory'],
+        })
+        if (result.canceled || result.filePaths.length === 0) return null
+        const chosen = result.filePaths[0]
+        settings.save({ lastOutputDir: chosen })
+        logger.info('destination folder chosen', { dirSet: true })
+        return chosen
+      },
     },
     logger,
   )

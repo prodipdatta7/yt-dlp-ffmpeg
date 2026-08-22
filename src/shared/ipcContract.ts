@@ -11,6 +11,7 @@ export const MF_DOWNLOAD_CANCEL = 'mf:download:cancel' as const
 export const MF_JOB_EVENT = 'mf:job:event' as const
 export const MF_JOB_DONE = 'mf:job:done' as const
 export const MF_DEFAULT_DEST_DIR = 'mf:default-dest-dir' as const
+export const MF_DIALOG_CHOOSE_DIR = 'mf:dialog:choose-dir' as const
 
 export interface PingResult {
   pong: string
@@ -46,6 +47,7 @@ export interface MfApi {
   onJobEvent(listener: (event: JobEvent) => void): () => void
   onJobDone(listener: (done: JobDonePayload) => void): () => void
   getDefaultDestDir(): Promise<string>
+  chooseDestDir(): Promise<string | null>
 }
 
 export type { Container, JobConfig, JobDonePayload, JobEvent } from './models'
