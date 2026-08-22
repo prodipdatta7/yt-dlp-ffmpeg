@@ -226,23 +226,32 @@ export function App() {
     !busy
 
   return (
-    <div class="flex h-screen flex-col bg-slate-950 text-slate-200">
-      <header class="flex items-center gap-3 border-b border-slate-800 bg-slate-900 px-5 py-3">
-        <LogoMark />
-        <h1 class="text-lg font-semibold tracking-tight">MediaForge Desktop</h1>
-        <span class="rounded-full border border-slate-700 px-2 py-0.5 text-xs text-slate-400">
+    <div class="flex h-screen flex-col text-slate-200">
+      <header class="flex items-center gap-3 border-b border-white/[0.06] bg-slate-950/70 px-5 py-3 backdrop-blur">
+        <span class="flex size-9 items-center justify-center rounded-xl border border-sky-400/30 bg-gradient-to-br from-sky-500/20 to-indigo-500/20 shadow-inner">
+          <LogoMark />
+        </span>
+        <div>
+          <h1 class="text-base font-bold leading-tight tracking-tight text-white">
+            MediaForge Desktop
+          </h1>
+          <p class="text-[10px] uppercase tracking-wider text-slate-500">
+            Media downloader & transcoder
+          </p>
+        </div>
+        <span class="mf-num rounded-full border border-sky-400/20 bg-sky-400/5 px-2 py-0.5 text-[10px] font-semibold text-sky-300/90">
           {APP_VERSION}
         </span>
         <button
           onClick={() => (settingsOpen.value = !settingsOpen.value)}
           title="Settings"
-          class={`ml-auto rounded-lg border px-2.5 py-1 text-xs ${
+          class={`mf-focus-ring ml-auto rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
             settingsOpen.value
-              ? 'border-sky-500 bg-sky-950 text-sky-300'
-              : 'border-slate-700 text-slate-400 hover:text-white'
+              ? 'border-sky-500/50 bg-sky-500/10 text-sky-300'
+              : 'border-white/[0.08] text-slate-400 hover:border-white/20 hover:text-white'
           }`}
         >
-          ⚙ Settings
+          Settings
         </button>
       </header>
 
@@ -269,7 +278,7 @@ export function App() {
             />
           )}
 
-          <div class="flex w-full max-w-5xl min-w-0 items-center justify-between gap-3">
+          <div class="flex w-full max-w-3xl min-w-0 items-center justify-between gap-3">
             <p class="min-w-0 truncate text-xs text-slate-500">
               {isPlaylist
                 ? `Playlist — ${queueRows.value.length} entries will be processed sequentially`
@@ -280,7 +289,7 @@ export function App() {
             {busy ? (
               <button
                 onClick={cancelActive}
-                class="shrink-0 rounded-lg bg-red-700 px-5 py-2 text-sm font-medium text-white hover:bg-red-600"
+                class="shrink-0 rounded-lg bg-gradient-to-br from-rose-600 to-rose-500 px-5 py-2 text-sm font-semibold text-white shadow shadow-rose-500/20 transition hover:brightness-110 active:scale-[0.98]"
               >
                 {isPlaylist ? 'Stop After Current' : 'Cancel Download'}
               </button>
@@ -288,7 +297,7 @@ export function App() {
               <button
                 onClick={() => void startDownload()}
                 disabled={!canStart}
-                class="shrink-0 rounded-lg bg-emerald-600 px-6 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                class="mf-focus-ring shrink-0 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-400 px-6 py-2.5 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-500/25 transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
               >
                 {isPlaylist
                   ? `Download All (${queueRows.value.length})`
@@ -299,15 +308,10 @@ export function App() {
 
           <PipelineStatus onRetry={() => void retryLastFailed()} />
           <QueueList />
-          {launchError.value && (
-            <div class="w-full max-w-5xl rounded-lg border border-red-800 bg-red-950/50 px-3 py-2 text-sm text-red-300">
-              Could not start: {launchError.value}
-            </div>
-          )}
         </main>
       )}
 
-      <footer class="flex items-center justify-between gap-4 border-t border-slate-800 bg-slate-900 px-5 py-2 text-xs text-slate-500">
+      <footer class="flex items-center justify-between gap-4 border-t border-white/[0.06] bg-slate-950/70 px-5 py-2 text-xs text-slate-500 backdrop-blur">
         <EnginesStatus />
         <span class="flex items-center gap-3">
           <button onClick={() => void window.mf.importCookies()} class="hover:text-slate-300">

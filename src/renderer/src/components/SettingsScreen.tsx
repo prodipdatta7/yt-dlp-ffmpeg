@@ -3,7 +3,7 @@ import type { UpdaterApplyResult, UpdaterCheckResult } from '../../../shared/ipc
 
 function Section({ title, children }: { title: string; children: preact.ComponentChildren }) {
   return (
-    <section class="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
+    <section class="mf-card p-5">
       <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">{title}</h3>
       {children}
     </section>

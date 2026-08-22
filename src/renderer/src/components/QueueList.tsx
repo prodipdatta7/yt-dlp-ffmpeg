@@ -15,7 +15,7 @@ export function QueueList() {
   const doneCount = rows.filter((r) => r.status === 'done').length
 
   return (
-    <div class="w-full max-w-5xl rounded-xl border border-slate-800 bg-slate-900/70 p-4">
+    <div class="mf-card w-full max-w-3xl p-4">
       <div class="flex items-center justify-between px-1 pb-2">
         <span class="text-xs font-semibold uppercase tracking-wide text-slate-400">
           Queue — {doneCount}/{rows.length} complete

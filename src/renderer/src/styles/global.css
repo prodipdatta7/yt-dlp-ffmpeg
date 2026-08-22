@@ -3,3 +3,64 @@
 :root {
   color-scheme: dark;
 }
+
+body {
+  background:
+    radial-gradient(1200px 600px at 82% -12%, rgb(56 189 248 / 0.09), transparent 60%),
+    radial-gradient(900px 520px at -12% 112%, rgb(99 102 241 / 0.08), transparent 62%), #070b14;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(71 85 105 / 0.55);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(100 116 139 / 0.7);
+  background-clip: content-box;
+}
+
+.mf-card {
+  background: rgb(148 163 184 / 0.045);
+  border: 1px solid rgb(148 163 184 / 0.13);
+  border-radius: 16px;
+  backdrop-filter: blur(6px);
+}
+
+.mf-focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgb(56 189 248 / 0.35);
+}
+
+@keyframes mf-stripes {
+  from {
+    background-position-x: 0;
+  }
+  to {
+    background-position-x: 36px;
+  }
+}
+
+.mf-progress-fill {
+  background-image: linear-gradient(
+    115deg,
+    rgb(255 255 255 / 0.25) 25%,
+    transparent 25% 50%,
+    rgb(255 255 255 / 0.25) 50% 75%,
+    transparent 75%
+  );
+  background-size: 36px 36px;
+  animation: mf-stripes 0.7s linear infinite;
+}
+
+.mf-num {
+  font-variant-numeric: tabular-nums;
+}

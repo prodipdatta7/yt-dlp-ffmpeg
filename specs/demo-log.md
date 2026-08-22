@@ -2,6 +2,31 @@
 
 Visible-improvement checkpoints per `specs/Implementation_Plan.md`. One entry per completed phase.
 
+## Hotfix 0.1.1 — download failure root cause + visual overhaul · 2026-08-22
+
+**Critical fix (user-reported: every download failed):**
+`buildDownloadArgs` never appended `config.url` — yt-dlp received zero URLs and died with a
+usage error before any bytes moved. Root cause of the blind spot: P3's live-fire verification
+invoked yt-dlp manually with the URL appended by hand, and orchestrator unit tests used
+argv-agnostic fake binaries. Now fixed at the choke point, guarded by regression tests
+(argv must terminate with the URL in all three modes) and a new **real-network e2e test**
+running the actual orchestrator path (`MF_E2E_REAL=1`; passed live in ~4–6 s). Launch errors
+are no longer swallowed silently — a red "Could not start: …" note renders inside the status card.
+
+**Visual overhaul (Preact + Tailwind v4 only, zero new deps):**
+- Ambient gradient backdrop + glass `mf-card` surfaces + custom slim scrollbars.
+- Header: logo tile, product subtitle, version pill, ghost Settings button.
+- Hero URL bar with link icon, glow focus ring, gradient Analyze action w/ inline spinner.
+- Preview card: duration/LIVE badges overlaid on thumbnail, stat tiles, playlist chip,
+  dashed empty-state illustration.
+- Stream table rebuilt: search box + All/Video/Audio filter tabs, colored codec pills
+  (H.264/VP9/AV1/AAC/Opus…), resolution/fps emphasis, sticky header, zebra hover rows.
+- Pipeline status: real phase **stepper** (numbered dots → checkmarks with connector lines),
+  striped animated gradient progress fill while active, color-coded result banners.
+- Mode selector as segmented control with inline SVG icons; unified max-w-3xl content column.
+
+Gate: typecheck ✓ lint ✓ vitest 142 ✓ (+1 opt-in real-e2e ✓) · installer rebuilt 149.7 MB.
+
 ## P8 — Package, measure, ship  `[M7]` · done 2026-08-22
 
 - **Installer ships:** `dist/MediaForge Desktop-Setup-0.1.0.exe` — **149.7 MB** vs the ≤180 MB

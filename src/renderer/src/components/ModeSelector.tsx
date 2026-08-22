@@ -24,10 +24,63 @@ export interface JobSelection {
   estimatedBytes: number | null
 }
 
-const MODE_LABELS: Array<{ id: DownloadMode; label: string }> = [
-  { id: 'video-audio', label: 'Video + Audio' },
-  { id: 'audio-only', label: 'Audio Only' },
-  { id: 'advanced', label: 'Advanced' },
+const MODE_LABELS: Array<{ id: DownloadMode; label: string; icon: preact.JSX.Element }> = [
+  {
+    id: 'video-audio',
+    label: 'Video + Audio',
+    icon: (
+      <svg
+        viewBox="0 0 24 24"
+        class="size-3.5"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <rect x="2" y="4" width="20" height="16" rx="3" />
+        <path d="m10 9 5 3-5 3Z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'audio-only',
+    label: 'Audio Only',
+    icon: (
+      <svg
+        viewBox="0 0 24 24"
+        class="size-3.5"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        aria-hidden="true"
+      >
+        <path d="M9 18V5l12-2v13" />
+        <circle cx="6" cy="18" r="3" />
+        <circle cx="18" cy="16" r="3" />
+      </svg>
+    ),
+  },
+  {
+    id: 'advanced',
+    label: 'Advanced',
+    icon: (
+      <svg
+        viewBox="0 0 24 24"
+        class="size-3.5"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        aria-hidden="true"
+      >
+        <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3" />
+        <path d="M1 14h6M9 8h6M17 16h6" />
+      </svg>
+    ),
+  },
 ]
 
 function selectClass() {
@@ -134,25 +187,27 @@ export function ModeSelector({
   }
 
   return (
-    <div class="flex w-full max-w-5xl flex-col gap-4 rounded-xl border border-slate-800 bg-slate-900/70 p-5">
-      <div class="flex gap-2">
+    <div class="mf-card flex w-full max-w-3xl flex-col gap-4 p-5">
+      <div class="flex w-fit gap-1 rounded-xl border border-white/[0.08] bg-black/30 p-1">
         {MODE_LABELS.map((m) => (
           <button
             key={m.id}
             onClick={() => setMode(m.id)}
             disabled={disabled}
-            class={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+            class={`mf-focus-ring inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-all duration-150 ${
               mode === m.id
-                ? 'bg-sky-600 text-white'
-                : 'border border-slate-700 text-slate-400 hover:text-slate-200'
+                ? 'bg-gradient-to-br from-sky-500 to-indigo-500 text-white shadow shadow-sky-500/25'
+                : 'text-slate-400 hover:bg-white/[0.04] hover:text-white'
             }`}
           >
+            {m.icon}
             {m.label}
           </button>
         ))}
       </div>
 
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {' '}
         {mode === 'video-audio' && (
           <>
             <label class={labelClass}>
@@ -187,7 +242,6 @@ export function ModeSelector({
             </label>
           </>
         )}
-
         {mode === 'audio-only' && (
           <>
             <label class={labelClass}>
@@ -235,7 +289,6 @@ export function ModeSelector({
             )}
           </>
         )}
-
         {mode === 'advanced' && (
           <>
             <label class={labelClass}>
@@ -287,7 +340,6 @@ export function ModeSelector({
             </label>
           </>
         )}
-
         <label class={`${labelClass} sm:col-span-2`}>
           Destination folder
           <div class="flex gap-2">

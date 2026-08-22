@@ -1,64 +1,210 @@
-import { useMemo } from 'preact/hooks'
+import { useMemo, useState } from 'preact/hooks'
 import type { FormatRow } from '../../../shared/models'
 import { fmtSize } from '../utils/format'
 
-function codecLabel(c: string | null): string {
-  if (!c) return '—'
-  const dot = c.indexOf('.')
-  return dot > 0 ? c.slice(0, dot) : c
+type StreamFilter = 'all' | 'video' | 'audio'
+
+const VIDEO_PILL = 'border-sky-500/25 bg-sky-500/10 text-sky-300'
+const AUDIO_PILL = 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300'
+
+const CODEC_NAMES: Array<[RegExp, string]> = [
+  [/^avc|^h264/i, 'H.264'],
+  [/^h265|^hevc|^hvc1/i, 'HEVC'],
+  [/^av01/i, 'AV1'],
+  [/^vp9/i, 'VP9'],
+  [/^vp8/i, 'VP8'],
+  [/^mp4a/i, 'AAC'],
+  [/^opus/i, 'Opus'],
+  [/^vorbis/i, 'Vorbis'],
+  [/^flac/i, 'FLAC'],
+  [/^ac-?3/i, 'AC-3'],
+  [/^ec-?3/i, 'E-AC-3'],
+]
+
+function codecLabel(codec: string | null): string {
+  if (!codec) return '—'
+  for (const [pattern, name] of CODEC_NAMES) {
+    if (pattern.test(codec)) return name
+  }
+  const dot = codec.indexOf('.')
+  return (dot > 0 ? codec.slice(0, dot) : codec).toUpperCase()
+}
+
+function CodecPill({ codec, kind }: { codec: string | null; kind: 'video' | 'audio' }) {
+  if (!codec) return <span class="text-slate-700">—</span>
+  return (
+    <span
+      class={`inline-flex items-center rounded border px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide ${kind === 'video' ? VIDEO_PILL : AUDIO_PILL}`}
+    >
+      {codecLabel(codec)}
+    </span>
+  )
+}
+
+function ResCell({ row }: { row: FormatRow }) {
+  if (!row.height) {
+    return (
+      <span class="inline-flex items-center gap-1 text-xs text-emerald-300/80">
+        <svg
+          viewBox="0 0 24 24"
+          class="size-3"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          aria-hidden="true"
+        >
+          <path d="M9 18V5l12-2v13" />
+          <circle cx="6" cy="18" r="3" />
+          <circle cx="18" cy="16" r="3" />
+        </svg>
+        audio
+      </span>
+    )
+  }
+  return (
+    <span class="mf-num text-sm font-semibold text-slate-100">
+      {row.height}p
+      {row.fps && row.fps > 30 ? (
+        <span class="ml-1 text-[10px] font-medium text-amber-300">{row.fps}fps</span>
+      ) : null}
+    </span>
+  )
 }
 
 export function FormatMatrix({ formats }: { formats: FormatRow[] }) {
-  const sorted = useMemo(
-    () =>
-      [...formats].sort((a, b) => {
-        const h = (b.height ?? -1) - (a.height ?? -1)
-        if (h !== 0) return h
-        return (b.tbrKbps ?? b.abrKbps ?? 0) - (a.tbrKbps ?? a.abrKbps ?? 0)
-      }),
+  const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState<StreamFilter>('all')
+
+  const videoRows = useMemo(() => formats.filter((f) => f.vcodec !== null), [formats])
+  const audioRows = useMemo(
+    () => formats.filter((f) => f.vcodec === null && f.acodec !== null),
     [formats],
   )
 
-  if (sorted.length === 0) return null
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const matches = (rows: FormatRow[]) =>
+      rows.filter((f) => {
+        if (filter === 'video' && f.vcodec === null) return false
+        if (filter === 'audio' && f.acodec === null) return false
+        if (!q) return true
+        return `${f.formatId} ${f.ext} ${f.vcodec ?? ''} ${f.acodec ?? ''}`
+          .toLowerCase()
+          .includes(q)
+      })
+    return [...matches(videoRows), ...matches(audioRows)]
+  }, [formats, videoRows, audioRows, query, filter])
+
+  if (formats.length === 0) return null
+
+  const tabs: Array<{ id: StreamFilter; label: string }> = [
+    { id: 'all', label: `All ${formats.length}` },
+    { id: 'video', label: `Video ${videoRows.length}` },
+    { id: 'audio', label: `Audio ${audioRows.length}` },
+  ]
 
   return (
-    <div class="w-full max-w-5xl min-w-0 overflow-hidden rounded-xl border border-slate-800 bg-slate-900/70">
-      <div class="border-b border-slate-800 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
-        Available streams ({sorted.length})
+    <div class="mf-card w-full max-w-3xl overflow-hidden">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-3">
+        <div class="flex items-baseline gap-2">
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Streams</h3>
+          <span class="mf-num rounded-full border border-white/10 bg-white/[0.04] px-2 text-[11px] text-slate-400">
+            {visible.length}/{formats.length}
+          </span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="relative">
+            <svg
+              class="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-600"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="m21 21-4-4" />
+            </svg>
+            <input
+              type="text"
+              value={query}
+              onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+              placeholder="Filter…"
+              class="w-36 rounded-lg border border-white/[0.08] bg-black/30 py-1.5 pl-8 pr-2 text-xs text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-sky-500/50"
+            />
+          </div>
+          <div class="flex rounded-lg border border-white/[0.08] bg-black/30 p-0.5">
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setFilter(t.id)}
+                class={`rounded-md px-2.5 py-1 text-[11px] font-medium transition ${
+                  filter === t.id
+                    ? 'bg-sky-500/20 text-sky-300'
+                    : 'text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
-      <div class="max-h-64 overflow-auto">
-        <table class="w-full min-w-[640px] text-left text-sm">
-          <thead class="sticky top-0 bg-slate-900 text-xs uppercase tracking-wide text-slate-500">
+
+      <div class="max-h-72 overflow-auto">
+        <table class="w-full min-w-[620px] text-left text-sm">
+          <thead class="sticky top-0 z-10 bg-[#0b1120]/95 text-[10px] uppercase tracking-wider text-slate-500 backdrop-blur">
             <tr>
-              <th class="px-4 py-2 font-medium">ID</th>
-              <th class="px-4 py-2 font-medium">Ext</th>
-              <th class="px-4 py-2 font-medium">Video</th>
-              <th class="px-4 py-2 font-medium">Audio</th>
-              <th class="px-4 py-2 font-medium">Res</th>
-              <th class="px-4 py-2 font-medium">FPS</th>
-              <th class="px-4 py-2 font-medium">Bitrate</th>
-              <th class="px-4 py-2 font-medium">~Size</th>
+              <th class="px-4 py-2 font-semibold">ID</th>
+              <th class="px-3 py-2 font-semibold">Type</th>
+              <th class="px-3 py-2 font-semibold">Video</th>
+              <th class="px-3 py-2 font-semibold">Audio</th>
+              <th class="px-3 py-2 font-semibold">Quality</th>
+              <th class="px-3 py-2 text-right font-semibold">Bitrate</th>
+              <th class="px-4 py-2 text-right font-semibold">Size</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-slate-800/70 text-slate-300">
-            {sorted.map((f) => (
-              <tr key={f.formatId} class="hover:bg-slate-800/50">
+          <tbody class="divide-y divide-white/[0.05] text-slate-300">
+            {visible.map((f) => (
+              <tr
+                key={`${f.formatId}-${f.ext}`}
+                class="transition-colors odd:bg-white/[0.015] hover:bg-sky-500/[0.06]"
+              >
                 <td class="px-4 py-1.5 font-mono text-xs text-sky-300">{f.formatId}</td>
-                <td class="px-4 py-1.5">{f.ext}</td>
-                <td class="px-4 py-1.5">{codecLabel(f.vcodec)}</td>
-                <td class="px-4 py-1.5">{codecLabel(f.acodec)}</td>
-                <td class="px-4 py-1.5">{f.height ? `${f.height}p` : 'audio'}</td>
-                <td class="px-4 py-1.5">{f.fps ?? '—'}</td>
-                <td class="px-4 py-1.5">
+                <td class="px-3 py-1.5">
+                  <span class="rounded border border-white/10 bg-white/[0.04] px-1.5 py-px text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                    {f.ext || '?'}
+                  </span>
+                </td>
+                <td class="px-3 py-1.5">
+                  <CodecPill codec={f.vcodec} kind="video" />
+                </td>
+                <td class="px-3 py-1.5">
+                  <CodecPill codec={f.acodec} kind="audio" />
+                </td>
+                <td class="px-3 py-1.5">
+                  <ResCell row={f} />
+                </td>
+                <td class="mf-num px-3 py-1.5 text-right text-xs text-slate-400">
                   {f.abrKbps
                     ? `${Math.round(f.abrKbps)}k`
                     : f.tbrKbps
                       ? `${Math.round(f.tbrKbps)}k`
                       : '—'}
                 </td>
-                <td class="px-4 py-1.5 text-slate-400">{fmtSize(f.filesizeBytes)}</td>
+                <td class="mf-num px-4 py-1.5 text-right text-xs text-slate-500">
+                  {fmtSize(f.filesizeBytes)}
+                </td>
               </tr>
             ))}
+            {visible.length === 0 && (
+              <tr>
+                <td colSpan={7} class="px-4 py-8 text-center text-xs text-slate-600">
+                  No streams match the current filter.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
