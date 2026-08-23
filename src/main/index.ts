@@ -13,6 +13,8 @@ import type {
   JobDonePayload,
   JobEvent,
 } from '../shared/ipcContract'
+import { MF_LOG_LINE } from '../shared/ipcContract'
+import { LogBus } from './logs/logBus'
 import { ERROR_MESSAGES } from '../shared/models'
 import { createLogger, type Logger } from './store/logger'
 import { SettingsStore } from './store/settingsStore'
@@ -108,10 +110,19 @@ app.whenReady().then(() => {
 
   const resolveCookiesPath = (): string | null => (existsSync(cookiesFile) ? cookiesFile : null)
 
+  const logBus = new LogBus()
+  logBus.subscribe((entry) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send(MF_LOG_LINE, entry)
+    }
+  })
+  const tapProcessLines = logBus.tap('yt-dlp')
+
   const analyzeService = new AnalyzeService({
     resolveYtDlp: () => binariesService.locate('yt-dlp'),
     logger,
     getCookiesPath: resolveCookiesPath,
+    onProcessLine: tapProcessLines,
   })
 
   const orchestrator = new DownloadOrchestrator({
@@ -120,6 +131,7 @@ app.whenReady().then(() => {
     tempRoot,
     logger,
     getCookiesPath: resolveCookiesPath,
+    onProcessLine: tapProcessLines,
   })
 
   const overrideDir = join(userDataDir, 'binaries', platformDirName(process.platform, process.arch))
@@ -168,9 +180,9 @@ app.whenReady().then(() => {
   registerIpcHandlers(
     {
       getBinariesInfo: () => binariesService.getInfo(),
-      analyze: async (url): Promise<AnalyzeResponse> => {
+      analyze: async (url, sendEntry): Promise<AnalyzeResponse> => {
         try {
-          return { kind: 'ok', result: await analyzeService.analyze(url) }
+          return { kind: 'ok', result: await analyzeService.analyze(url, sendEntry) }
         } catch (error) {
           const code = error instanceof MfError ? error.code : 'MF_UNKNOWN'
           return { kind: 'error', code, message: ERROR_MESSAGES[code] }
@@ -243,6 +255,12 @@ app.whenReady().then(() => {
       openLogsFolder: async () => {
         const result = await shell.openPath(logsDir)
         return result.length === 0
+      },
+      logHistory: () => ({ lines: logBus.tail(1000) }),
+      logClear: () => {
+        logBus.clear()
+        logger.info('live console cleared by user')
+        return { ok: true }
       },
       getSettings: () => {
         const s = settings.load()

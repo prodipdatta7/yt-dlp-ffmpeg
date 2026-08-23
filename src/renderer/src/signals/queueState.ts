@@ -23,3 +23,17 @@ export function resolveCurrentJob(status: 'completed' | 'cancelled' | 'failed'):
   doneResolver = null
   resolver?.(status)
 }
+
+const isSettled = (row: QueueRow): boolean =>
+  row.status === 'done' || row.status === 'failed' || row.status === 'cancelled'
+
+/** Removes completed/failed/cancelled rows; ignored while a queue run owns the row order. */
+export function clearSettledQueueRows(): void {
+  if (queueRunning.value) return
+  queueRows.value = queueRows.value.filter((row) => !isSettled(row))
+}
+
+export function removeQueueRow(url: string): void {
+  if (queueRunning.value) return
+  queueRows.value = queueRows.value.filter((row) => row.url !== url)
+}

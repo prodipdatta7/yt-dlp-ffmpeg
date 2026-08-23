@@ -8,8 +8,9 @@ import type {
 import type { LocatedBinary } from '../binaries/locator'
 import { spawnProcess, type SpawnHandle } from '../binaries/runner'
 import type { Logger } from '../store/logger'
+import type { AnalyzeStreamEvent } from '../../shared/ipcContract'
 import { classifyStderr } from './classifyStderr'
-import { buildAnalyzeArgs } from './argBuilders'
+import { buildAnalyzeArgs, buildEntryInfoArgs } from './argBuilders'
 import { cleanUrlForRetry, validateUrl } from './urlCleaner'
 
 export class MfError extends Error {
@@ -48,7 +49,16 @@ export interface RawInfo {
   is_live?: boolean
   live_status?: string
   formats?: RawFormat[]
-  entries?: Array<{ id?: string; title?: string; url?: string }>
+  entries?: Array<{
+    id?: string
+    title?: string
+    url?: string
+    duration?: number | null
+    view_count?: number | null
+    uploader?: string | null
+    channel?: string | null
+    thumbnail?: string | null
+  }>
 }
 
 function normalizeCodec(value: string | undefined): string | null {
@@ -75,6 +85,10 @@ export function mapRawInfo(raw: RawInfo, sourceUrl: string): AnalyzeResult {
         index: i + 1,
         title: e.title ?? e.id ?? `Entry ${i + 1}`,
         url: e.url ?? e.id ?? '',
+        durationSec: typeof e.duration === 'number' ? e.duration : null,
+        uploader: e.uploader ?? e.channel ?? null,
+        viewCount: typeof e.view_count === 'number' ? e.view_count : null,
+        thumbnailUrl: e.thumbnail ?? null,
       }))
       .filter((e) => e.url.length > 0)
     const metadata: MediaMetadata = {
@@ -130,24 +144,37 @@ export interface AnalyzeServiceOptions {
   resolveYtDlp: () => Promise<LocatedBinary | null>
   logger?: Logger
   getCookiesPath?: () => string | null
+  onEntryHydrated?: (event: Extract<AnalyzeStreamEvent, { kind: 'entry' }>) => void
+  /** Raw CLI line tap (stdout/stderr of yt-dlp) for the live console. */
+  onProcessLine?: (line: string, stream: 'out' | 'err') => void
 }
 
 const RETRYABLE_CODES = new Set(['MF_EXTRACTOR_STALE', 'MF_UNKNOWN'])
 
+/** Systemic per-entry failures abort the whole hydration pass instead of skipping. */
+const HYDRATION_ABORT_CODES = new Set(['MF_RATE_LIMITED', 'MF_BOT_CHECK', 'MF_AGE_RESTRICTED'])
+
+const ENTRY_INFO_TIMEOUT_MS = 30_000
+const HYDRATION_CONCURRENCY = 4
+
 export class AnalyzeService {
-  private activeHandle: SpawnHandle | null = null
+  private readonly activeHandles = new Set<SpawnHandle>()
   private cancelRequested = false
+  private entrySink: ((event: AnalyzeStreamEvent) => void) | null = null
 
   constructor(private readonly opts: AnalyzeServiceOptions) {}
 
   cancel(): void {
     this.cancelRequested = true
-    const handle = this.activeHandle
-    this.activeHandle = null
-    void handle?.killTree()
+    const handles = [...this.activeHandles]
+    this.activeHandles.clear()
+    for (const handle of handles) void handle.killTree()
   }
 
-  async analyze(rawUrl: string): Promise<AnalyzeResult> {
+  async analyze(
+    rawUrl: string,
+    onEntry?: (event: AnalyzeStreamEvent) => void,
+  ): Promise<AnalyzeResult> {
     const validation = validateUrl(rawUrl)
     if (!validation.ok) throw new MfError('MF_INVALID_URL')
 
@@ -155,9 +182,26 @@ export class AnalyzeService {
     if (!binary) throw new MfError('MF_UNKNOWN')
 
     this.cancelRequested = false
+    const legacySink = this.opts.onEntryHydrated
+    this.entrySink =
+      onEntry ??
+      (legacySink
+        ? (event) => {
+            if (event.kind === 'entry') legacySink(event)
+          }
+        : null)
+
+    const attempt = async (url: string): Promise<AnalyzeResult> => {
+      const result = await this.runOnce(binary.path, url, true)
+      if (result.kind === 'playlist' && (result.playlistEntries?.length ?? 0) > 0) {
+        this.entrySink?.({ kind: 'outline', result })
+        await this.hydrateEntries(binary.path, result.playlistEntries!)
+      }
+      return result
+    }
 
     try {
-      return await this.runOnce(binary.path, validation.url.toString())
+      return await attempt(validation.url.toString())
     } catch (error) {
       if (this.cancelRequested) throw new MfError('MF_CANCELLED')
       const firstError =
@@ -165,31 +209,47 @@ export class AnalyzeService {
       const retryUrl = cleanUrlForRetry(validation.url.toString())
       if (!retryUrl || !RETRYABLE_CODES.has(firstError.code)) throw firstError
       try {
-        return await this.runOnce(binary.path, retryUrl)
+        return await attempt(retryUrl)
       } catch {
         if (this.cancelRequested) throw new MfError('MF_CANCELLED')
         throw firstError
       }
+    } finally {
+      this.entrySink = null
     }
   }
 
-  private async runOnce(binaryPath: string, url: string): Promise<AnalyzeResult> {
-    const args = buildAnalyzeArgs(url, this.opts.getCookiesPath?.() ?? null)
+  private async runOnce(
+    binaryPath: string,
+    url: string,
+    flatPlaylist: boolean,
+  ): Promise<AnalyzeResult> {
+    const args = flatPlaylist
+      ? buildAnalyzeArgs(url, this.opts.getCookiesPath?.() ?? null)
+      : buildEntryInfoArgs(url, this.opts.getCookiesPath?.() ?? null)
     const stdoutLines: string[] = []
     const stderrLines: string[] = []
 
-    this.opts.logger?.debug('analyze spawn started', { url })
+    this.opts.logger?.debug('analyze spawn started', { url, flatPlaylist })
+    this.opts.onProcessLine?.(`$ yt-dlp ${args.join(' ')}`, 'out')
     const handle = spawnProcess(binaryPath, args, {
-      onStdoutLine: (line) => stdoutLines.push(line),
-      onStderrLine: (line) => stderrLines.push(line),
+      onStdoutLine: (line) => {
+        stdoutLines.push(line)
+        this.opts.onProcessLine?.(line, 'out')
+      },
+      onStderrLine: (line) => {
+        stderrLines.push(line)
+        this.opts.onProcessLine?.(line, 'err')
+      },
+      timeoutMs: flatPlaylist ? undefined : ENTRY_INFO_TIMEOUT_MS,
     })
-    this.activeHandle = handle
+    this.activeHandles.add(handle)
 
     let result
     try {
       result = await handle.result
     } finally {
-      this.activeHandle = null
+      this.activeHandles.delete(handle)
     }
 
     if (result.code !== 0) {
@@ -204,6 +264,56 @@ export class AnalyzeService {
     } catch {
       throw new MfError('MF_EXTRACTOR_STALE')
     }
-    return mapRawInfo(raw, url)
+
+    const mapped = mapRawInfo(raw, url)
+    return mapped
+  }
+
+  /**
+   * Fills in per-video details (thumbnail, duration, uploader, views) for every playlist
+   * entry so the UI can present each one like a single-video analysis. Failures on
+   * individual entries keep the bare preview row; systemic failures abort the pass.
+   */
+  private async hydrateEntries(binaryPath: string, entries: PlaylistEntryPreview[]): Promise<void> {
+    const total = entries.length
+    let completed = 0
+    let nextIndex = 0
+
+    const worker = async (): Promise<void> => {
+      while (true) {
+        if (this.cancelRequested) throw new MfError('MF_CANCELLED')
+        const i = nextIndex
+        if (i >= total) return
+        nextIndex += 1
+        const entry = entries[i]
+        try {
+          const info = await this.runOnce(binaryPath, entry.url, false)
+          entry.title = info.metadata.title !== 'Untitled' ? info.metadata.title : entry.title
+          entry.durationSec = info.metadata.durationSec
+          entry.uploader = info.metadata.uploader
+          entry.viewCount = info.metadata.viewCount
+          entry.thumbnailUrl = info.metadata.thumbnailUrl
+        } catch (error) {
+          if (this.cancelRequested) throw new MfError('MF_CANCELLED')
+          const code = error instanceof MfError ? error.code : 'MF_UNKNOWN'
+          if (HYDRATION_ABORT_CODES.has(code)) throw error
+          this.opts.logger?.debug('playlist entry hydration skipped', { index: entry.index, code })
+        }
+        completed += 1
+        const entryEvent: Extract<AnalyzeStreamEvent, { kind: 'entry' }> = {
+          kind: 'entry',
+          index: entry.index,
+          entry: { ...entry },
+          done: completed,
+          total,
+        }
+        this.entrySink?.(entryEvent)
+        this.opts.onEntryHydrated?.(entryEvent)
+      }
+    }
+
+    await Promise.all(
+      Array.from({ length: Math.min(HYDRATION_CONCURRENCY, total) }, () => worker()),
+    )
   }
 }

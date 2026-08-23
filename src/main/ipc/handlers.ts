@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import {
   MF_ANALYZE_CANCEL,
+  MF_ANALYZE_ENTRY,
   MF_ANALYZE_START,
   MF_BINARIES_INFO,
   MF_DOWNLOAD_CANCEL,
@@ -10,6 +11,8 @@ import {
   MF_JOB_DONE,
   MF_JOB_EVENT,
   MF_LOGS_OPEN,
+  MF_LOG_CLEAR,
+  MF_LOG_HISTORY,
   MF_PING,
   MF_SETTINGS_CLEAR_COOKIES,
   MF_SETTINGS_GET,
@@ -18,12 +21,14 @@ import {
   MF_UPDATER_APPLY,
   MF_UPDATER_CHECK,
   type AnalyzeResponse,
+  type AnalyzeStreamEvent,
   type BinariesInfoResult,
   type Container,
   type DownloadStartResponse,
   type JobConfig,
   type JobDonePayload,
   type JobEvent,
+  type LogEntryPayload,
   type PingResult,
 } from '../../shared/ipcContract'
 import {
@@ -43,7 +48,10 @@ const MAX_URL_LENGTH = 2048
 
 export interface IpcDeps {
   getBinariesInfo: () => Promise<BinariesInfoResult>
-  analyze: (url: string) => Promise<AnalyzeResponse>
+  analyze: (
+    url: string,
+    sendEntry?: (event: AnalyzeStreamEvent) => void,
+  ) => Promise<AnalyzeResponse>
   cancelAnalyze: () => { ok: boolean }
   startDownload: (
     config: JobConfig,
@@ -56,6 +64,8 @@ export interface IpcDeps {
   importCookies: () => Promise<boolean>
   clearCookies: () => boolean
   openLogsFolder: () => Promise<boolean>
+  logHistory: () => Promise<{ lines: LogEntryPayload[] }> | { lines: LogEntryPayload[] }
+  logClear: () => { ok: boolean }
   getSettings: () => { lastOutputDir: string; cookieFileSet: boolean; firstRunNoticeSeen: boolean }
   markFirstRunSeen: () => boolean
   updaterCheck: () => Promise<{
@@ -81,11 +91,15 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
 
   ipcMain.handle(MF_BINARIES_INFO, async (): Promise<BinariesInfoResult> => deps.getBinariesInfo())
 
-  ipcMain.handle(MF_ANALYZE_START, async (_event, payload: unknown): Promise<AnalyzeResponse> => {
+  ipcMain.handle(MF_ANALYZE_START, async (event, payload: unknown): Promise<AnalyzeResponse> => {
     const url = extractUrl(payload)
     if (!url) return invalidUrl()
+    const sender = event.sender
+    const sendEntry = (streamEvent: AnalyzeStreamEvent): void => {
+      if (!sender.isDestroyed()) sender.send(MF_ANALYZE_ENTRY, streamEvent)
+    }
     try {
-      return await deps.analyze(url)
+      return await deps.analyze(url, sendEntry)
     } catch (error) {
       const code = error instanceof MfError ? error.code : 'MF_UNKNOWN'
       logger?.warn('analyze failed', { code })
@@ -130,6 +144,10 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
   ipcMain.handle(MF_SETTINGS_IMPORT_COOKIES, () => deps.importCookies())
   ipcMain.handle(MF_SETTINGS_CLEAR_COOKIES, () => deps.clearCookies())
   ipcMain.handle(MF_LOGS_OPEN, () => deps.openLogsFolder())
+
+  ipcMain.handle(MF_LOG_HISTORY, () => deps.logHistory())
+
+  ipcMain.handle(MF_LOG_CLEAR, () => deps.logClear())
 
   ipcMain.handle(MF_SETTINGS_GET, () => deps.getSettings())
   ipcMain.handle(MF_SETTINGS_MARK_FIRST_RUN, () => deps.markFirstRunSeen())

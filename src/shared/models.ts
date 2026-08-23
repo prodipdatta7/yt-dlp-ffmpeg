@@ -55,6 +55,10 @@ export interface PlaylistEntryPreview {
   index: number
   title: string
   url: string
+  durationSec?: number | null
+  uploader?: string | null
+  viewCount?: number | null
+  thumbnailUrl?: string | null
 }
 
 export interface AnalyzeResult {

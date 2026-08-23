@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { buildAnalyzeArgs } from '../../src/main/media/argBuilders'
+import { buildAnalyzeArgs, buildEntryInfoArgs } from '../../src/main/media/argBuilders'
 import { mapRawInfo, type RawInfo } from '../../src/main/media/metadata'
 
 function loadFixture(name: string): RawInfo {
@@ -14,6 +14,16 @@ describe('buildAnalyzeArgs (AGENTS.md §7.1)', () => {
       '-J',
       '--no-warnings',
       '--flat-playlist',
+      'https://x.test/v',
+    ])
+  })
+
+  it('buildEntryInfoArgs omits flat-playlist for per-entry hydration', () => {
+    expect(buildEntryInfoArgs('https://x.test/v', 'C:\\cookies.txt')).toEqual([
+      '-J',
+      '--no-warnings',
+      '--cookies',
+      'C:\\cookies.txt',
       'https://x.test/v',
     ])
   })
@@ -78,6 +88,37 @@ describe('mapRawInfo vs playlist fixture (AM-07)', () => {
     expect(result.playlistEntries?.at(-1)?.title).toContain('Paxos')
     expect(result.formats).toHaveLength(0)
     expect(result.metadata.title).toBe('Distributed Systems Course')
+  })
+
+  it('keeps detail fields provided by flat entries for hydration parity', () => {
+    const raw: RawInfo = {
+      _type: 'playlist',
+      id: 'PL1',
+      title: 'Mixed',
+      entries: [
+        {
+          id: 'a',
+          title: 'Full entry',
+          url: 'https://x.test/a',
+          duration: 61,
+          view_count: 42,
+          uploader: 'Chan',
+        },
+        { id: 'b', title: 'Bare entry', url: 'https://x.test/b' },
+      ],
+    }
+    const res = mapRawInfo(raw, 'https://x.test/pl')
+    expect(res.playlistEntries?.[0]).toMatchObject({
+      durationSec: 61,
+      viewCount: 42,
+      uploader: 'Chan',
+    })
+    expect(res.playlistEntries?.[1]).toMatchObject({
+      durationSec: null,
+      viewCount: null,
+      uploader: null,
+      thumbnailUrl: null,
+    })
   })
 })
 

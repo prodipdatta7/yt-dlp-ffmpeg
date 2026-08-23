@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'preact/hooks'
 import type { FormatRow } from '../../../shared/models'
 import { fmtSize } from '../utils/format'
+import { FilmIcon, MusicIcon, SearchIcon } from './icons'
 
 type StreamFilter = 'all' | 'video' | 'audio'
 
@@ -34,7 +35,7 @@ function CodecPill({ codec, kind }: { codec: string | null; kind: 'video' | 'aud
   if (!codec) return <span class="text-slate-700">—</span>
   return (
     <span
-      class={`inline-flex items-center rounded border px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide ${kind === 'video' ? VIDEO_PILL : AUDIO_PILL}`}
+      class={`inline-flex items-center rounded-md border px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide ${kind === 'video' ? VIDEO_PILL : AUDIO_PILL}`}
     >
       {codecLabel(codec)}
     </span>
@@ -45,18 +46,7 @@ function ResCell({ row }: { row: FormatRow }) {
   if (!row.height) {
     return (
       <span class="inline-flex items-center gap-1 text-xs text-emerald-300/80">
-        <svg
-          viewBox="0 0 24 24"
-          class="size-3"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          aria-hidden="true"
-        >
-          <path d="M9 18V5l12-2v13" />
-          <circle cx="6" cy="18" r="3" />
-          <circle cx="18" cy="16" r="3" />
-        </svg>
+        <MusicIcon class="size-3" />
         audio
       </span>
     )
@@ -65,13 +55,23 @@ function ResCell({ row }: { row: FormatRow }) {
     <span class="mf-num text-sm font-semibold text-slate-100">
       {row.height}p
       {row.fps && row.fps > 30 ? (
-        <span class="ml-1 text-[10px] font-medium text-amber-300">{row.fps}fps</span>
+        <span class="ml-1 rounded bg-amber-500/10 px-1 py-px text-[10px] font-semibold text-amber-300">
+          {row.fps}fps
+        </span>
       ) : null}
     </span>
   )
 }
 
-export function FormatMatrix({ formats }: { formats: FormatRow[] }) {
+export function FormatMatrix({
+  formats,
+  onRowActivate,
+  pickedIds,
+}: {
+  formats: FormatRow[]
+  onRowActivate?: (row: FormatRow) => void
+  pickedIds?: ReadonlySet<string>
+}) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<StreamFilter>('all')
 
@@ -104,34 +104,30 @@ export function FormatMatrix({ formats }: { formats: FormatRow[] }) {
   ]
 
   return (
-    <div class="mf-card w-full max-w-3xl overflow-hidden">
+    <div class="mf-card mf-card-hover flex min-h-0 flex-1 flex-col overflow-hidden">
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-3">
         <div class="flex items-baseline gap-2">
-          <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Streams</h3>
+          <h3 class="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+            Available Streams
+          </h3>
           <span class="mf-num rounded-full border border-white/10 bg-white/[0.04] px-2 text-[11px] text-slate-400">
             {visible.length}/{formats.length}
           </span>
+          {onRowActivate && (
+            <span class="hidden rounded-full border border-sky-500/20 bg-sky-500/[0.06] px-2 py-0.5 text-[10px] font-medium text-sky-400/70 xl:inline">
+              double-click a row → Advanced
+            </span>
+          )}
         </div>
         <div class="flex items-center gap-2">
           <div class="relative">
-            <svg
-              class="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-600"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              aria-hidden="true"
-            >
-              <circle cx="11" cy="11" r="7" />
-              <path d="m21 21-4-4" />
-            </svg>
+            <SearchIcon class="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-600" />
             <input
               type="text"
               value={query}
               onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
-              placeholder="Filter…"
-              class="w-36 rounded-lg border border-white/[0.08] bg-black/30 py-1.5 pl-8 pr-2 text-xs text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-sky-500/50"
+              placeholder="Filter streams…"
+              class="w-40 rounded-lg border border-white/[0.08] bg-black/30 py-1.5 pl-8 pr-2 text-xs text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-sky-500/50"
             />
           </div>
           <div class="flex rounded-lg border border-white/[0.08] bg-black/30 p-0.5">
@@ -139,7 +135,8 @@ export function FormatMatrix({ formats }: { formats: FormatRow[] }) {
               <button
                 key={t.id}
                 onClick={() => setFilter(t.id)}
-                class={`rounded-md px-2.5 py-1 text-[11px] font-medium transition ${
+                aria-pressed={filter === t.id}
+                class={`mf-focus-ring rounded-md px-2.5 py-1 text-[11px] font-medium transition ${
                   filter === t.id
                     ? 'bg-sky-500/20 text-sky-300'
                     : 'text-slate-500 hover:text-slate-300'
@@ -152,52 +149,98 @@ export function FormatMatrix({ formats }: { formats: FormatRow[] }) {
         </div>
       </div>
 
-      <div class="max-h-72 overflow-auto">
+      <div class="min-h-0 flex-1 overflow-auto">
         <table class="w-full min-w-[620px] text-left text-sm">
-          <thead class="sticky top-0 z-10 bg-[#0b1120]/95 text-[10px] uppercase tracking-wider text-slate-500 backdrop-blur">
+          <thead class="sticky top-0 z-10 bg-[#0a0f1a]/95 text-[10px] uppercase tracking-wider text-slate-500 backdrop-blur">
             <tr>
-              <th class="px-4 py-2 font-semibold">ID</th>
-              <th class="px-3 py-2 font-semibold">Type</th>
-              <th class="px-3 py-2 font-semibold">Video</th>
-              <th class="px-3 py-2 font-semibold">Audio</th>
-              <th class="px-3 py-2 font-semibold">Quality</th>
-              <th class="px-3 py-2 text-right font-semibold">Bitrate</th>
-              <th class="px-4 py-2 text-right font-semibold">Size</th>
+              <th scope="col" class="px-4 py-2.5 font-semibold">
+                ID
+              </th>
+              <th scope="col" class="px-3 py-2.5 font-semibold">
+                Type
+              </th>
+              <th scope="col" class="px-3 py-2.5 font-semibold">
+                Video
+              </th>
+              <th scope="col" class="px-3 py-2.5 font-semibold">
+                Audio
+              </th>
+              <th scope="col" class="px-3 py-2.5 font-semibold">
+                Quality
+              </th>
+              <th scope="col" class="px-3 py-2.5 text-right font-semibold">
+                Bitrate
+              </th>
+              <th scope="col" class="px-4 py-2.5 text-right font-semibold">
+                Size
+              </th>
             </tr>
           </thead>
           <tbody class="divide-y divide-white/[0.05] text-slate-300">
-            {visible.map((f) => (
-              <tr
-                key={`${f.formatId}-${f.ext}`}
-                class="transition-colors odd:bg-white/[0.015] hover:bg-sky-500/[0.06]"
-              >
-                <td class="px-4 py-1.5 font-mono text-xs text-sky-300">{f.formatId}</td>
-                <td class="px-3 py-1.5">
-                  <span class="rounded border border-white/10 bg-white/[0.04] px-1.5 py-px text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                    {f.ext || '?'}
-                  </span>
-                </td>
-                <td class="px-3 py-1.5">
-                  <CodecPill codec={f.vcodec} kind="video" />
-                </td>
-                <td class="px-3 py-1.5">
-                  <CodecPill codec={f.acodec} kind="audio" />
-                </td>
-                <td class="px-3 py-1.5">
-                  <ResCell row={f} />
-                </td>
-                <td class="mf-num px-3 py-1.5 text-right text-xs text-slate-400">
-                  {f.abrKbps
-                    ? `${Math.round(f.abrKbps)}k`
-                    : f.tbrKbps
-                      ? `${Math.round(f.tbrKbps)}k`
-                      : '—'}
-                </td>
-                <td class="mf-num px-4 py-1.5 text-right text-xs text-slate-500">
-                  {fmtSize(f.filesizeBytes)}
-                </td>
-              </tr>
-            ))}
+            {visible.map((f) => {
+              const isVideo = f.vcodec !== null
+              const isAudioOnly = f.vcodec === null && f.acodec !== null
+              const picked = pickedIds?.has(f.formatId) === true
+              return (
+                <tr
+                  key={`${f.formatId}-${f.ext}`}
+                  title={
+                    onRowActivate
+                      ? 'Double-click to target this stream in Advanced mode'
+                      : undefined
+                  }
+                  onDblClick={() => onRowActivate?.(f)}
+                  aria-selected={picked}
+                  class={`transition-colors odd:bg-white/[0.015] ${onRowActivate ? 'cursor-pointer' : ''} ${
+                    picked ? 'bg-sky-500/[0.09] hover:bg-sky-500/[0.12]' : 'hover:bg-sky-500/[0.06]'
+                  }`}
+                >
+                  <td
+                    className={`px-4 py-1.5 font-mono text-xs ${
+                      picked ? 'font-bold text-sky-200' : 'text-sky-300'
+                    }`}
+                  >
+                    {picked ? '› ' : ''}
+                    {f.formatId}
+                  </td>
+                  <td class="px-3 py-1.5">
+                    <span
+                      class={`inline-flex items-center gap-1 rounded-md border px-1.5 py-px text-[10px] font-bold uppercase tracking-wide ${
+                        isVideo
+                          ? 'border-violet-500/25 bg-violet-500/10 text-violet-300'
+                          : 'border-white/10 bg-white/[0.04] text-slate-400'
+                      }`}
+                    >
+                      {isVideo ? (
+                        <FilmIcon class="size-2.5" />
+                      ) : isAudioOnly ? (
+                        <MusicIcon class="size-2.5" />
+                      ) : null}
+                      {f.ext || '?'}
+                    </span>
+                  </td>
+                  <td class="px-3 py-1.5">
+                    <CodecPill codec={f.vcodec} kind="video" />
+                  </td>
+                  <td class="px-3 py-1.5">
+                    <CodecPill codec={f.acodec} kind="audio" />
+                  </td>
+                  <td class="px-3 py-1.5">
+                    <ResCell row={f} />
+                  </td>
+                  <td class="mf-num px-3 py-1.5 text-right text-xs text-slate-400">
+                    {f.abrKbps
+                      ? `${Math.round(f.abrKbps)}k`
+                      : f.tbrKbps
+                        ? `${Math.round(f.tbrKbps)}k`
+                        : '—'}
+                  </td>
+                  <td class="mf-num px-4 py-1.5 text-right text-xs text-slate-500">
+                    {fmtSize(f.filesizeBytes)}
+                  </td>
+                </tr>
+              )
+            })}
             {visible.length === 0 && (
               <tr>
                 <td colSpan={7} class="px-4 py-8 text-center text-xs text-slate-600">

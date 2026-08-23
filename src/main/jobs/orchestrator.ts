@@ -46,6 +46,8 @@ export interface OrchestratorDeps {
   retryDelaysMs?: readonly number[]
   /** cookies.txt path appended as --cookies when present. */
   getCookiesPath?: () => string | null
+  /** Raw CLI line tap (stdout/stderr of yt-dlp) for the live console. */
+  onProcessLine?: (line: string, stream: 'out' | 'err') => void
 }
 
 export type SendEvent = (event: JobEvent) => void
@@ -218,10 +220,13 @@ export class DownloadOrchestrator {
           ...buildDownloadArgs(job.config, ffmpegPath, outputTemplateFor(job.tempDir), cookiesPath),
         ]
 
+        this.deps.onProcessLine?.(`$ yt-dlp ${args.join(' ')}`, 'out')
+
         const handle = spawnProcess(ytdlpPath, args, {
           onStdoutLine: (line) => {
             stdoutLines.push(line)
             allStdoutLines.push(line)
+            this.deps.onProcessLine?.(line, 'out')
 
             const post = parsePostprocessLine(line)
             if (post !== null) {
@@ -248,12 +253,19 @@ export class DownloadOrchestrator {
               emit(nextPhase, computeSegmentPercent(progress), progress.speedBps, progress.etaSec)
             }
           },
-          onStderrLine: (line) => stderrLines.push(line),
+          onStderrLine: (line) => {
+            stderrLines.push(line)
+            this.deps.onProcessLine?.(line, 'err')
+          },
         })
 
         job.handle = handle
         result = await handle.result
         job.handle = null
+        this.deps.onProcessLine?.(
+          `yt-dlp exited with code ${result.code ?? 'null'} (attempt ${attempt})`,
+          'out',
+        )
 
         if (job.cancelRequested) break
 

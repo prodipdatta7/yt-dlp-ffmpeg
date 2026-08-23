@@ -20,14 +20,20 @@ export function getWindowSecurityFlags(): WindowSecurityFlags {
 
 export function createWindowOptions(): BrowserWindowConstructorOptions {
   return {
-    width: 1120,
-    height: 720,
-    minWidth: 900,
-    minHeight: 600,
+    width: 1180,
+    height: 764,
+    minWidth: 960,
+    minHeight: 620,
     show: false,
     title: 'MediaForge Desktop',
-    backgroundColor: '#0b1220',
+    backgroundColor: '#05070d',
     autoHideMenuBar: true,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#05070d',
+      symbolColor: '#94a3b8',
+      height: 46,
+    },
     webPreferences: { ...SECURITY_FLAGS },
   }
 }
