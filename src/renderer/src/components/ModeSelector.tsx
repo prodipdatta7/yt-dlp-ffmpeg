@@ -170,7 +170,7 @@ export function ModeSelector({
   }
 
   return (
-    <div class="mf-card flex flex-col gap-3.5 p-4">
+    <div class="mf-card flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto p-4">
       <div class="grid grid-cols-3 gap-1 rounded-xl border border-white/[0.07] bg-black/30 p-1">
         {MODES.map(({ id, label, Icon }) => {
           const active = mode === id
@@ -240,7 +240,7 @@ export function ModeSelector({
                   aria-pressed={audioFormat === opt.id}
                   className={`mf-focus-ring rounded-lg border px-2.5 py-1 text-left transition-all duration-150 ${
                     audioFormat === opt.id
-                      ? 'border-sky-400/60 bg-sky-500/15 shadow-[0_0_10px_-4px_rgb(56_189_248/0.5)]'
+                      ? 'border-sky-400/60 bg-sky-500/15 shadow-[0_0_10px_-4px_var(--mf-glow)]'
                       : 'border-white/[0.08] bg-white/[0.03] hover:border-white/20'
                   } disabled:cursor-not-allowed disabled:opacity-50`}
                 >

@@ -18,7 +18,10 @@ export function getWindowSecurityFlags(): WindowSecurityFlags {
   return { ...SECURITY_FLAGS }
 }
 
-export function createWindowOptions(): BrowserWindowConstructorOptions {
+export function createWindowOptions(
+  theme: 'light' | 'dark' = 'dark',
+): BrowserWindowConstructorOptions {
+  const dark = theme === 'dark'
   return {
     width: 1180,
     height: 764,
@@ -26,12 +29,12 @@ export function createWindowOptions(): BrowserWindowConstructorOptions {
     minHeight: 620,
     show: false,
     title: 'MediaForge Desktop',
-    backgroundColor: '#05070d',
+    backgroundColor: dark ? '#04060b' : '#eef2f7',
     autoHideMenuBar: true,
     titleBarStyle: 'hidden',
     titleBarOverlay: {
-      color: '#05070d',
-      symbolColor: '#94a3b8',
+      color: dark ? '#05070d' : '#eef2f7',
+      symbolColor: dark ? '#94a3b8' : '#475569',
       height: 46,
     },
     webPreferences: { ...SECURITY_FLAGS },

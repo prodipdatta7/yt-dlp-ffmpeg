@@ -18,3 +18,15 @@ export function fmtSize(bytes: number | null): string {
   if (bytes === null || !Number.isFinite(bytes)) return '—'
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
+
+export function fmtSpeed(bps: number | null): string {
+  if (bps === null || !Number.isFinite(bps)) return '— MB/s'
+  return `${(bps / 1024 / 1024).toFixed(1)} MB/s`
+}
+
+export function fmtEta(sec: number | null): string {
+  if (sec === null || !Number.isFinite(sec) || sec < 0) return '—:—'
+  const m = Math.floor(sec / 60)
+  const s = Math.round(sec % 60)
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks'
 import type { UpdaterApplyResult, UpdaterCheckResult } from '../../../shared/ipcContract'
-import { CookieIcon, DocIcon, FolderIcon, RefreshIcon, ShieldIcon } from './icons'
+import { setThemePref, themePref, type ThemePref } from '../signals/uiState'
+import { CookieIcon, DocIcon, FolderIcon, PaletteIcon, RefreshIcon, ShieldIcon } from './icons'
 import { Pill } from './ui'
 
 function Section({
@@ -42,6 +43,7 @@ export function SettingsScreen() {
   const [settings, setSettings] = useState<{
     lastOutputDir: string
     cookieFileSet: boolean
+    theme: ThemePref
   } | null>(null)
   const [check, setCheck] = useState<UpdaterCheckResult | null>(null)
   const [apply, setApply] = useState<UpdaterApplyResult | null>(null)
@@ -54,6 +56,17 @@ export function SettingsScreen() {
       .then(setSettings)
       .catch(() => undefined)
   }, [])
+
+  async function chooseTheme(pref: ThemePref) {
+    setThemePref(pref)
+    setSettings((prev) => (prev ? { ...prev, theme: pref } : prev))
+    try {
+      const saved = await window.mf.setSettings({ theme: pref })
+      setSettings(saved)
+    } catch {
+      return
+    }
+  }
 
   async function browse() {
     const dir = await window.mf.chooseDestDir()
@@ -86,6 +99,35 @@ export function SettingsScreen() {
         <h2 class="text-lg font-bold tracking-tight text-white">Settings</h2>
         <Pill tone="sky">MediaForge v0.1.1</Pill>
       </header>
+
+      <Section
+        icon={<PaletteIcon class="size-4.5" />}
+        title="Appearance"
+        description="Pick a theme — System follows your Windows color scheme."
+      >
+        <div class="inline-flex rounded-xl border border-white/[0.08] bg-black/20 p-1">
+          {(
+            [
+              ['system', 'System'],
+              ['light', 'Light'],
+              ['dark', 'Dark'],
+            ] as Array<[ThemePref, string]>
+          ).map(([pref, label]) => (
+            <button
+              key={pref}
+              onClick={() => void chooseTheme(pref)}
+              aria-pressed={themePref.value === pref}
+              className={`mf-focus-ring rounded-lg px-4 py-1.5 text-xs font-semibold transition-all duration-150 ${
+                themePref.value === pref
+                  ? 'bg-gradient-to-br from-sky-500 to-indigo-500 text-white shadow shadow-sky-500/25'
+                  : 'text-slate-400 hover:bg-white/[0.05] hover:text-slate-200'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </Section>
 
       <Section
         icon={<FolderIcon class="size-4.5" />}

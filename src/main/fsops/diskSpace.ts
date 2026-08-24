@@ -13,9 +13,22 @@ export function existingAncestor(path: string): string {
 }
 
 export async function freeDiskSpaceBytes(targetPath: string): Promise<number | null> {
+  const stats = await statDrive(targetPath)
+  return stats?.free ?? null
+}
+
+export interface DriveStats {
+  free: number
+  total: number
+}
+
+export async function statDrive(targetPath: string): Promise<DriveStats | null> {
   try {
     const stats = await fsp.statfs(existingAncestor(targetPath))
-    return stats.bavail * stats.bsize
+    return {
+      free: stats.bavail * stats.bsize,
+      total: stats.blocks * stats.bsize,
+    }
   } catch {
     return null
   }

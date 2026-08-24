@@ -19,6 +19,7 @@ export const MF_DOWNLOAD_CANCEL = 'mf:download:cancel' as const
 export const MF_JOB_EVENT = 'mf:job:event' as const
 export const MF_JOB_DONE = 'mf:job:done' as const
 export const MF_DEFAULT_DEST_DIR = 'mf:default-dest-dir' as const
+export const MF_CLIPBOARD_URL = 'mf:clipboard:url' as const
 export const MF_DIALOG_CHOOSE_DIR = 'mf:dialog:choose-dir' as const
 export const MF_SETTINGS_IMPORT_COOKIES = 'mf:settings:import-cookies' as const
 export const MF_SETTINGS_CLEAR_COOKIES = 'mf:settings:clear-cookies' as const
@@ -29,6 +30,7 @@ export const MF_LOG_LINE = 'mf:log:line' as const
 export const MF_UPDATER_CHECK = 'mf:updater:check' as const
 export const MF_UPDATER_APPLY = 'mf:updater:apply' as const
 export const MF_SETTINGS_GET = 'mf:settings:get' as const
+export const MF_SETTINGS_SET = 'mf:settings:set' as const
 export const MF_SETTINGS_MARK_FIRST_RUN = 'mf:settings:mark-first-run' as const
 
 export interface PingResult {
@@ -70,6 +72,7 @@ export interface MfSettingsView {
   lastOutputDir: string
   cookieFileSet: boolean
   firstRunNoticeSeen: boolean
+  theme: 'system' | 'light' | 'dark'
 }
 
 export interface LogEntryPayload {
@@ -104,6 +107,7 @@ export interface MfApi {
   onJobEvent(listener: (event: JobEvent) => void): () => void
   onJobDone(listener: (done: JobDonePayload) => void): () => void
   getDefaultDestDir(): Promise<string>
+  getClipboardUrl(): Promise<string | null>
   chooseDestDir(): Promise<string | null>
   importCookies(): Promise<boolean>
   clearCookies(): Promise<boolean>
@@ -112,6 +116,9 @@ export interface MfApi {
   logClear(): Promise<{ ok: boolean }>
   onLogLine(listener: (entry: LogEntryPayload) => void): () => void
   getSettings(): Promise<MfSettingsView>
+  setSettings(
+    patch: Partial<Pick<MfSettingsView, 'theme' | 'lastOutputDir'>>,
+  ): Promise<MfSettingsView>
   markFirstRunSeen(): Promise<boolean>
   updaterCheck(): Promise<UpdaterCheckResult>
   updaterApply(): Promise<UpdaterApplyResult>

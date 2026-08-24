@@ -3,16 +3,22 @@ import { FormatMatrix } from './components/FormatMatrix'
 import { ModeSelector, type AdvancedPick, type JobSelection } from './components/ModeSelector'
 import { PipelineStatus } from './components/PipelineStatus'
 import { SettingsScreen } from './components/SettingsScreen'
-import { PreviewPanel } from './components/PreviewPanel'
+import {
+  DetailsGrid,
+  LoadingSkeleton,
+  PlaylistBanner,
+  PlaylistEntries,
+  VideoBanner,
+} from './components/PreviewPanel'
 import { QueueList } from './components/QueueList'
 import { UrlBar } from './components/UrlBar'
 import { LogConsole } from './components/LogConsole'
 import {
   DownloadIcon,
-  FilmIcon,
+  FolderIcon,
   GearIcon,
+  LinkIcon,
   LogoBolt,
-  PlayIcon,
   QueueIcon,
   ShieldIcon,
   SlidersIcon,
@@ -25,7 +31,13 @@ import {
   playlistHydration,
   resetAnalysis,
 } from './signals/appState'
-import { activeView, logDockOpen, toggleLogDock, type ViewId } from './signals/uiState'
+import {
+  activeView,
+  logDockOpen,
+  setThemePref,
+  toggleLogDock,
+  type ViewId,
+} from './signals/uiState'
 import { appendLogEntry, setLogHistory } from './signals/logState'
 import {
   activeJob,
@@ -58,17 +70,20 @@ function LogoMark() {
   )
 }
 
-function EngineBadge({ label, info }: { label: string; info: EngineInfo }) {
+function EngineBadge({ label, info, role }: { label: string; info: EngineInfo; role: string }) {
   if (!info.version || !info.source) {
     return (
-      <span class="flex items-center gap-1.5">
+      <span class="flex items-center gap-1.5" title={`${label}: missing — ${role}`}>
         <span class="size-1.5 rounded-full bg-red-500" />
         <span>{label}: missing</span>
       </span>
     )
   }
   return (
-    <span class="flex items-center gap-1.5" title={`source: ${info.source}`}>
+    <span
+      class="flex items-center gap-1.5"
+      title={`${label} ${info.version} (${info.source}) — ${role}`}
+    >
       <span class="size-1.5 rounded-full bg-emerald-500" />
       <span>
         {label} <span class="mf-num text-slate-400">{info.version}</span>
@@ -93,8 +108,12 @@ function EnginesStatus() {
 
   return (
     <span class="flex items-center gap-4">
-      <EngineBadge label="yt-dlp" info={info.ytdlp} />
-      <EngineBadge label="ffmpeg" info={info.ffmpeg} />
+      <EngineBadge label="yt-dlp" info={info.ytdlp} role="extracts info and downloads streams" />
+      <EngineBadge
+        label="ffmpeg"
+        info={info.ffmpeg}
+        role="driven by yt-dlp to merge video/audio and transcode audio"
+      />
     </span>
   )
 }
@@ -151,7 +170,7 @@ function TitleBar() {
     <header class="app-drag relative z-20 flex h-[46px] shrink-0 items-center gap-3 border-b border-white/[0.06] bg-ink-950/85 pl-4 pr-40 backdrop-blur">
       <LogoMark />
       <div class="flex items-baseline gap-2">
-        <h1 class="text-sm font-bold leading-none tracking-tight text-white">MediaForge</h1>
+        <h1 class="text-[15px] font-bold leading-none tracking-tight text-white">MediaForge</h1>
         <span class="text-[9px] font-semibold uppercase tracking-[0.22em] text-slate-600">
           Desktop
         </span>
@@ -197,30 +216,48 @@ function configFor(
   }
 }
 
+type StreamTab = 'entries' | 'streams' | 'details'
+
 function HeroState() {
-  const features = [
-    { Icon: FilmIcon, title: 'Analyze', text: 'Every stream mapped before you commit' },
-    { Icon: SlidersIcon, title: 'Configure', text: 'Resolution, container or raw format IDs' },
-    { Icon: DownloadIcon, title: 'Save', text: 'Muxed by FFmpeg, verified, delivered' },
-  ]
+  const focusUrl = (): void => {
+    window.dispatchEvent(new CustomEvent('mf:focus-url'))
+  }
   return (
     <div class="flex min-h-0 flex-1 items-center justify-center">
       <div class="w-full max-w-xl text-center">
-        <div class="mf-hairline mx-auto mb-6 flex size-16 items-center justify-center rounded-3xl">
-          <span class="flex size-full items-center justify-center rounded-3xl bg-gradient-to-br from-sky-500/25 to-indigo-500/20 shadow-inner">
-            <PlayIcon class="size-7 text-sky-200" />
+        <button
+          type="button"
+          onClick={focusUrl}
+          class="mf-focus-ring group mx-auto flex w-full cursor-pointer flex-col items-center rounded-2xl border border-dashed border-slate-600/60 bg-[var(--surface-card-lo)] px-6 py-9 transition-all duration-200 hover:border-sky-400/70 hover:bg-[var(--step-active-bg)]"
+        >
+          <span class="mf-hairline mb-4 flex size-14 items-center justify-center rounded-3xl transition-transform duration-200 group-hover:scale-105">
+            <span class="flex size-full items-center justify-center rounded-3xl bg-gradient-to-br from-go-500/25 to-indigo-500/20 shadow-inner">
+              <LinkIcon class="size-6 text-sky-400" />
+            </span>
           </span>
-        </div>
-        <h2 class="text-2xl font-bold tracking-tight text-white">Download anything.</h2>
-        <p class="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-slate-500">
-          Paste a link above — single videos, audio rips and full playlists all flow through the
-          same verified pipeline.
-        </p>
-        <div class="mt-8 grid grid-cols-3 gap-3">
-          {features.map(({ Icon, title, text }, i) => (
+          <p class="text-base font-bold tracking-tight text-white">
+            Paste a link, or drop one anywhere.
+          </p>
+          <p class="mt-1.5 max-w-sm text-xs leading-relaxed text-slate-500">
+            Single videos, audio rips and full playlists all flow through the same verified
+            pipeline. Press <kbd class="mf-kbd">Ctrl</kbd> <kbd class="mf-kbd">K</kbd> to jump to
+            the link bar.
+          </p>
+        </button>
+
+        <div class="mt-6 grid grid-cols-3 gap-3">
+          {[
+            { Icon: SlidersIcon, title: 'Analyze', text: 'Every stream mapped before you commit' },
+            {
+              Icon: DownloadIcon,
+              title: 'Configure',
+              text: 'Quality, container or raw format IDs',
+            },
+            { Icon: QueueIcon, title: 'Save', text: 'Muxed by FFmpeg, verified, delivered' },
+          ].map(({ Icon, title, text }, i) => (
             <div
               key={title}
-              class="mf-card mf-card-hover mf-rise p-4 text-left"
+              class="mf-card mf-card-hover mf-rise p-3.5 text-left"
               style={`animation-delay: ${80 + i * 70}ms`}
             >
               <span class="flex size-8 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.04] text-sky-300 shadow-inner">
@@ -231,7 +268,7 @@ function HeroState() {
             </div>
           ))}
         </div>
-        <div class="mt-6 flex flex-wrap items-center justify-center gap-1.5">
+        <div class="mt-5 flex flex-wrap items-center justify-center gap-1.5">
           {['YouTube', 'Vimeo', 'Twitch', 'SoundCloud', 'TikTok'].map((site) => (
             <span
               key={site}
@@ -251,13 +288,19 @@ export function App() {
   const [selection, setSelection] = useState<JobSelection | null>(null)
   const [advancedPick, setAdvancedPick] = useState<AdvancedPick | null>(null)
   const [selectedEntries, setSelectedEntries] = useState<ReadonlySet<string>>(new Set())
+  const [streamTab, setStreamTab] = useState<StreamTab>('streams')
   const [showNotice, setShowNotice] = useState(false)
   const scrollRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     window.mf
       .getSettings()
-      .then((s) => setShowNotice(!s.firstRunNoticeSeen))
+      .then((s) => {
+        setShowNotice(!s.firstRunNoticeSeen)
+        if (s.theme === 'light' || s.theme === 'dark' || s.theme === 'system') {
+          setThemePref(s.theme)
+        }
+      })
       .catch(() => undefined)
     window.mf
       .ping()
@@ -306,7 +349,10 @@ export function App() {
     playlistHydration.value = null
     if (r?.kind === 'playlist') {
       setSelectedEntries(new Set((r.playlistEntries ?? []).map((e) => e.url)))
+      setStreamTab('entries')
       scrollRef.current?.scrollTo({ top: 0 })
+    } else {
+      setStreamTab('streams')
     }
   }, [analysis.value?.metadata.id])
 
@@ -379,6 +425,7 @@ export function App() {
         for (let i = 0; i < entries.length; i += 1) {
           if (stopRequested.value) break
           const config = configFor(entries[i].url, selection, false, r.metadata.title)
+          lastJobEvent.value = null
           queueRows.value = queueRows.value.map((row, idx) =>
             idx === i ? { ...row, status: 'downloading' } : row,
           )
@@ -391,6 +438,11 @@ export function App() {
           }
           queueRows.value = queueRows.value.map((row, idx) =>
             idx === i ? { ...row, status: status === 'completed' ? 'done' : status } : row,
+          )
+        }
+        if (stopRequested.value) {
+          queueRows.value = queueRows.value.map((row) =>
+            row.status === 'pending' ? { ...row, status: 'cancelled' } : row,
           )
         }
       } finally {
@@ -407,6 +459,10 @@ export function App() {
     if (!config || busy) return
     lastFailedConfig.value = null
     await runSingleJob(config)
+  }
+
+  function stopAfterCurrent() {
+    stopRequested.value = true
   }
 
   function cancelActive() {
@@ -444,41 +500,90 @@ export function App() {
           </main>
         ) : activeView.value === 'queue' ? (
           <main class="mf-rise min-h-0 flex-1 overflow-y-auto px-6 py-8">
-            <QueueList onCancelActive={cancelActive} />
+            <QueueList onStopAfterCurrent={stopAfterCurrent} onCancelAll={cancelActive} />
           </main>
         ) : (
-          <main ref={scrollRef} class="flex min-h-0 flex-1 flex-col gap-3 px-5 pb-3 pt-4">
+          <main ref={scrollRef} class="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-3 pt-3.5">
             <UrlBar />
 
             {!analyzing.value && !result ? (
               <HeroState />
+            ) : analyzing.value && !result ? (
+              <div class="min-h-0 flex-1">
+                <LoadingSkeleton />
+              </div>
             ) : (
               <div class="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_380px] items-stretch gap-3 overflow-hidden">
-                <section class="flex min-h-0 flex-col gap-3">
-                  <PreviewPanel
-                    result={result}
-                    loading={analyzing.value && result === null}
-                    hydration={isPlaylist ? playlistHydration.value : null}
-                    selectedUrls={isPlaylist ? selectedEntries : undefined}
-                    onToggleEntry={isPlaylist ? toggleEntry : undefined}
-                    onToggleAll={isPlaylist ? toggleAll : undefined}
-                  />
-                  {result && (
-                    <FormatMatrix
-                      formats={result.formats}
-                      onRowActivate={handleStreamPick}
-                      pickedIds={
-                        selection?.mode === 'advanced'
-                          ? new Set(
-                              [selection.videoFormatId, selection.audioFormatId].filter(Boolean),
-                            )
-                          : undefined
-                      }
-                    />
+                <section class="flex min-h-0 flex-col gap-2.5">
+                  {isPlaylist ? (
+                    <PlaylistBanner result={result!} hydration={playlistHydration.value} />
+                  ) : (
+                    <VideoBanner result={result!} />
                   )}
+
+                  {(() => {
+                    const tabs: Array<{ id: StreamTab; label: string }> = isPlaylist
+                      ? [
+                          { id: 'entries', label: `Entries (${playlistTotal})` },
+                          { id: 'streams', label: `Streams (${result!.formats.length})` },
+                          { id: 'details', label: 'Details' },
+                        ]
+                      : [
+                          { id: 'streams', label: `Streams (${result!.formats.length})` },
+                          { id: 'details', label: 'Details' },
+                        ]
+                    return (
+                      <div
+                        role="tablist"
+                        aria-label="Analysis sections"
+                        class="flex shrink-0 gap-1 rounded-xl border border-white/[0.07] bg-black/25 p-1"
+                      >
+                        {tabs.map(({ id, label }) => (
+                          <button
+                            key={id}
+                            role="tab"
+                            aria-selected={streamTab === id}
+                            onClick={() => setStreamTab(id)}
+                            class={`mf-focus-ring flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${
+                              streamTab === id
+                                ? 'bg-gradient-to-br from-sky-500 to-indigo-500 text-white shadow shadow-go-500/25'
+                                : 'text-slate-400 hover:bg-white/[0.05] hover:text-white'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    )
+                  })()}
+
+                  <div class="flex min-h-0 flex-1 flex-col">
+                    {streamTab === 'entries' && isPlaylist && (
+                      <PlaylistEntries
+                        result={result!}
+                        selectedUrls={selectedEntries}
+                        onToggleEntry={toggleEntry}
+                        onToggleAll={toggleAll}
+                      />
+                    )}
+                    {streamTab === 'streams' && (
+                      <FormatMatrix
+                        formats={result!.formats}
+                        onRowActivate={handleStreamPick}
+                        pickedIds={
+                          selection?.mode === 'advanced'
+                            ? new Set(
+                                [selection.videoFormatId, selection.audioFormatId].filter(Boolean),
+                              )
+                            : undefined
+                        }
+                      />
+                    )}
+                    {streamTab === 'details' && <DetailsGrid result={result!} />}
+                  </div>
                 </section>
 
-                <aside class="flex min-h-0 flex-col gap-3 overflow-y-auto pb-1 pr-0.5">
+                <aside class="flex min-h-0 flex-col gap-3">
                   {result && (
                     <ModeSelector
                       key={result.metadata.id}
@@ -489,24 +594,28 @@ export function App() {
                       advancedPick={advancedPick}
                     />
                   )}
+
                   {result && (
-                    <div class="mt-auto flex flex-col gap-1.5 pt-1">
-                      <p
-                        class="truncate px-1 text-[11px] text-slate-500"
+                    <div class="mf-card shrink-0 p-3">
+                      <div
+                        class="flex items-center gap-2 rounded-lg border border-dashed border-slate-600/50 px-2.5 py-1.5"
                         title={
                           isPlaylist
                             ? `Saves into ${selection?.destDir ?? ''}\\${result.metadata.title}`
-                            : selection?.destDir
+                            : `Saves into ${selection?.destDir ?? ''}`
                         }
                       >
-                        {isPlaylist
-                          ? `${playlistSelected}/${playlistTotal} entries · ${selection?.destDir ?? ''}\\${result.metadata.title}`
-                          : (selection?.destDir ?? '')}
-                      </p>
+                        <FolderIcon class="size-3.5 shrink-0 text-slate-500" />
+                        <span class="mf-num min-w-0 flex-1 truncate text-[11px] text-slate-500">
+                          {isPlaylist
+                            ? `${playlistSelected}/${playlistTotal} entries · ${selection?.destDir ?? ''}`
+                            : (selection?.destDir ?? '')}
+                        </span>
+                      </div>
                       {busy ? (
                         <button
-                          onClick={cancelActive}
-                          class="shrink-0 rounded-xl bg-gradient-to-br from-rose-600 to-rose-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-rose-500/25 transition hover:brightness-110 active:scale-[0.98]"
+                          onClick={isPlaylist ? stopAfterCurrent : cancelActive}
+                          class="mt-2 w-full shrink-0 rounded-xl bg-gradient-to-br from-rose-600 to-rose-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-rose-500/25 transition hover:brightness-110 active:scale-[0.98]"
                         >
                           {isPlaylist ? 'Stop After Current' : 'Cancel Download'}
                         </button>
@@ -514,7 +623,7 @@ export function App() {
                         <button
                           onClick={() => void startDownload()}
                           disabled={!canStart}
-                          className={`mf-focus-ring shrink-0 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 px-5 py-3 text-sm font-bold text-slate-950 shadow-xl shadow-emerald-500/25 transition-all duration-150 hover:brightness-110 hover:shadow-emerald-400/30 active:scale-[0.98] ${
+                          className={`mf-focus-ring mt-2 w-full shrink-0 rounded-xl bg-gradient-to-r from-go-500 to-go-400 px-5 py-3 text-sm font-bold text-white shadow-xl shadow-go-500/30 transition-all duration-150 hover:brightness-110 hover:shadow-go-400/40 active:scale-[0.98] ${
                             canStart ? '' : 'cursor-not-allowed opacity-40 shadow-none'
                           }`}
                         >
@@ -531,7 +640,7 @@ export function App() {
               </div>
             )}
 
-            <PipelineStatus onRetry={() => void retryLastFailed()} />
+            <PipelineStatus onRetry={() => void retryLastFailed()} onCancel={cancelActive} />
           </main>
         )}
       </div>

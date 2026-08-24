@@ -115,7 +115,7 @@ export function FormatMatrix({
           </span>
           {onRowActivate && (
             <span class="hidden rounded-full border border-sky-500/20 bg-sky-500/[0.06] px-2 py-0.5 text-[10px] font-medium text-sky-400/70 xl:inline">
-              double-click a row → Advanced
+              click a row → Advanced
             </span>
           )}
         </div>
@@ -151,7 +151,7 @@ export function FormatMatrix({
 
       <div class="min-h-0 flex-1 overflow-auto">
         <table class="w-full min-w-[620px] text-left text-sm">
-          <thead class="sticky top-0 z-10 bg-[#0a0f1a]/95 text-[10px] uppercase tracking-wider text-slate-500 backdrop-blur">
+          <thead class="sticky top-0 z-10 bg-[var(--thead-bg)] text-[10px] uppercase tracking-wider text-slate-500 backdrop-blur">
             <tr>
               <th scope="col" class="px-4 py-2.5 font-semibold">
                 ID
@@ -184,12 +184,8 @@ export function FormatMatrix({
               return (
                 <tr
                   key={`${f.formatId}-${f.ext}`}
-                  title={
-                    onRowActivate
-                      ? 'Double-click to target this stream in Advanced mode'
-                      : undefined
-                  }
-                  onDblClick={() => onRowActivate?.(f)}
+                  title={onRowActivate ? 'Click to target this stream in Advanced mode' : undefined}
+                  onClick={() => onRowActivate?.(f)}
                   aria-selected={picked}
                   class={`transition-colors odd:bg-white/[0.015] ${onRowActivate ? 'cursor-pointer' : ''} ${
                     picked ? 'bg-sky-500/[0.09] hover:bg-sky-500/[0.12]' : 'hover:bg-sky-500/[0.06]'

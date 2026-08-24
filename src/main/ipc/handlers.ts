@@ -7,6 +7,7 @@ import {
   MF_DOWNLOAD_CANCEL,
   MF_DOWNLOAD_START,
   MF_DEFAULT_DEST_DIR,
+  MF_CLIPBOARD_URL,
   MF_DIALOG_CHOOSE_DIR,
   MF_JOB_DONE,
   MF_JOB_EVENT,
@@ -18,6 +19,7 @@ import {
   MF_SETTINGS_GET,
   MF_SETTINGS_IMPORT_COOKIES,
   MF_SETTINGS_MARK_FIRST_RUN,
+  MF_SETTINGS_SET,
   MF_UPDATER_APPLY,
   MF_UPDATER_CHECK,
   type AnalyzeResponse,
@@ -60,13 +62,25 @@ export interface IpcDeps {
   ) => Promise<DownloadStartResponse>
   cancelDownload: (jobId: string) => { ok: boolean }
   getDefaultDestDir: () => string
+  getClipboardUrl: () => Promise<string | null>
   chooseDirectory: () => Promise<string | null>
   importCookies: () => Promise<boolean>
   clearCookies: () => boolean
   openLogsFolder: () => Promise<boolean>
   logHistory: () => Promise<{ lines: LogEntryPayload[] }> | { lines: LogEntryPayload[] }
   logClear: () => { ok: boolean }
-  getSettings: () => { lastOutputDir: string; cookieFileSet: boolean; firstRunNoticeSeen: boolean }
+  getSettings: () => {
+    lastOutputDir: string
+    cookieFileSet: boolean
+    firstRunNoticeSeen: boolean
+    theme: 'system' | 'light' | 'dark'
+  }
+  setSettings: (patch: { theme?: 'system' | 'light' | 'dark'; lastOutputDir?: string }) => {
+    lastOutputDir: string
+    cookieFileSet: boolean
+    firstRunNoticeSeen: boolean
+    theme: 'system' | 'light' | 'dark'
+  }
   markFirstRunSeen: () => boolean
   updaterCheck: () => Promise<{
     current: string | null
@@ -139,6 +153,8 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
 
   ipcMain.handle(MF_DEFAULT_DEST_DIR, () => deps.getDefaultDestDir())
 
+  ipcMain.handle(MF_CLIPBOARD_URL, () => deps.getClipboardUrl())
+
   ipcMain.handle(MF_DIALOG_CHOOSE_DIR, () => deps.chooseDirectory())
 
   ipcMain.handle(MF_SETTINGS_IMPORT_COOKIES, () => deps.importCookies())
@@ -150,6 +166,18 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
   ipcMain.handle(MF_LOG_CLEAR, () => deps.logClear())
 
   ipcMain.handle(MF_SETTINGS_GET, () => deps.getSettings())
+
+  ipcMain.handle(MF_SETTINGS_SET, (_event, payload: unknown) => {
+    const patch: { theme?: 'system' | 'light' | 'dark'; lastOutputDir?: string } = {}
+    if (payload && typeof payload === 'object') {
+      const raw = payload as Record<string, unknown>
+      if (raw.theme === 'system' || raw.theme === 'light' || raw.theme === 'dark') {
+        patch.theme = raw.theme
+      }
+      if (typeof raw.lastOutputDir === 'string') patch.lastOutputDir = raw.lastOutputDir
+    }
+    return deps.setSettings(patch)
+  })
   ipcMain.handle(MF_SETTINGS_MARK_FIRST_RUN, () => deps.markFirstRunSeen())
   ipcMain.handle(MF_UPDATER_CHECK, () => deps.updaterCheck())
   ipcMain.handle(MF_UPDATER_APPLY, () => deps.updaterApply())

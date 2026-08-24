@@ -1,11 +1,16 @@
 import type { AnalyzeResult } from '../../../shared/models'
-import { fmtCount, fmtDuration } from '../utils/format'
+import { fmtCount, fmtDuration, fmtEta, fmtSpeed } from '../utils/format'
+import { activeJob, lastJobEvent } from '../signals/jobState'
+import { queueRows } from '../signals/queueState'
 import {
+  AlertIcon,
   CalendarIcon,
   CheckIcon,
   ClockIcon,
+  CloseIcon,
   EyeIcon,
   FolderIcon,
+  GaugeIcon,
   LayersIcon,
   PlayIcon,
   QueueIcon,
@@ -15,7 +20,7 @@ import { Pill, StatTile } from './ui'
 
 function LiveBadge() {
   return (
-    <span class="absolute left-2.5 top-2.5 flex items-center gap-1.5 rounded-full bg-rose-600/95 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-lg">
+    <span class="absolute left-2 top-2 flex items-center gap-1.5 rounded-full bg-rose-600/95 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-lg">
       <span class="mf-breathe size-1.5 rounded-full bg-white" />
       Live
     </span>
@@ -25,13 +30,13 @@ function LiveBadge() {
 function DurationBadge({ seconds }: { seconds: number | null }) {
   if (seconds === null) return null
   return (
-    <span class="mf-num absolute bottom-2 right-2 rounded-md bg-black/80 px-1.5 py-0.5 text-[11px] font-semibold text-white backdrop-blur-sm">
+    <span class="mf-num absolute bottom-1.5 right-1.5 rounded-md bg-scrim/80 px-1.5 py-0.5 text-[11px] font-semibold text-paper backdrop-blur-sm">
       {fmtDuration(seconds)}
     </span>
   )
 }
 
-function CheckSquare({ checked, partial = false }: { checked: boolean; partial?: boolean }) {
+export function CheckSquare({ checked, partial = false }: { checked: boolean; partial?: boolean }) {
   return (
     <span
       class={`flex size-4 shrink-0 items-center justify-center rounded border transition-colors duration-150 ${
@@ -47,7 +52,24 @@ function CheckSquare({ checked, partial = false }: { checked: boolean; partial?:
   )
 }
 
-function LoadingSkeleton() {
+function ThumbFrame({
+  children,
+  className = '',
+}: {
+  children?: preact.ComponentChildren
+  className?: string
+}) {
+  return (
+    <div
+      className={`group relative shrink-0 overflow-hidden rounded-xl border border-white/10 shadow-[0_10px_24px_-12px_rgb(67_45_20/0.45)] ${className}`}
+    >
+      {children}
+      <div class="pointer-events-none absolute inset-0 rounded-xl ring-1 ring-inset ring-white/10" />
+    </div>
+  )
+}
+
+export function LoadingSkeleton() {
   return (
     <div class="mf-card w-full p-5">
       <div class="flex flex-col gap-5 sm:flex-row">
@@ -69,92 +91,128 @@ function LoadingSkeleton() {
   )
 }
 
-function EmptyState() {
-  return (
-    <div class="rounded-2xl border border-dashed border-slate-700/50 px-6 py-12 text-center">
-      <span class="mx-auto mb-4 flex size-12 items-center justify-center rounded-2xl border border-white/[0.07] bg-white/[0.03] shadow-inner">
-        <PlayIcon class="size-5 text-slate-600" />
-      </span>
-      <p class="text-sm font-medium text-slate-300">Nothing analyzed yet</p>
-      <p class="mx-auto mt-1.5 max-w-sm text-xs leading-relaxed text-slate-600">
-        Paste a link above and hit Analyze — MediaForge maps every available stream before you
-        commit to a download.
-      </p>
-      <div class="mt-4 flex flex-wrap items-center justify-center gap-1.5">
-        {['YouTube', 'Vimeo', 'Twitch', 'SoundCloud', 'TikTok'].map((site) => (
-          <Pill key={site}>{site}</Pill>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function VideoCard({ result }: { result: AnalyzeResult }) {
+/** Horizontal banner for a single video — pairs with the tabbed panel below it. */
+export function VideoBanner({ result }: { result: AnalyzeResult }) {
   const { metadata } = result
+  const chips: Array<{ Icon: typeof ClockIcon; text: string }> = []
+  if (metadata.durationSec !== null)
+    chips.push({ Icon: ClockIcon, text: fmtDuration(metadata.durationSec) })
+  if (metadata.viewCount !== null)
+    chips.push({ Icon: EyeIcon, text: `${fmtCount(metadata.viewCount)} views` })
+  if (metadata.uploadDate) chips.push({ Icon: CalendarIcon, text: metadata.uploadDate })
+  chips.push({ Icon: LayersIcon, text: `${result.formats.length} streams` })
+
   return (
-    <div class="mf-card mf-card-hover p-4">
-      <div class="flex flex-col gap-4 sm:flex-row">
-        {metadata.thumbnailUrl && (
-          <div class="group relative shrink-0 overflow-hidden rounded-xl border border-white/10 shadow-lg shadow-black/40 sm:w-56">
-            <img
-              src={metadata.thumbnailUrl}
-              alt=""
-              class="aspect-video w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
-            />
-            <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />
-            {metadata.isLive ? <LiveBadge /> : <DurationBadge seconds={metadata.durationSec} />}
-            <div class="pointer-events-none absolute inset-0 rounded-xl ring-1 ring-inset ring-white/10" />
-          </div>
-        )}
+    <div class="mf-card mf-card-hover flex shrink-0 items-stretch gap-4 p-3.5">
+      {metadata.thumbnailUrl ? (
+        <ThumbFrame className="w-44 sm:w-52">
+          <img
+            src={metadata.thumbnailUrl}
+            alt=""
+            class="aspect-video size-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
+          />
+          <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-scrim/45 via-transparent to-transparent" />
+          {metadata.isLive ? <LiveBadge /> : <DurationBadge seconds={metadata.durationSec} />}
+        </ThumbFrame>
+      ) : (
+        <ThumbFrame className="flex w-44 items-center justify-center sm:w-52">
+          <span class="flex aspect-video size-full items-center justify-center bg-gradient-to-br from-sky-500/20 to-indigo-500/15">
+            <PlayIcon class="size-6 text-slate-400" />
+          </span>
+          {metadata.isLive ? <LiveBadge /> : <DurationBadge seconds={metadata.durationSec} />}
+        </ThumbFrame>
+      )}
 
-        <div class="min-w-0 flex-1">
-          <h2
-            class="line-clamp-2 text-base font-semibold leading-snug tracking-tight text-white"
-            title={metadata.title}
-          >
-            {metadata.title}
-          </h2>
-          <p class="mt-0.5 truncate text-[13px] font-medium text-sky-300/90">
-            {metadata.uploader ?? 'Unknown channel'}
-          </p>
-
-          <div class="mt-3 grid grid-cols-4 gap-2">
-            <StatTile
-              icon={<ClockIcon class="size-3" />}
-              label="Duration"
-              value={fmtDuration(metadata.durationSec)}
-            />
-            <StatTile
-              icon={<EyeIcon class="size-3" />}
-              label="Views"
-              value={fmtCount(metadata.viewCount)}
-            />
-            <StatTile
-              icon={<CalendarIcon class="size-3" />}
-              label="Uploaded"
-              value={metadata.uploadDate ?? '—'}
-            />
-            <StatTile
-              icon={<LayersIcon class="size-3" />}
-              label="Streams"
-              value={result.formats.length ? String(result.formats.length) : '—'}
-            />
-          </div>
+      <div class="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
+        <h2
+          class="line-clamp-2 text-lg font-bold leading-snug tracking-tight text-white"
+          title={metadata.title}
+        >
+          {metadata.title}
+        </h2>
+        <p class="truncate text-[13px] font-medium text-sky-300/90">
+          {metadata.uploader ?? 'Unknown channel'}
+        </p>
+        <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-medium text-slate-500">
+          {chips.map(({ Icon, text }, i) => (
+            <span key={i} class="inline-flex items-center gap-1.5">
+              <Icon class="size-3 shrink-0" />
+              <span class="mf-num">{text}</span>
+            </span>
+          ))}
+          {metadata.isLive && (
+            <Pill tone="rose">
+              <span class="mf-breathe size-1.5 rounded-full bg-current" />
+              live now
+            </Pill>
+          )}
         </div>
       </div>
     </div>
   )
 }
 
-interface PlaylistCardProps {
+/** Compact header banner for playlists — pairs with the tabbed panel below it. */
+export function PlaylistBanner({
+  result,
+  hydration,
+}: {
   result: AnalyzeResult
   hydration?: { done: number; total: number } | null
-  selectedUrls?: ReadonlySet<string>
-  onToggleEntry?: (url: string) => void
-  onToggleAll?: (select: boolean) => void
+}) {
+  const { metadata } = result
+  const total = (result.playlistEntries ?? []).length
+  const hydrating = !!hydration && hydration.done < hydration.total
+
+  return (
+    <div class="mf-card mf-card-hover flex shrink-0 items-center gap-3.5 p-3.5">
+      {metadata.thumbnailUrl ? (
+        <img
+          src={metadata.thumbnailUrl}
+          alt=""
+          class="size-14 shrink-0 rounded-xl border border-white/10 object-cover shadow-[0_10px_24px_-12px_rgb(67_45_20/0.45)]"
+        />
+      ) : (
+        <span class="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-sky-400/25 bg-gradient-to-br from-sky-500/30 via-indigo-500/25 to-violet-500/20 shadow-inner">
+          <LayersIcon class="size-6 text-white/85" />
+          <span class="pointer-events-none absolute inset-0 rounded-xl ring-1 ring-inset ring-white/15" />
+        </span>
+      )}
+      <div class="min-w-0 flex-1">
+        <div class="mb-1 flex flex-wrap items-center gap-2">
+          <Pill tone="violet">
+            <LayersIcon class="size-3" />
+            Playlist
+          </Pill>
+          <Pill>{total} entries</Pill>
+          {hydrating && (
+            <Pill tone="sky">
+              <Spinner class="size-3" />
+              fetching details {hydration!.done}/{hydration!.total}
+            </Pill>
+          )}
+        </div>
+        <h2
+          class="line-clamp-1 text-base font-semibold leading-snug tracking-tight text-white"
+          title={metadata.title}
+        >
+          {metadata.title}
+        </h2>
+        <p class="truncate text-[12.5px] font-medium text-sky-300/90">
+          {metadata.uploader ?? 'Unknown channel'}
+        </p>
+      </div>
+    </div>
+  )
 }
 
-function EntryThumb({ url, durationSec }: { url: string | null; durationSec: number | null }) {
+export function EntryThumb({
+  url,
+  durationSec,
+}: {
+  url: string | null
+  durationSec: number | null
+}) {
   return (
     <span class="relative block h-9 w-16 shrink-0 overflow-hidden rounded-md border border-white/10 bg-black/40">
       {url ? (
@@ -165,7 +223,7 @@ function EntryThumb({ url, durationSec }: { url: string | null; durationSec: num
         </span>
       )}
       {durationSec !== null && durationSec !== undefined && (
-        <span class="mf-num absolute bottom-0 right-0 rounded-tl-md bg-black/85 px-1 py-px text-[9px] font-semibold leading-none text-white">
+        <span class="mf-num absolute bottom-0 right-0 rounded-tl-md bg-scrim/85 px-1 py-px text-[9px] font-semibold leading-none text-paper">
           {fmtDuration(durationSec)}
         </span>
       )}
@@ -173,156 +231,193 @@ function EntryThumb({ url, durationSec }: { url: string | null; durationSec: num
   )
 }
 
-function PlaylistCard({
+/** Scrollable entry list for playlists — lives inside the Entries tab. */
+export function PlaylistEntries({
   result,
-  hydration,
   selectedUrls,
   onToggleEntry,
   onToggleAll,
-}: PlaylistCardProps) {
-  const { metadata } = result
+}: {
+  result: AnalyzeResult
+  selectedUrls?: ReadonlySet<string>
+  onToggleEntry?: (url: string) => void
+  onToggleAll?: (select: boolean) => void
+}) {
   const entries = result.playlistEntries ?? []
   const total = entries.length
   const selectedCount = entries.filter((e) => selectedUrls?.has(e.url) ?? true).length
   const allSelected = total > 0 && selectedCount === total
   const someSelected = selectedCount > 0 && !allSelected
-  const hydrating = !!hydration && hydration.done < hydration.total
+
+  const statusByUrl = new Map(queueRows.value.map((r) => [r.url, r.status] as const))
+  const liveUrl = activeJob.value?.config.url ?? null
+  const liveEvent = liveUrl !== null ? lastJobEvent.value : null
+  const livePercent =
+    liveEvent?.percent !== null && liveEvent?.percent !== undefined
+      ? Math.max(2, Math.min(100, liveEvent.percent))
+      : null
+
+  function statusGlyph(status: string) {
+    if (status === 'done') return <CheckIcon class="size-4 shrink-0 text-emerald-400" />
+    if (status === 'failed') return <AlertIcon class="size-4 shrink-0 text-rose-400" />
+    if (status === 'cancelled') return <CloseIcon class="size-4 shrink-0 text-amber-400" />
+    if (status === 'downloading') return <Spinner class="size-4 shrink-0 text-sky-400" />
+    return null
+  }
 
   return (
-    <div class="mf-card overflow-hidden">
-      <div class="flex items-start gap-3.5 p-4 pb-3">
-        {metadata.thumbnailUrl ? (
-          <img
-            src={metadata.thumbnailUrl}
-            alt=""
-            class="size-14 shrink-0 rounded-xl border border-white/10 object-cover shadow-lg shadow-black/40"
-          />
-        ) : (
-          <span class="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-sky-400/25 bg-gradient-to-br from-sky-500/30 via-indigo-500/25 to-violet-500/20 shadow-inner">
-            <LayersIcon class="size-6 text-white/85" />
-            <span class="pointer-events-none absolute inset-0 rounded-xl ring-1 ring-inset ring-white/15" />
-          </span>
-        )}
-
-        <div class="min-w-0 flex-1">
-          <div class="mb-1 flex flex-wrap items-center gap-2">
-            <Pill tone="violet">
-              <LayersIcon class="size-3" />
-              Playlist
-            </Pill>
-            <Pill>{total} entries</Pill>
-            {hydrating && (
-              <Pill tone="sky">
-                <Spinner class="size-3" />
-                fetching details {hydration.done}/{hydration.total}
-              </Pill>
-            )}
-          </div>
-          <h2
-            class="line-clamp-1 text-base font-semibold leading-snug tracking-tight text-white"
-            title={metadata.title}
-          >
-            {metadata.title}
-          </h2>
-          <p class="truncate text-[13px] font-medium text-sky-300/90">
-            {metadata.uploader ?? 'Unknown channel'}
-          </p>
-        </div>
+    <div class="mf-card flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div class="flex items-center justify-between gap-3 px-3 pt-2.5">
+        <button
+          onClick={() => onToggleAll?.(!allSelected)}
+          disabled={!onToggleAll || total === 0}
+          class="group mf-focus-ring -ml-1 flex items-center gap-2 rounded-md px-1 py-0.5 text-xs font-medium text-slate-400 transition hover:text-white"
+        >
+          <CheckSquare checked={allSelected} partial={someSelected} />
+          {allSelected ? 'Deselect all' : 'Select all'}
+        </button>
+        <span class="mf-num text-[11px] font-medium text-slate-500">
+          {selectedCount}/{total}
+        </span>
+      </div>
+      <div class="mx-3 mt-1.5 h-0.5 overflow-hidden rounded-full bg-white/[0.06]">
+        <div
+          class="h-full rounded-full bg-gradient-to-r from-violet-500 to-sky-400 transition-[width] duration-300"
+          style={`width: ${total === 0 ? 0 : (selectedCount / total) * 100}%`}
+        />
       </div>
 
-      <div class="px-4">
-        <div class="overflow-hidden rounded-xl border border-white/[0.07] bg-black/25">
-          <div class="flex items-center justify-between gap-3 px-3 py-2">
-            <button
-              onClick={() => onToggleAll?.(!allSelected)}
-              disabled={!onToggleAll || total === 0}
-              class="group mf-focus-ring -ml-1 flex items-center gap-2 rounded-md px-1 py-0.5 text-xs font-medium text-slate-400 transition hover:text-white"
-            >
-              <CheckSquare checked={allSelected} partial={someSelected} />
-              {allSelected ? 'Deselect all' : 'Select all'}
-            </button>
-            <span class="mf-num text-[11px] font-medium text-slate-500">
-              {selectedCount}/{total}
-            </span>
-          </div>
-          <div class="mx-3 h-0.5 overflow-hidden rounded-full bg-white/[0.06]">
-            <div
-              class="h-full rounded-full bg-gradient-to-r from-violet-500 to-sky-400 transition-[width] duration-300"
-              style={`width: ${total === 0 ? 0 : (selectedCount / total) * 100}%`}
-            />
-          </div>
-
-          {total > 0 ? (
-            <ol class="max-h-[320px] space-y-0.5 overflow-y-auto p-1.5 text-[13px]">
-              {entries.map((entry) => {
-                const checked = selectedUrls?.has(entry.url) ?? true
-                const row = (
-                  <>
-                    <CheckSquare checked={checked} />
-                    <span
-                      className={`mf-num w-7 shrink-0 text-right text-[10px] font-semibold ${
-                        checked ? 'text-sky-400/70' : 'text-slate-700'
-                      }`}
-                    >
-                      {String(entry.index).padStart(2, '0')}
-                    </span>
-                    <EntryThumb
-                      url={entry.thumbnailUrl ?? null}
-                      durationSec={entry.durationSec ?? null}
-                    />
-                    <span class="min-w-0 flex-1">
-                      <span
-                        className={`block truncate leading-tight transition-opacity duration-150 ${
-                          checked ? 'text-slate-200' : 'text-slate-600'
+      {total > 0 ? (
+        <ol class="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-1.5 text-[13px]">
+          {entries.map((entry) => {
+            const checked = selectedUrls?.has(entry.url) ?? true
+            const rowStatus = statusByUrl.get(entry.url)
+            const isLive = entry.url === liveUrl
+            const glyph = rowStatus ? statusGlyph(rowStatus) : null
+            const row = (
+              <>
+                {glyph ?? <CheckSquare checked={checked} />}
+                <span
+                  className={`mf-num w-7 shrink-0 text-right text-[10px] font-semibold ${
+                    rowStatus === 'done'
+                      ? 'text-emerald-400/80'
+                      : isLive
+                        ? 'text-sky-400'
+                        : checked
+                          ? 'text-sky-400/70'
+                          : 'text-slate-700'
+                  }`}
+                >
+                  {String(entry.index).padStart(2, '0')}
+                </span>
+                <EntryThumb
+                  url={entry.thumbnailUrl ?? null}
+                  durationSec={entry.durationSec ?? null}
+                />
+                <span class="min-w-0 flex-1">
+                  <span
+                    className={`block truncate leading-tight transition-opacity duration-150 ${
+                      rowStatus === 'downloading'
+                        ? 'font-medium text-slate-100'
+                        : checked
+                          ? 'text-slate-200'
+                          : 'text-slate-600'
+                    }`}
+                  >
+                    {entry.title}
+                  </span>
+                  <span className="mt-0.5 flex items-center gap-1.5 text-[10.5px] leading-tight text-slate-500">
+                    {entry.uploader ? (
+                      <span class="truncate">{entry.uploader}</span>
+                    ) : (
+                      <span class="italic text-slate-700">fetching…</span>
+                    )}
+                    {entry.viewCount !== null && entry.viewCount !== undefined && (
+                      <>
+                        <span class="text-slate-700">·</span>
+                        <EyeIcon class="size-2.5 shrink-0" />
+                        <span class="mf-num shrink-0">{fmtCount(entry.viewCount)}</span>
+                      </>
+                    )}
+                  </span>
+                </span>
+                {rowStatus && rowStatus !== 'downloading' && (
+                  <span
+                    className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+                      rowStatus === 'done'
+                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                        : rowStatus === 'failed'
+                          ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+                          : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                    }`}
+                  >
+                    {rowStatus}
+                  </span>
+                )}
+              </>
+            )
+            if (isLive) {
+              return (
+                <li
+                  key={entry.url}
+                  class="rounded-lg border border-sky-500/25 bg-sky-500/[0.07] px-2 py-1.5"
+                >
+                  <div class="flex items-center gap-3">{row}</div>
+                  <div class="mt-1.5 flex items-center gap-2.5 pl-[52px]">
+                    <div class="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-500/20">
+                      <div
+                        role="progressbar"
+                        aria-valuenow={livePercent !== null ? Math.round(livePercent) : undefined}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-label={`${entry.title} download progress`}
+                        class={`relative h-full rounded-full bg-gradient-to-r from-go-500 to-go-400 transition-[width] duration-500 ease-out ${
+                          livePercent !== null && livePercent < 100 ? 'mf-progress-fill' : ''
                         }`}
-                      >
-                        {entry.title}
-                      </span>
-                      <span className="mt-0.5 flex items-center gap-1.5 text-[10.5px] leading-tight text-slate-500">
-                        {entry.uploader ? (
-                          <span class="truncate">{entry.uploader}</span>
-                        ) : (
-                          <span class="italic text-slate-700">fetching…</span>
-                        )}
-                        {entry.viewCount !== null && entry.viewCount !== undefined && (
-                          <>
-                            <span class="text-slate-700">·</span>
-                            <EyeIcon class="size-2.5 shrink-0" />
-                            <span class="mf-num shrink-0">{fmtCount(entry.viewCount)}</span>
-                          </>
-                        )}
-                      </span>
+                        style={`width: ${livePercent ?? 6}%;`}
+                      />
+                    </div>
+                    <span class="mf-num w-9 shrink-0 text-right text-[11px] font-bold text-sky-400">
+                      {livePercent !== null ? `${Math.round(livePercent)}%` : '···'}
                     </span>
-                  </>
-                )
-                return onToggleEntry ? (
-                  <li key={entry.url}>
-                    <button
-                      onClick={() => onToggleEntry(entry.url)}
-                      title={checked ? 'Exclude from download' : 'Include in download'}
-                      class={`group flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left transition hover:bg-white/[0.05] ${
-                        checked ? '' : 'opacity-60'
-                      }`}
-                    >
-                      {row}
-                    </button>
-                  </li>
-                ) : (
-                  <li key={entry.url} class="flex items-center gap-3 rounded-lg px-2 py-1.5">
-                    {row}
-                  </li>
-                )
-              })}
-            </ol>
-          ) : (
-            <p class="px-4 py-6 text-center text-xs text-slate-600">
-              No entries were returned for this playlist.
-            </p>
-          )}
-        </div>
-      </div>
+                    <span class="mf-num hidden items-center gap-1 text-[10.5px] text-slate-500 sm:inline-flex">
+                      <GaugeIcon class="size-3 shrink-0" />
+                      {fmtSpeed(liveEvent?.speedBps ?? null)}
+                    </span>
+                    <span class="mf-num inline-flex items-center gap-1 text-[10.5px] text-slate-500">
+                      <ClockIcon class="size-3 shrink-0" />
+                      {fmtEta(liveEvent?.etaSec ?? null)}
+                    </span>
+                  </div>
+                </li>
+              )
+            }
+            return onToggleEntry && !rowStatus ? (
+              <li key={entry.url}>
+                <button
+                  onClick={() => onToggleEntry(entry.url)}
+                  title={checked ? 'Exclude from download' : 'Include in download'}
+                  class={`group flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left transition hover:bg-white/[0.05] ${
+                    checked ? '' : 'opacity-60'
+                  }`}
+                >
+                  {row}
+                </button>
+              </li>
+            ) : (
+              <li key={entry.url} class="flex items-center gap-3 rounded-lg px-2 py-1.5">
+                {row}
+              </li>
+            )
+          })}
+        </ol>
+      ) : (
+        <p class="flex min-h-0 flex-1 items-center justify-center px-4 py-6 text-center text-xs text-slate-600">
+          No entries were returned for this playlist.
+        </p>
+      )}
 
-      <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-white/[0.06] bg-white/[0.015] px-4 py-2 text-[10px] text-slate-500">
+      <div class="mt-2 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-white/[0.06] bg-white/[0.015] px-3 py-2 text-[10px] text-slate-500">
         <span class="inline-flex items-center gap-1.5">
           <QueueIcon class="size-3" />
           Sequential — one entry at a time
@@ -330,8 +425,11 @@ function PlaylistCard({
         <span class="inline-flex min-w-0 items-center gap-1.5">
           <FolderIcon class="size-3 shrink-0" />
           Saves into{' '}
-          <span class="max-w-[200px] truncate font-medium text-slate-400" title={metadata.title}>
-            {metadata.title}
+          <span
+            class="max-w-[200px] truncate font-medium text-slate-400"
+            title={result.metadata.title}
+          >
+            {result.metadata.title}
             <span class="text-slate-600">\…</span>
           </span>
         </span>
@@ -340,33 +438,70 @@ function PlaylistCard({
   )
 }
 
-export function PreviewPanel({
-  result,
-  loading,
-  hydration,
-  selectedUrls,
-  onToggleEntry,
-  onToggleAll,
-}: {
-  result: AnalyzeResult | null
-  loading: boolean
-  hydration?: { done: number; total: number } | null
-  selectedUrls?: ReadonlySet<string>
-  onToggleEntry?: (url: string) => void
-  onToggleAll?: (select: boolean) => void
-}) {
-  if (loading) return <LoadingSkeleton />
-  if (!result) return <EmptyState />
-
-  return result.kind === 'playlist' ? (
-    <PlaylistCard
-      result={result}
-      hydration={hydration}
-      selectedUrls={selectedUrls}
-      onToggleEntry={onToggleEntry}
-      onToggleAll={onToggleAll}
-    />
-  ) : (
-    <VideoCard result={result} />
+/** Metadata stat tiles — the Details tab content. */
+export function DetailsGrid({ result }: { result: AnalyzeResult }) {
+  const { metadata } = result
+  return (
+    <div class="mf-card min-h-0 flex-1 overflow-y-auto p-4">
+      <div class="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+        <StatTile
+          icon={<ClockIcon class="size-3" />}
+          label="Duration"
+          value={fmtDuration(metadata.durationSec)}
+        />
+        <StatTile
+          icon={<EyeIcon class="size-3" />}
+          label="Views"
+          value={fmtCount(metadata.viewCount)}
+        />
+        <StatTile
+          icon={<CalendarIcon class="size-3" />}
+          label="Uploaded"
+          value={metadata.uploadDate ?? '—'}
+        />
+        <StatTile
+          icon={<LayersIcon class="size-3" />}
+          label="Streams"
+          value={result.formats.length ? String(result.formats.length) : '—'}
+        />
+      </div>
+      <dl class="mt-4 flex flex-col gap-2 text-xs">
+        {(() => {
+          let host: string | null = null
+          if (metadata.webpageUrl) {
+            try {
+              host = new URL(metadata.webpageUrl).hostname
+            } catch {
+              host = null
+            }
+          }
+          return (
+            <>
+              {host && (
+                <div class="flex items-baseline justify-between gap-4 border-b border-white/[0.05] pb-1.5">
+                  <dt class="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                    Source host
+                  </dt>
+                  <dd class="mf-num min-w-0 truncate text-right text-slate-300">{host}</dd>
+                </div>
+              )}
+              {metadata.webpageUrl && (
+                <div class="flex items-baseline justify-between gap-4 border-b border-white/[0.05] pb-1.5">
+                  <dt class="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                    Webpage URL
+                  </dt>
+                  <dd
+                    class="mf-num min-w-0 truncate text-right text-slate-300"
+                    title={metadata.webpageUrl}
+                  >
+                    {metadata.webpageUrl}
+                  </dd>
+                </div>
+              )}
+            </>
+          )
+        })()}
+      </dl>
+    </div>
   )
 }

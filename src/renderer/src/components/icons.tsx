@@ -35,8 +35,8 @@ export function LogoBolt({ class: cls }: IconProps) {
       />
       <defs>
         <linearGradient id="mf-bolt" x1="4" y1="4" x2="20" y2="20" gradientUnits="userSpaceOnUse">
-          <stop stop-color="#7dd3fc" />
-          <stop offset="1" stop-color="#818cf8" />
+          <stop stop-color="#f97316" />
+          <stop offset="1" stop-color="#fbbf24" />
         </linearGradient>
       </defs>
     </svg>
@@ -276,6 +276,27 @@ export function TerminalIcon({ class: cls }: IconProps) {
     <Svg class={cls}>
       <polyline points="4 17 10 11 4 5" />
       <line x1="12" y1="19" x2="20" y2="19" />
+    </Svg>
+  )
+}
+
+export function ClipboardIcon({ class: cls }: IconProps) {
+  return (
+    <Svg class={cls}>
+      <rect x="8" y="2.5" width="8" height="4" rx="1" />
+      <path d="M16 4.5h2a2 2 0 0 1 2 2V19a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2h2" />
+      <path d="M9.5 13l2 2 3.5-3.5" />
+    </Svg>
+  )
+}
+
+export function PaletteIcon({ class: cls }: IconProps) {
+  return (
+    <Svg class={cls}>
+      <path d="M12 21a9 9 0 1 1 9-9c0 2.2-1.8 3.5-4 3.5h-1.6a2 2 0 0 0-1.4 3.4c.4.5.5 1.2 0 1.6-.5.4-1.2.5-2 .5Z" />
+      <circle cx="7.8" cy="12.2" r="1.15" />
+      <circle cx="10" cy="7.8" r="1.15" />
+      <circle cx="14.6" cy="7.6" r="1.15" />
     </Svg>
   )
 }

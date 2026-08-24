@@ -8,3 +8,6 @@ binaries/
 Thumbs.db
 
 .opencode/
+
+# brainstorm visual-companion session files
+.superpowers/

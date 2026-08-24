@@ -7,6 +7,7 @@ import {
   MF_DOWNLOAD_CANCEL,
   MF_DOWNLOAD_START,
   MF_DEFAULT_DEST_DIR,
+  MF_CLIPBOARD_URL,
   MF_DIALOG_CHOOSE_DIR,
   MF_JOB_DONE,
   MF_JOB_EVENT,
@@ -19,6 +20,7 @@ import {
   MF_SETTINGS_GET,
   MF_SETTINGS_IMPORT_COOKIES,
   MF_SETTINGS_MARK_FIRST_RUN,
+  MF_SETTINGS_SET,
   MF_UPDATER_APPLY,
   MF_UPDATER_CHECK,
   type AnalyzeResponse,
@@ -63,6 +65,7 @@ const api: MfApi = {
     return () => ipcRenderer.removeListener(MF_JOB_DONE, wrapped)
   },
   getDefaultDestDir: (): Promise<string> => ipcRenderer.invoke(MF_DEFAULT_DEST_DIR),
+  getClipboardUrl: (): Promise<string | null> => ipcRenderer.invoke(MF_CLIPBOARD_URL),
   chooseDestDir: (): Promise<string | null> => ipcRenderer.invoke(MF_DIALOG_CHOOSE_DIR),
   importCookies: (): Promise<boolean> => ipcRenderer.invoke(MF_SETTINGS_IMPORT_COOKIES),
   clearCookies: (): Promise<boolean> => ipcRenderer.invoke(MF_SETTINGS_CLEAR_COOKIES),
@@ -75,6 +78,9 @@ const api: MfApi = {
     return () => ipcRenderer.removeListener(MF_LOG_LINE, wrapped)
   },
   getSettings: (): Promise<MfSettingsView> => ipcRenderer.invoke(MF_SETTINGS_GET),
+  setSettings: (
+    patch: Partial<Pick<MfSettingsView, 'theme' | 'lastOutputDir'>>,
+  ): Promise<MfSettingsView> => ipcRenderer.invoke(MF_SETTINGS_SET, patch),
   markFirstRunSeen: (): Promise<boolean> => ipcRenderer.invoke(MF_SETTINGS_MARK_FIRST_RUN),
   updaterCheck: (): Promise<UpdaterCheckResult> => ipcRenderer.invoke(MF_UPDATER_CHECK),
   updaterApply: (): Promise<UpdaterApplyResult> => ipcRenderer.invoke(MF_UPDATER_APPLY),

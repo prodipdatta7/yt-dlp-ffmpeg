@@ -2,23 +2,202 @@
 
 @theme {
   --font-sans:
-    'Inter var', 'Inter', 'Segoe UI Variable Text', 'Segoe UI', ui-sans-serif, system-ui,
-    -apple-system, sans-serif;
-  --color-ink-950: #05070d;
-  --color-ink-900: #090d17;
-  --color-ink-850: #0b101c;
-  --color-ink-800: #101725;
+    'Segoe UI Variable Display', 'Segoe UI Variable Text', 'Inter var', 'Inter', 'Segoe UI',
+    ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono:
+    'Cascadia Code', 'Cascadia Mono', 'JetBrains Mono', Consolas, ui-monospace, monospace;
+  --color-ink-950: #f1e9db;
+  --color-ink-900: #f4eddf;
+  --color-ink-850: #f7f1e5;
+  --color-ink-800: #faf5eb;
+
+  /* fixed tokens — never remapped by theme */
+  --color-scrim: rgb(15 12 9);
+  --color-paper: #fffbf4;
+
+  /* CTA ramp (light values; overridden per theme below) */
+  --color-go-400: #f59e0b;
+  --color-go-500: #e2551f;
 }
 
+/* ------------------------------------------------------------------ */
+/* Warm Studio (light) — the base palette.                             */
+/* Component classes resolve through Tailwind v4 custom properties,    */
+/* so flipping them below re-skins every utility without touching      */
+/* component markup.                                                   */
+/* ------------------------------------------------------------------ */
 :root {
+  color-scheme: light;
+
+  /* neutral ramp — warm stone */
+  --color-slate-100: #1c1917;
+  --color-slate-200: #292524;
+  --color-slate-300: #44403c;
+  --color-slate-400: #6b6156;
+  --color-slate-500: #7d7264;
+  --color-slate-600: #98897a;
+  --color-slate-700: #b9ac9b;
+  --color-slate-800: #ddd2c2;
+  --color-slate-900: #ede5d8;
+  --color-slate-950: #f7f1e7;
+
+  /* surface tint roles (inverted on purpose): bg-white/x → ink washes,
+     bg-black/x → paper washes. Fixed scrims use --color-scrim/--color-paper. */
+  --color-white: #2a2118;
+  --color-black: #fffdf9;
+
+  /* accent duo — vermillion × gold */
+  --color-sky-200: #9a3412;
+  --color-sky-300: #c2410c;
+  --color-sky-400: #dc4a12;
+  --color-sky-500: #e2551f;
+  --color-sky-600: #c2410c;
+  --color-indigo-300: #92400e;
+  --color-indigo-400: #b45309;
+  --color-indigo-500: #d97706;
+
+  /* success — moss green */
+  --color-emerald-200: #166534;
+  --color-emerald-300: #15803d;
+  --color-emerald-400: #16a34a;
+  --color-emerald-500: #15803d;
+  --color-emerald-950: #e7f6ec;
+
+  /* danger — deep crimson (deliberately distinct from brand vermillion) */
+  --color-rose-200: #9f1239;
+  --color-rose-300: #be123c;
+  --color-rose-400: #e11d48;
+  --color-rose-500: #e11d48;
+  --color-rose-600: #be123c;
+  --color-rose-950: #fdeef0;
+
+  /* warning — honey amber */
+  --color-amber-200: #92400e;
+  --color-amber-300: #b45309;
+  --color-amber-400: #d97706;
+  --color-amber-500: #d97706;
+  --color-amber-700: #92400e;
+  --color-amber-900: #b8845a;
+  --color-amber-950: #faf0dc;
+
+  /* supporting accents */
+  --color-violet-300: #6d28d9;
+  --color-violet-500: #7c3aed;
+  --color-teal-400: #d97706;
+  --color-cyan-300: #a16207;
+  --color-cyan-400: #ca8a04;
+  --color-red-400: #dc2626;
+  --color-red-500: #b91c1c;
+
+  --mf-line: rgb(120 80 30 / 0.13);
+  --mf-line-strong: rgb(120 80 30 / 0.24);
+  --mf-accent: #e2551f;
+  --mf-accent-warm: #f59e0b;
+  --mf-accent-deep: #b45309;
+  --mf-go: #16a34a;
+  --mf-glow: rgb(226 85 31 / 0.5);
+
+  /* component surfaces — full immersion cream stack */
+  --surface-card-hi: #fffdf9;
+  --surface-card-lo: #faf4ea;
+  --surface-input: #fffdf9;
+  --surface-console: #fbf6ec;
+  --thead-bg: rgb(247 240 228 / 0.96);
+  --step-done-bg: #e7f6ec;
+  --step-error-bg: #fbe9eb;
+  --step-active-bg: #fdf0e0;
+  --step-idle-bg: #f2ebdd;
+}
+
+/* ------------------------------------------------------------------ */
+/* Warm Ember (dark) — deep warm charcoal, ember + gold accents.       */
+/* ------------------------------------------------------------------ */
+:root[data-theme='dark'] {
   color-scheme: dark;
 
-  --mf-line: rgb(148 163 184 / 0.12);
-  --mf-line-strong: rgb(148 163 184 / 0.22);
-  --mf-surface: linear-gradient(180deg, rgb(148 163 184 / 0.075), rgb(148 163 184 / 0.028));
-  --mf-accent: #38bdf8;
-  --mf-accent-deep: #6366f1;
+  --color-slate-100: #f3ece1;
+  --color-slate-200: #ded4c5;
+  --color-slate-300: #b8ae9f;
+  --color-slate-400: #8a7e70;
+  --color-slate-500: #6e6357;
+  --color-slate-600: #55493e;
+  --color-slate-700: #46392e;
+  --color-slate-800: #33281f;
+  --color-slate-900: #241b14;
+  --color-slate-950: #171310;
+
+  --color-white: #f5efe6;
+  --color-black: #0d0a07;
+
+  --color-sky-200: #fed7aa;
+  --color-sky-300: #fdba74;
+  --color-sky-400: #fb923c;
+  --color-sky-500: #f97316;
+  --color-sky-600: #ea580c;
+  --color-indigo-300: #fcd34d;
+  --color-indigo-400: #fbbf24;
+  --color-indigo-500: #f59e0b;
+
+  --color-emerald-200: #a7f3d0;
+  --color-emerald-300: #6ee7b7;
+  --color-emerald-400: #34d399;
+  --color-emerald-500: #10b981;
+  --color-emerald-950: #14231a;
+
+  --color-rose-200: #fecdd3;
+  --color-rose-300: #fda4af;
+  --color-rose-400: #fb7185;
+  --color-rose-500: #f43f5e;
+  --color-rose-600: #e11d48;
+  --color-rose-950: #2a1216;
+
+  --color-amber-200: #fde68a;
+  --color-amber-300: #fcd34d;
+  --color-amber-400: #fbbf24;
+  --color-amber-500: #f59e0b;
+  --color-amber-700: #b45309;
+  --color-amber-900: #78350f;
+  --color-amber-950: #2a1c0a;
+
+  --color-violet-300: #c4b5fd;
+  --color-violet-500: #8b5cf6;
+  --color-teal-400: #2dd4bf;
+  --color-cyan-300: #67e8f9;
+  --color-cyan-400: #22d3ee;
+  --color-red-400: #f87171;
+  --color-red-500: #ef4444;
+
+  --color-go-400: #fbbf24;
+  --color-go-500: #fb923c;
+
+  --color-ink-950: #14100c;
+  --color-ink-900: #191410;
+  --color-ink-850: #1e1813;
+  --color-ink-800: #241d16;
+
+  --mf-line: rgb(138 126 112 / 0.14);
+  --mf-line-strong: rgb(251 146 60 / 0.26);
+  --mf-accent: #fb923c;
+  --mf-accent-warm: #f59e0b;
+  --mf-accent-deep: #d97706;
   --mf-go: #34d399;
+  --mf-glow: rgb(251 146 60 / 0.55);
+
+  --surface-card-hi: #251d15;
+  --surface-card-lo: #1c1611;
+  --surface-input: #201913;
+  --surface-console: #1b1510;
+  --thead-bg: rgb(23 17 12 / 0.95);
+  --step-done-bg: #14231a;
+  --step-error-bg: #2a1518;
+  --step-active-bg: #27190f;
+  --step-idle-bg: #201913;
+}
+
+html {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 html,
@@ -29,20 +208,35 @@ body,
 
 body {
   font-family: var(--font-sans);
-  background-color: #04060b;
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: -0.006em;
+  background-color: var(--mf-page, #faf6f0);
   background-image:
-    radial-gradient(1100px 520px at 78% -12%, rgb(56 189 248 / 0.06), transparent 55%),
-    radial-gradient(950px 620px at -14% 110%, rgb(99 102 241 / 0.055), transparent 60%),
-    radial-gradient(720px 420px at 52% 118%, rgb(16 185 129 / 0.035), transparent 62%);
+    radial-gradient(1100px 520px at 78% -14%, rgb(226 85 31 / 0.075), transparent 55%),
+    radial-gradient(950px 640px at -16% 112%, rgb(217 119 6 / 0.06), transparent 60%),
+    radial-gradient(720px 420px at 52% 118%, rgb(22 163 74 / 0.04), transparent 62%);
   background-attachment: fixed;
-  color: #e2e8f0;
+  color: var(--mf-body-ink, #292524);
   overflow: hidden;
   user-select: none;
 }
 
+:root[data-theme='dark'] body {
+  background-color: #131009;
+  background-image:
+    radial-gradient(1100px 520px at 78% -12%, rgb(249 115 22 / 0.08), transparent 55%),
+    radial-gradient(950px 620px at -14% 110%, rgb(245 158 11 / 0.05), transparent 60%),
+    radial-gradient(720px 420px at 52% 118%, rgb(52 211 153 / 0.03), transparent 62%);
+  color: #f3ece1;
+}
+
 ::selection {
-  background: rgb(56 189 248 / 0.28);
-  color: #fff;
+  background: rgb(217 119 6 / 0.22);
+  color: inherit;
+}
+:root[data-theme='dark'] ::selection {
+  background: rgb(251 146 60 / 0.28);
 }
 
 ::-webkit-scrollbar {
@@ -53,17 +247,25 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgb(71 85 105 / 0.45);
+  background: rgb(120 100 75 / 0.38);
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background-color: rgb(100 116 139 / 0.65);
+  background-color: rgb(120 100 75 / 0.58);
   background-clip: content-box;
 }
 ::-webkit-scrollbar-corner {
   background: transparent;
+}
+:root[data-theme='dark'] ::-webkit-scrollbar-thumb {
+  background: rgb(138 126 112 / 0.45);
+  background-clip: content-box;
+}
+:root[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(138 126 112 / 0.65);
+  background-clip: content-box;
 }
 
 input,
@@ -81,12 +283,17 @@ textarea {
 
 .mf-card {
   position: relative;
-  background: linear-gradient(180deg, #101828 0%, #0b111d 100%);
-  border: 1px solid rgb(148 163 184 / 0.16);
+  background: linear-gradient(180deg, var(--surface-card-hi) 0%, var(--surface-card-lo) 100%);
+  border: 1px solid var(--mf-line);
   border-radius: 16px;
   box-shadow:
-    inset 0 1px 0 0 rgb(255 255 255 / 0.05),
-    0 20px 44px -26px rgb(2 6 23 / 0.95);
+    inset 0 1px 0 0 var(--mf-card-lift, rgb(255 255 255 / 0.75)),
+    var(--mf-card-shadow, 0 1px 2px rgb(120 80 30 / 0.05), 0 12px 32px -18px rgb(120 53 15 / 0.28));
+}
+
+:root[data-theme='dark'] .mf-card {
+  --mf-card-lift: rgb(255 255 255 / 0.05);
+  --mf-card-shadow: 0 20px 44px -26px rgb(0 0 0 / 0.95);
 }
 
 .mf-card-hover {
@@ -99,8 +306,16 @@ textarea {
   border-color: var(--mf-line-strong);
   transform: translateY(-1px);
   box-shadow:
-    inset 0 1px 0 0 rgb(255 255 255 / 0.05),
-    0 30px 60px -30px rgb(2 6 23 / 0.95);
+    inset 0 1px 0 0 var(--mf-card-lift, rgb(255 255 255 / 0.75)),
+    var(
+      --mf-card-shadow-hover,
+      0 2px 4px rgb(120 80 30 / 0.06),
+      0 20px 44px -20px rgb(120 53 15 / 0.32)
+    );
+}
+:root[data-theme='dark'] .mf-card-hover:hover {
+  --mf-line-strong: rgb(251 146 60 / 0.4);
+  --mf-card-shadow-hover: 0 30px 60px -30px rgb(0 0 0 / 0.95);
 }
 
 .mf-hairline {
@@ -114,8 +329,8 @@ textarea {
   padding: 1px;
   background: linear-gradient(
     135deg,
-    rgb(56 189 248 / 0.55),
-    rgb(99 102 241 / 0.4) 50%,
+    rgb(226 85 31 / 0.5),
+    rgb(217 119 6 / 0.35) 50%,
     transparent 80%
   );
   mask:
@@ -124,26 +339,55 @@ textarea {
   mask-composite: exclude;
   pointer-events: none;
 }
+:root[data-theme='dark'] .mf-hairline::before {
+  background: linear-gradient(
+    135deg,
+    rgb(251 146 60 / 0.55),
+    rgb(245 158 11 / 0.4) 50%,
+    transparent 80%
+  );
+}
 
 .mf-focus-ring:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgb(56 189 248 / 0.35);
+  box-shadow: 0 0 0 3px var(--mf-focus, rgb(226 85 31 / 0.35));
+}
+:root[data-theme='dark'] .mf-focus-ring:focus-visible {
+  --mf-focus: rgb(251 146 60 / 0.4);
 }
 
 .mf-num {
-  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings:
+    'tnum' 1,
+    'zero' 1;
   letter-spacing: -0.01em;
 }
 
 .mf-kbd {
-  border: 1px solid rgb(148 163 184 / 0.25);
+  border: 1px solid var(--mf-line-strong, rgb(185 172 155 / 0.5));
   border-bottom-width: 2px;
   border-radius: 6px;
   padding: 1px 5px;
   font-size: 10px;
   font-weight: 600;
-  color: rgb(148 163 184 / 0.9);
-  background: rgb(15 23 42 / 0.8);
+  color: #6b6156;
+  background: #fffdf9;
+}
+:root[data-theme='dark'] .mf-kbd {
+  color: #8a7e70;
+  background: #241d16;
+  border-color: rgb(138 126 112 / 0.3);
+}
+
+/* Typography helpers */
+.mf-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 @keyframes mf-rise {
@@ -171,11 +415,20 @@ textarea {
 }
 
 .mf-progress-fill {
+  position: relative;
+  overflow: hidden;
+}
+
+/* stripes ride on an overlay so they never replace the gradient underneath */
+.mf-progress-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
   background-image: linear-gradient(
     115deg,
-    rgb(255 255 255 / 0.22) 25%,
+    rgb(255 255 255 / 0.3) 25%,
     transparent 25% 50%,
-    rgb(255 255 255 / 0.22) 50% 75%,
+    rgb(255 255 255 / 0.3) 50% 75%,
     transparent 75%
   );
   background-size: 36px 36px;
@@ -194,15 +447,21 @@ textarea {
 .mf-skeleton {
   position: relative;
   overflow: hidden;
-  background: rgb(148 163 184 / 0.09);
+  background: rgb(41 37 36 / 0.08);
   border-radius: 10px;
 }
 .mf-skeleton::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, transparent, rgb(148 163 184 / 0.12), transparent);
+  background: linear-gradient(90deg, transparent, rgb(41 37 36 / 0.09), transparent);
   animation: mf-shimmer 1400ms ease-in-out infinite;
+}
+:root[data-theme='dark'] .mf-skeleton {
+  background: rgb(138 126 112 / 0.12);
+}
+:root[data-theme='dark'] .mf-skeleton::after {
+  background: linear-gradient(90deg, transparent, rgb(138 126 112 / 0.12), transparent);
 }
 
 @keyframes mf-breathe {

@@ -1,6 +1,16 @@
 import { existsSync, copyFileSync, rmSync, appendFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { app, BrowserWindow, dialog, Menu, Tray, shell, nativeImage } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  Menu,
+  Tray,
+  nativeTheme,
+  shell,
+  nativeImage,
+} from 'electron'
 import { BinariesService } from './binaries/service'
 import { platformDir, type BinaryCandidate } from './binaries/locator'
 import { registerIpcHandlers } from './ipc/handlers'
@@ -43,9 +53,9 @@ function binaryCandidates(logger: Logger): BinaryCandidate[] {
   return candidates
 }
 
-function createMainWindow(): BrowserWindow {
+function createMainWindow(theme: 'light' | 'dark'): BrowserWindow {
   const win = new BrowserWindow({
-    ...createWindowOptions(),
+    ...createWindowOptions(theme),
     webPreferences: {
       ...getWindowSecurityFlags(),
       preload: join(__dirname, '../preload/index.js'),
@@ -85,6 +95,25 @@ async function ensureTray(win: BrowserWindow): Promise<void> {
 function disposeTray(): void {
   tray?.destroy()
   tray = null
+}
+
+function resolvedTheme(pref: string | undefined): 'light' | 'dark' {
+  if (pref === 'light' || pref === 'dark') return pref
+  return nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+}
+
+function applyChromeTheme(theme: 'light' | 'dark'): void {
+  const colors =
+    theme === 'dark'
+      ? { color: '#05070d', symbolColor: '#94a3b8' }
+      : { color: '#eef2f7', symbolColor: '#475569' }
+  for (const win of BrowserWindow.getAllWindows()) {
+    try {
+      if (!win.isDestroyed()) win.setTitleBarOverlay(colors)
+    } catch {
+      /* overlay unsupported off-Windows */
+    }
+  }
 }
 
 app.whenReady().then(() => {
@@ -213,6 +242,10 @@ app.whenReady().then(() => {
       },
       cancelDownload: (jobId: string) => ({ ok: orchestrator.cancel(jobId || undefined) }),
       getDefaultDestDir: () => settings.load().lastOutputDir || app.getPath('downloads'),
+      getClipboardUrl: async () => {
+        const text = (clipboard.readText() ?? '').trim()
+        return /^https?:\/\/\S+$/i.test(text) ? text : null
+      },
       chooseDirectory: async () => {
         const current = settings.load()
         const result = await dialog.showOpenDialog({
@@ -268,6 +301,22 @@ app.whenReady().then(() => {
           lastOutputDir: s.lastOutputDir,
           cookieFileSet: s.cookieFileSet === true,
           firstRunNoticeSeen: s.firstRunNoticeSeen === true,
+          theme: s.theme ?? 'system',
+        }
+      },
+      setSettings: (patch) => {
+        const current = settings.load()
+        const next = { ...current }
+        if (patch.theme) next.theme = patch.theme
+        if (typeof patch.lastOutputDir === 'string') next.lastOutputDir = patch.lastOutputDir
+        settings.save(next)
+        applyChromeTheme(resolvedTheme(next.theme))
+        logger.info('settings updated', { keys: Object.keys(patch) })
+        return {
+          lastOutputDir: next.lastOutputDir,
+          cookieFileSet: next.cookieFileSet === true,
+          firstRunNoticeSeen: next.firstRunNoticeSeen === true,
+          theme: next.theme ?? 'system',
         }
       },
       markFirstRunSeen: () => {
@@ -284,7 +333,11 @@ app.whenReady().then(() => {
     logger,
   )
 
-  mainWindow = createMainWindow()
+  mainWindow = createMainWindow(resolvedTheme(settings.load().theme))
+
+  nativeTheme.on('updated', () => {
+    applyChromeTheme(resolvedTheme(settings.load().theme))
+  })
 
   mainWindow.on('close', (event) => {
     if (forceClose || !orchestrator.isBusy()) return
@@ -314,7 +367,8 @@ app.whenReady().then(() => {
   })
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
+    if (BrowserWindow.getAllWindows().length === 0)
+      createMainWindow(resolvedTheme(settings.load().theme))
   })
 })
 

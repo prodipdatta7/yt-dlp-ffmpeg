@@ -56,7 +56,7 @@ export function LogConsole({ dock = false }: { dock?: boolean }) {
   return (
     <div
       class={`flex min-h-0 flex-1 flex-col overflow-hidden ${
-        dock ? 'border-t border-white/[0.09] bg-[#0c1220]' : 'mf-card'
+        dock ? 'border-t border-white/[0.09] bg-[var(--surface-console)]' : 'mf-card'
       }`}
     >
       <div class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-white/[0.06] px-4 py-2">
@@ -155,7 +155,7 @@ export function LogConsole({ dock = false }: { dock?: boolean }) {
       {!stuck && visible.length > 0 && (
         <button
           onClick={() => setStuck(true)}
-          class="absolute bottom-4 right-5 rounded-full border border-sky-400/30 bg-slate-900/95 px-3.5 py-1.5 text-[11px] font-semibold text-sky-300 shadow-lg shadow-black/50 transition hover:bg-slate-800"
+          class="absolute bottom-4 right-5 rounded-full border border-sky-400/30 bg-slate-900/95 px-3.5 py-1.5 text-[11px] font-semibold text-sky-300 shadow-lg transition hover:bg-slate-800"
         >
           ↓ Jump to latest
         </button>

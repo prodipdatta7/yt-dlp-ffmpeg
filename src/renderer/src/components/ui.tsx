@@ -85,7 +85,7 @@ export function Chip({
       aria-pressed={active}
       class={`mf-focus-ring mf-num rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${
         active
-          ? 'border-sky-400/60 bg-sky-500/15 text-sky-200 shadow-[0_0_12px_-4px_rgb(56_189_248/0.5)]'
+          ? 'border-sky-400/60 bg-sky-500/15 text-sky-200 shadow-[0_0_12px_-4px_var(--mf-glow)]'
           : 'border-white/[0.08] bg-white/[0.03] text-slate-400 hover:border-white/20 hover:text-white'
       } disabled:cursor-not-allowed disabled:opacity-50`}
     >
