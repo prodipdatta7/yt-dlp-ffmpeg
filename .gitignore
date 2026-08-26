@@ -1,7 +1,7 @@
 node_modules/
-out/
-dist/
-binaries/
+/out/
+/dist/
+/binaries/
 *.log
 *.tsbuildinfo
 .DS_Store
