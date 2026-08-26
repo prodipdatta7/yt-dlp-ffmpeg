@@ -15,7 +15,10 @@ One verification per edge-case row of the PRD §4 matrix (as amended by AGENTS.m
 ## EC-02 — Platform player change broke extraction
 
 - **Behavior:** `MF_EXTRACTOR_STALE` message points to "Update Core Drivers" (updater ships P7).
-- **Scripted:** classify tests cover `Unable to extract`, `Unsupported URL`.
+  A genuinely unsupported site now maps to `MF_UNSUPPORTED_SOURCE` and shows a clear message
+  instead (no misleading Update Core Drivers CTA).
+- **Scripted:** classify tests cover `Unable to extract` → `MF_EXTRACTOR_STALE`, and
+  `Unsupported URL` → `MF_UNSUPPORTED_SOURCE`.
 - **Manual:** until P7 lands, verify the error text names the Settings action.
 
 ## EC-03 — Disk runs out of space

@@ -34,6 +34,10 @@ export interface RawFormat {
   format_note?: string
 }
 
+export interface RawThumbnail {
+  url?: string | null
+}
+
 export interface RawInfo {
   _type?: string
   id?: string
@@ -45,6 +49,7 @@ export interface RawInfo {
   concurrent_view_count?: number | null
   upload_date?: string
   thumbnail?: string | null
+  thumbnails?: RawThumbnail[] | null
   webpage_url?: string
   is_live?: boolean
   live_status?: string
@@ -58,7 +63,20 @@ export interface RawInfo {
     uploader?: string | null
     channel?: string | null
     thumbnail?: string | null
+    thumbnails?: RawThumbnail[] | null
   }>
+}
+
+/** yt-dlp exposes thumbnails as a `thumbnail` string or a `thumbnails[]` array — use either. */
+function firstThumbnailUrl(
+  raw: { thumbnail?: string | null; thumbnails?: RawThumbnail[] | null } | null | undefined,
+): string | null {
+  if (!raw) return null
+  if (typeof raw.thumbnail === 'string' && raw.thumbnail.length > 0) return raw.thumbnail
+  for (const t of raw.thumbnails ?? []) {
+    if (t && typeof t.url === 'string' && t.url.length > 0) return t.url
+  }
+  return null
 }
 
 function normalizeCodec(value: string | undefined): string | null {
@@ -88,7 +106,7 @@ export function mapRawInfo(raw: RawInfo, sourceUrl: string): AnalyzeResult {
         durationSec: typeof e.duration === 'number' ? e.duration : null,
         uploader: e.uploader ?? e.channel ?? null,
         viewCount: typeof e.view_count === 'number' ? e.view_count : null,
-        thumbnailUrl: e.thumbnail ?? null,
+        thumbnailUrl: firstThumbnailUrl(e),
       }))
       .filter((e) => e.url.length > 0)
     const metadata: MediaMetadata = {
@@ -98,7 +116,7 @@ export function mapRawInfo(raw: RawInfo, sourceUrl: string): AnalyzeResult {
       durationSec: null,
       viewCount: null,
       uploadDate: null,
-      thumbnailUrl: null,
+      thumbnailUrl: firstThumbnailUrl(raw),
       isLive: false,
       webpageUrl: raw.webpage_url ?? sourceUrl,
     }
@@ -132,7 +150,7 @@ export function mapRawInfo(raw: RawInfo, sourceUrl: string): AnalyzeResult {
     durationSec: typeof raw.duration === 'number' ? raw.duration : null,
     viewCount: raw.view_count ?? raw.concurrent_view_count ?? null,
     uploadDate: mapUploadDate(raw.upload_date),
-    thumbnailUrl: raw.thumbnail ?? null,
+    thumbnailUrl: firstThumbnailUrl(raw),
     isLive: raw.is_live === true || raw.live_status === 'is_live',
     webpageUrl: raw.webpage_url ?? sourceUrl,
   }
@@ -292,7 +310,7 @@ export class AnalyzeService {
           entry.durationSec = info.metadata.durationSec
           entry.uploader = info.metadata.uploader
           entry.viewCount = info.metadata.viewCount
-          entry.thumbnailUrl = info.metadata.thumbnailUrl
+          if (info.metadata.thumbnailUrl) entry.thumbnailUrl = info.metadata.thumbnailUrl
         } catch (error) {
           if (this.cancelRequested) throw new MfError('MF_CANCELLED')
           const code = error instanceof MfError ? error.code : 'MF_UNKNOWN'

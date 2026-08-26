@@ -196,9 +196,11 @@ export class DownloadOrchestrator {
       percent: number | null,
       speedBps: number | null,
       etaSec: number | null,
+      downloadedBytes: number | null = null,
+      totalBytes: number | null = null,
     ): void => {
       if (percent !== null) lastPercent = percent
-      sendEvent({ jobId, phase: next, percent, speedBps, etaSec })
+      sendEvent({ jobId, phase: next, percent, speedBps, etaSec, downloadedBytes, totalBytes })
     }
 
     try {
@@ -250,7 +252,14 @@ export class DownloadOrchestrator {
                 segmentsStarted >= 2 || job.config.mode === 'audio-only'
                   ? 'downloading-audio'
                   : 'downloading-video'
-              emit(nextPhase, computeSegmentPercent(progress), progress.speedBps, progress.etaSec)
+              emit(
+                nextPhase,
+                computeSegmentPercent(progress),
+                progress.speedBps,
+                progress.etaSec,
+                progress.downloadedBytes,
+                progress.totalBytes,
+              )
             }
           },
           onStderrLine: (line) => {

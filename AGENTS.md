@@ -41,6 +41,7 @@ These amend the PRD. Traceability: `AM-nn` may appear in commit messages and tes
 | AM-10 | 5.2 | Memory ceilings cover **Electron processes only** (measured via `app.getAppMetrics()` sum: main + renderer + gpu + utility). FFmpeg/yt-dlp are separate OS processes — excluded from the ceiling but RSS-logged during performance tests. Idle target ≤120MB, peak ≤450MB. |
 | AM-11 | — | Additions the PRD omitted: structured logging with redaction (§11.3), error catalog mapping CLI stderr → user messages (§10), licensing/distribution notes (§14), filename safety delegated primarily to yt-dlp flags `--windows-filenames --trim-filenames` with app-side sanitizer as defense-in-depth (§7.4). |
 | AM-12 | 5.3 | Tailwind CSS v4 is sanctioned as a **build-time-only** styling layer (compiles to static CSS before packaging ⇒ zero runtime weight, honors §5.3's actual target of installer/runtime size). Plain CSS / CSS Modules remain allowed side-by-side where utility classes don't fit. React remains banned — renderer framework stays Preact (AM rationale: identical rendering, ~10× smaller runtime). No UI kits/icon libraries still applies; use inline SVG icons. |
+| AM-13 | 7.6 | FFmpeg self-updating is now in scope (was excluded for v1). Updates come from `BtbN/FFmpeg-Builds` **LGPL** `ffmpeg-master-latest-win64-lgpl.zip` + its `.sha256` sidecar (same source as `fetch-binaries.mjs`), checksum-verified before a `tar -xf` extraction, atomic swap into `<userData>/binaries/win32/`, and rollback on failure. Because the rolling build has no comparable version tag, "newer" is detected by comparing the installed build's zip hash (stored in `.ffmpeg-update.json`). The Settings updater is now split into per-driver **yt-dlp** and **FFmpeg** cards (`DriverUpdateCard`). |
 
 ## 3. Locked Technology Decisions
 
@@ -156,8 +157,8 @@ Violations block merge regardless of feature completeness.
    script-src 'self'; connect-src 'none'`. No inline handlers/styles.
 6. Cookies: imported `cookies.txt` is copied into `<userData>/cookies.txt`, passed via
    `--cookies`, never logged, never transmitted anywhere. Provide "clear stored cookies".
-7. Updater downloads execute only after SHA-256 verification against the official checksums
-   published by the yt-dlp project (AM-03). Reject mismatch → rollback.
+7. Updater downloads execute only after SHA-256 verification against that driver's upstream
+   checksums (yt-dlp `SHA2-256SUMS`; FFmpeg BtbN `.sha256` sidecar) (AM-03). Reject mismatch → rollback.
 8. Logs redact URL query strings and never contain cookie contents or raw env (§11.3).
 9. No telemetry, no crash reporting, no analytics. Network egress is limited to: user-requested
    media hosts (via yt-dlp), thumbnail hosts, GitHub API/releases (updater only).
@@ -224,13 +225,35 @@ caps length at 200 chars, replaces emoji/non-BMP with `-`. Collision policy: app
 - Temp job dir: `<userData>/tmp/job-<uuid>/`, wiped on success-after-verify or via
   startup sweep of orphaned dirs older than 24h (AM-06).
 
-### 7.6 Updater (yt-dlp only; FFmpeg updates out of scope for v1)
+### 7.6 Updater
 
-1. `GET https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest` (main process).
+Both core drivers update into `<userData>/binaries/<platform>/` (AM-03 — never the install dir),
+checksum-verified against the upstream shasum, atomically swapped (`.tmp` → rename, `.bak` kept),
+run-verified, and rolled back on any failure. `binaries:/getInfo` cache is invalidated after a
+successful apply. FFmpeg self-updating is now in scope (see the "Core drivers" update cards).
+
+> **No GitHub REST API.** The unauthenticated `api.github.com` endpoint returns HTTP 403 under
+> rate-limit/abuse, so both drivers resolve the release tag via the `github.com/<owner>/<repo>/releases/latest`
+> redirect (`resolveLatestTag`) and download assets from the deterministic
+> `…/releases/latest/download/<asset>` path (`releaseDownloadUrl`) — the same URLs the
+> `fetch-binaries.mjs` dev script already uses.
+
+**yt-dlp**
+1. Resolve the latest tag from `https://github.com/yt-dlp/yt-dlp/releases/latest` (redirect).
 2. Compare bundled vs release tag (versions are date-based; simple string compare ok).
-3. Download `yt-dlp.exe` + the project's official SHA2-256SUMS asset; hash-check locally.
-4. Atomic replace into `<userData>/binaries/win32/yt-dlp.exe` (tmp file + rename), keep `.bak`.
-5. Next launch resolves the override first (AM-03). Failure at any step → keep bundled binary.
+3. Download `yt-dlp.exe` + the official `SHA2-256SUMS` asset from `…/releases/latest/download/…`;
+   hash-check locally (AM-03).
+4. Atomic replace into `<userData>/binaries/win32/yt-dlp.exe` (tmp + rename), keep `.bak`.
+
+**FFmpeg**
+1. Resolve the latest tag (best-effort, for display) from the `releases/latest` redirect.
+2. Download `ffmpeg-master-latest-win64-lgpl.zip` + its `....zip.sha256` sidecar from
+   `…/releases/latest/download/…` (LGPL build per §14; same source as `fetch-binaries.mjs`).
+3. Hash-check the zip against the sidecar, then extract `ffmpeg.exe` / `ffprobe.exe`.
+4. Swap into `<userData>/binaries/win32/`, keep `.bak`. Because the BtbN rolling build has no
+   comparable version tag, "newer" is detected by comparing the installed build's zip hash; the
+   applied checksum is stored in `.ffmpeg-update.json`.
+5. Extraction uses `tar -xf` (spawn with array args, no shell) — Windows 10+ ships bsdtar.
 
 ## 8. IPC Contract
 
@@ -305,7 +328,8 @@ code maps to exactly one user-facing string.
 | `MF_BOT_CHECK` | `Sign in to confirm you're not a bot` | Same as EC-07 flow |
 | `MF_NETWORK` | `getaddrinfo`, `ENOTFOUND`, `Connection reset`, `timed out`, `Unable to download webpage` | Retry ladder 5/15/30s → Resume button (AM-05) |
 | `MF_RATE_LIMITED` | `HTTP Error 429`, `403` | Backoff + message suggesting later retry |
-| `MF_EXTRACTOR_STALE` | `Unable to extract`, `Unsupported URL` after URL validated OK | EC-02: point to Update Core Drivers |
+| `MF_UNSUPPORTED_SOURCE` | `Unsupported URL` | Valid-looking link that yt-dlp has no extractor for — show a clear "unsupported source" message (no Update Core Drivers) |
+| `MF_EXTRACTOR_STALE` | `Unable to extract`, `No video formats found`, `Did not get any formats` after URL validated OK | EC-02: point to Update Core Drivers |
 | `MF_DISK_FULL` | `ENOSPC`, `No space left` | EC-03: halt, state missing bytes if known, keep partials |
 | `MF_LIVE_STREAM` | metadata `is_live/live_status=is_live` | EC-06: switch to recording workflow + Stop control |
 | `MF_CANCELLED` | internal | Keep partials, idle UI (AM-09) |
@@ -386,7 +410,7 @@ AppImage recommended first, then deb/rpm; optionally fall back to discovered sys
 
 From PRD §7 plus agreed additions: parallel/concurrent jobs; timeline editing; cloud sync;
 subtitles/captions handling; i18n (English-only v1); accessibility beyond baseline semantic HTML;
-telemetry/crash reporting; FFmpeg self-updating; macOS/Linux builds (documented in §15, not shipped).
+telemetry/crash reporting; macOS/Linux builds (documented in §15, not shipped).
 
 ## 17. Definition of Done (any change)
 

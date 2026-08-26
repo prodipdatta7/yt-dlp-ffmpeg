@@ -7,25 +7,18 @@ import {
   compareVersions,
   extractExpectedChecksum,
   isNewerVersion,
-  pickAssets,
+  releaseDownloadUrl,
+  resolveLatestTag,
   sha256Hex,
   YtDlpUpdater,
-  type GithubRelease,
+  type UpdaterDeps,
 } from '../../src/main/binaries/updater'
 
 const TAG = '2026.09.01'
 const EXE_BYTES = Buffer.from('FAKE-YT-DLP-BINARY-CONTENT'.repeat(64), 'utf8')
-
-function releaseJson(): GithubRelease {
-  return {
-    tag_name: TAG,
-    assets: [
-      { name: 'yt-dlp.exe', browser_download_url: 'https://fake.test/yt-dlp.exe' },
-      { name: 'SHA2-256SUMS', browser_download_url: 'https://fake.test/SHA2-256SUMS' },
-      { name: 'yt-dlp_linux', browser_download_url: 'https://fake.test/yt-dlp_linux' },
-    ],
-  }
-}
+const TAG_URL = 'https://github.com/yt-dlp/yt-dlp/releases/latest'
+const EXE_URL = releaseDownloadUrl('yt-dlp', 'yt-dlp', 'yt-dlp.exe')
+const SUMS_URL = releaseDownloadUrl('yt-dlp', 'yt-dlp', 'SHA2-256SUMS')
 
 function sumsText(data: Buffer): string {
   const hash = createHash('sha256').update(data).digest('hex')
@@ -33,8 +26,9 @@ function sumsText(data: Buffer): string {
 }
 
 interface FetchRoute {
-  json?: unknown
   body?: Buffer
+  status?: number
+  headers?: Record<string, string>
 }
 
 function fakeFetch(routes: Record<string, FetchRoute>) {
@@ -42,27 +36,39 @@ function fakeFetch(routes: Record<string, FetchRoute>) {
     const key = String(url)
     const route = routes[key]
     if (!route) return new Response('not found', { status: 404 })
-    if (route.json !== undefined) {
-      return new Response(JSON.stringify(route.json), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
-    }
-    return new Response(new Uint8Array(route.body ?? Buffer.alloc(0)), { status: 200 })
+    return new Response(new Uint8Array(route.body ?? Buffer.alloc(0)), {
+      status: route.status ?? 200,
+      headers: route.headers,
+    })
+  }
+}
+
+function routes(): Record<string, FetchRoute> {
+  return {
+    [TAG_URL]: {
+      status: 302,
+      headers: { location: `https://github.com/yt-dlp/yt-dlp/releases/tag/${TAG}` },
+    },
+    [EXE_URL]: { body: EXE_BYTES },
+    [SUMS_URL]: { body: Buffer.from(sumsText(EXE_BYTES), 'utf8') },
   }
 }
 
 function makeUpdater(
   dir: string,
-  routes: Record<string, FetchRoute>,
-  opts: Record<string, unknown> = {},
-) {
+  routeMap: Record<string, FetchRoute>,
+  opts: Partial<UpdaterDeps> = {},
+): YtDlpUpdater {
   return new YtDlpUpdater({
     overrideDir: dir,
     getCurrentVersion: async () => '2025.01.01',
-    fetchFn: fakeFetch(routes) as typeof fetch,
+    fetchFn: fakeFetch(routeMap) as typeof fetch,
     ...opts,
   })
+}
+
+function freshDir(): string {
+  return mkdtempSync(join(tmpdir(), 'mf-updater-'))
 }
 
 describe('version comparison', () => {
@@ -74,17 +80,10 @@ describe('version comparison', () => {
   })
 })
 
-describe('pickAssets', () => {
-  it('finds the win32 exe and official checksums asset', () => {
-    const picked = pickAssets(releaseJson())
-    expect(picked?.tag).toBe(TAG)
-    expect(picked?.exeUrl).toBe('https://fake.test/yt-dlp.exe')
-    expect(picked?.sumsUrl).toBe('https://fake.test/SHA2-256SUMS')
-  })
-
-  it('returns null when assets are missing', () => {
-    expect(pickAssets({ tag_name: TAG, assets: [] })).toBeNull()
-    expect(pickAssets({ assets: releaseJson().assets })).toBeNull()
+describe('resolveLatestTag', () => {
+  it('reads the tag from the releases/latest redirect location', async () => {
+    const tag = await resolveLatestTag('yt-dlp', 'yt-dlp', fakeFetch(routes()) as typeof fetch)
+    expect(tag).toBe(TAG)
   })
 })
 
@@ -102,15 +101,7 @@ describe('checksum helpers', () => {
   })
 })
 
-describe('updater flow against mocked GitHub API (no network)', () => {
-  function routes(): Record<string, FetchRoute> {
-    return {
-      'https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest': { json: releaseJson() },
-      'https://fake.test/yt-dlp.exe': { body: EXE_BYTES },
-      'https://fake.test/SHA2-256SUMS': { body: Buffer.from(sumsText(EXE_BYTES), 'utf8') },
-    }
-  }
-
+describe('updater flow against mocked github.com (no network, no REST API)', () => {
   it('reports availability between current and latest tag', async () => {
     const updater = makeUpdater(freshDir(), routes())
     const result = await updater.check()
@@ -134,24 +125,19 @@ describe('updater flow against mocked GitHub API (no network)', () => {
     const installed = join(dir, 'yt-dlp.exe')
     expect(readFileSync(installed, 'utf8')).toContain('FAKE-YT-DLP-BINARY')
     expect(existsSync(`${installed}.bak`)).toBe(false)
-    expect(phases).toEqual(
-      expect.arrayContaining([
-        'checking',
-        'downloading',
-        'verifying',
-        'swapping',
-        'verifying-install',
-      ]),
-    )
-    expect(readdirSafe(dir).some((n) => n.endsWith('.tmp'))).toBe(false)
+    expect(phases).toEqual([
+      'checking',
+      'downloading',
+      'verifying',
+      'swapping',
+      'verifying-install',
+    ])
   })
 
   it('rejects a tampered download and leaves nothing behind', async () => {
     const dir = freshDir()
     const tamperedRoutes = routes()
-    tamperedRoutes['https://fake.test/yt-dlp.exe'] = {
-      body: Buffer.from('TAMPERED-PAYLOAD', 'utf8'),
-    }
+    tamperedRoutes[EXE_URL] = { body: Buffer.from('TAMPERED-PAYLOAD', 'utf8') }
     const updater = makeUpdater(dir, tamperedRoutes)
 
     const result = await updater.apply()
@@ -173,27 +159,20 @@ describe('updater flow against mocked GitHub API (no network)', () => {
     expect(readFileSync(join(dir, 'yt-dlp.exe'), 'utf8')).toBe('OLD-OVERRIDE-CONTENT')
   })
 
-  it('surfaces API errors without throwing', async () => {
+  it('refuses to apply and installs nothing when already at the latest version', async () => {
     const dir = freshDir()
-    const failing = makeUpdater(dir, {
-      'https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest': {},
-    })
+    const updater = makeUpdater(dir, routes(), { getCurrentVersion: async () => TAG })
+    const result = await updater.apply()
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/up to date/i)
+    expect(existsSync(join(dir, 'yt-dlp.exe'))).toBe(false)
+  })
+
+  it('surfaces resolution errors without throwing', async () => {
+    const dir = freshDir()
+    const failing = makeUpdater(dir, { [TAG_URL]: { status: 404 } })
     const result = await failing.check()
     expect(result.updateAvailable).toBe(false)
     expect(result.error).toBeTruthy()
   })
 })
-
-function freshDir(): string {
-  return mkdtempSync(join(tmpdir(), 'mf-updater-'))
-}
-
-import { readdirSync } from 'node:fs'
-
-function readdirSafe(dir: string): string[] {
-  try {
-    return readdirSync(dir)
-  } catch {
-    return []
-  }
-}

@@ -57,6 +57,9 @@ import {
 } from './signals/queueState'
 import type { DownloadStartResponse } from '../../shared/ipcContract'
 import type { FormatRow, JobConfig } from '../../shared/models'
+import { estimateEntryBytes } from './utils/estimate'
+import { fmtSize } from './utils/format'
+import { POPULAR_SOURCES } from './utils/source'
 
 const APP_VERSION = 'v0.1.1'
 
@@ -167,7 +170,7 @@ function NavRail({ working, onShowNotice }: { working: boolean; onShowNotice: ()
 
 function TitleBar() {
   return (
-    <header class="app-drag relative z-20 flex h-[46px] shrink-0 items-center gap-3 border-b border-white/[0.06] bg-ink-950/85 pl-4 pr-40 backdrop-blur">
+    <header class="app-drag relative z-20 flex h-[46px] shrink-0 items-center gap-3 border-b border-white/[0.06] bg-ink-950 pl-4 pr-40">
       <LogoMark />
       <div class="flex items-baseline gap-2">
         <h1 class="text-[15px] font-bold leading-none tracking-tight text-white">MediaForge</h1>
@@ -217,6 +220,13 @@ function configFor(
 }
 
 type StreamTab = 'entries' | 'streams' | 'details'
+
+interface PausedQueueRun {
+  entries: Array<{ url: string; title: string }>
+  selection: JobSelection
+  playlistTitle?: string
+  index: number
+}
 
 function HeroState() {
   const focusUrl = (): void => {
@@ -269,7 +279,7 @@ function HeroState() {
           ))}
         </div>
         <div class="mt-5 flex flex-wrap items-center justify-center gap-1.5">
-          {['YouTube', 'Vimeo', 'Twitch', 'SoundCloud', 'TikTok'].map((site) => (
+          {POPULAR_SOURCES.map((site) => (
             <span
               key={site}
               class="rounded-full border border-white/[0.07] bg-white/[0.03] px-2.5 py-0.5 text-[11px] font-medium text-slate-500"
@@ -278,6 +288,9 @@ function HeroState() {
             </span>
           ))}
         </div>
+        <p class="mt-3 text-[11px] text-slate-600">
+          Works with any media link the engine supports — hundreds of sites beyond these examples.
+        </p>
       </div>
     </div>
   )
@@ -290,7 +303,20 @@ export function App() {
   const [selectedEntries, setSelectedEntries] = useState<ReadonlySet<string>>(new Set())
   const [streamTab, setStreamTab] = useState<StreamTab>('streams')
   const [showNotice, setShowNotice] = useState(false)
+  const [paused, setPaused] = useState<{ config: JobConfig; queue: PausedQueueRun | null } | null>(
+    null,
+  )
+  const pausedRef = useRef(paused)
+  const runCtxRef = useRef<{
+    entries: Array<{ url: string; title: string }>
+    selection: JobSelection
+    playlistTitle?: string
+  } | null>(null)
   const scrollRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    pausedRef.current = paused
+  }, [paused])
 
   useEffect(() => {
     window.mf
@@ -410,6 +436,52 @@ export function App() {
     return status
   }
 
+  async function runQueue(
+    entries: Array<{ url: string; title: string }>,
+    sel: JobSelection,
+    playlistTitle: string | undefined,
+    fromIndex: number,
+  ): Promise<void> {
+    stopRequested.value = false
+    queueRunning.value = true
+    if (fromIndex === 0) {
+      queueRows.value = entries.map((e) => ({ url: e.url, title: e.title, status: 'pending' }))
+    }
+    try {
+      for (let i = fromIndex; i < entries.length; i += 1) {
+        if (stopRequested.value) break
+        const config = configFor(entries[i].url, sel, false, playlistTitle)
+        lastJobEvent.value = null
+        queueRows.value = queueRows.value.map((row, idx) =>
+          idx === i ? { ...row, status: 'downloading' } : row,
+        )
+        let status: 'completed' | 'cancelled' | 'failed'
+        try {
+          status = await runSingleJob(config)
+        } catch {
+          lastFailedConfig.value = config
+          status = 'failed'
+        }
+        if (status === 'cancelled' && pausedRef.current !== null) {
+          queueRows.value = queueRows.value.map((row, idx) =>
+            idx === i ? { ...row, status: 'paused' } : row,
+          )
+          break
+        }
+        queueRows.value = queueRows.value.map((row, idx) =>
+          idx === i ? { ...row, status: status === 'completed' ? 'done' : status } : row,
+        )
+      }
+      if (stopRequested.value && pausedRef.current === null) {
+        queueRows.value = queueRows.value.map((row) =>
+          row.status === 'pending' ? { ...row, status: 'cancelled' } : row,
+        )
+      }
+    } finally {
+      queueRunning.value = false
+    }
+  }
+
   async function startDownload() {
     const r = analysis.value
     if (!r || !selection || activeJob.value || queueRunning.value) return
@@ -417,46 +489,21 @@ export function App() {
     if (r.kind === 'playlist') {
       const entries = (r.playlistEntries ?? []).filter((e) => selectedEntries.has(e.url))
       if (entries.length === 0) return
-      stopRequested.value = false
-      queueRunning.value = true
-      queueRows.value = entries.map((e) => ({ url: e.url, title: e.title, status: 'pending' }))
+      setPaused(null)
+      runCtxRef.current = { entries, selection, playlistTitle: r.metadata.title }
       activeView.value = 'queue'
-      try {
-        for (let i = 0; i < entries.length; i += 1) {
-          if (stopRequested.value) break
-          const config = configFor(entries[i].url, selection, false, r.metadata.title)
-          lastJobEvent.value = null
-          queueRows.value = queueRows.value.map((row, idx) =>
-            idx === i ? { ...row, status: 'downloading' } : row,
-          )
-          let status: 'completed' | 'cancelled' | 'failed'
-          try {
-            status = await runSingleJob(config)
-          } catch {
-            lastFailedConfig.value = config
-            status = 'failed'
-          }
-          queueRows.value = queueRows.value.map((row, idx) =>
-            idx === i ? { ...row, status: status === 'completed' ? 'done' : status } : row,
-          )
-        }
-        if (stopRequested.value) {
-          queueRows.value = queueRows.value.map((row) =>
-            row.status === 'pending' ? { ...row, status: 'cancelled' } : row,
-          )
-        }
-      } finally {
-        queueRunning.value = false
-      }
+      await runQueue(entries, selection, r.metadata.title, 0)
       return
     }
 
+    setPaused(null)
+    runCtxRef.current = null
     await runSingleJob(configFor(r.metadata.webpageUrl ?? '', selection, r.metadata.isLive))
   }
 
   async function retryLastFailed() {
     const config = lastFailedConfig.value
-    if (!config || busy) return
+    if (!config || busy || pausedRef.current !== null) return
     lastFailedConfig.value = null
     await runSingleJob(config)
   }
@@ -471,11 +518,78 @@ export function App() {
     if (job) void window.mf.downloadCancel(job.jobId)
   }
 
+  function pauseActive() {
+    const job = activeJob.value
+    if (!job) return
+    const ctx = runCtxRef.current
+    const idx = queueRows.value.findIndex((row) => row.status === 'downloading')
+    setPaused({
+      config: job.config,
+      queue: ctx && idx >= 0 ? { ...ctx, index: idx } : null,
+    })
+    void window.mf.downloadCancel(job.jobId)
+  }
+
+  function resumePaused() {
+    const p = paused
+    if (!p) return
+    setPaused(null)
+    runCtxRef.current = p.queue
+      ? {
+          entries: p.queue.entries,
+          selection: p.queue.selection,
+          playlistTitle: p.queue.playlistTitle,
+        }
+      : null
+    if (p.queue) {
+      void runQueue(p.queue.entries, p.queue.selection, p.queue.playlistTitle, p.queue.index)
+    } else {
+      void runSingleJob(p.config)
+    }
+  }
+
   const isPlaylist = result?.kind === 'playlist'
   const playlistTotal = isPlaylist ? (result?.playlistEntries ?? []).length : 0
   const playlistSelected = isPlaylist
     ? (result?.playlistEntries ?? []).filter((e) => selectedEntries.has(e.url)).length
     : 0
+
+  const playlistSummary = (() => {
+    if (!isPlaylist || result?.kind !== 'playlist' || !selection) return null
+    const chosen = (result.playlistEntries ?? []).filter((e) => selectedEntries.has(e.url))
+    let sum = 0
+    let any = false
+    for (const entry of chosen) {
+      const bytes = estimateEntryBytes(entry.durationSec ?? null, {
+        mode: selection.mode,
+        durationSec: entry.durationSec ?? null,
+        tier: selection.tier,
+        container: selection.container,
+        audioFormat: selection.audioFormat,
+        bitrate: selection.bitrate,
+        videoFormatId: '',
+        audioFormatId: '',
+      })
+      if (bytes !== null) {
+        sum += bytes
+        any = true
+      }
+    }
+    const tierLabel =
+      selection.tier === 4320 ? '8K' : selection.tier === 2160 ? '4K' : `${selection.tier}p`
+    const modeLabel =
+      selection.mode === 'video-audio'
+        ? `${tierLabel} ${selection.container.toUpperCase()}`
+        : selection.mode === 'audio-only'
+          ? `${selection.audioFormat.toUpperCase()}${selection.bitrate ? ` ${selection.bitrate}` : ''}`
+          : 'Advanced'
+    return {
+      selected: chosen.length,
+      total: playlistTotal,
+      estimatedBytes: any ? sum : null,
+      modeLabel,
+    }
+  })()
   const advancedReady =
     selection?.mode !== 'advanced' ||
     (selection.videoFormatId.length > 0 && selection.audioFormatId.length > 0)
@@ -579,7 +693,12 @@ export function App() {
                         }
                       />
                     )}
-                    {streamTab === 'details' && <DetailsGrid result={result!} />}
+                    {streamTab === 'details' && (
+                      <DetailsGrid
+                        result={result!}
+                        playlistSummary={playlistSummary ?? undefined}
+                      />
+                    )}
                   </div>
                 </section>
 
@@ -612,6 +731,22 @@ export function App() {
                             : (selection?.destDir ?? '')}
                         </span>
                       </div>
+                      {isPlaylist && playlistSummary !== null && (
+                        <p class="mt-1.5 px-1 text-[10.5px] text-slate-500">
+                          {playlistSummary.estimatedBytes !== null ? (
+                            <>
+                              ≈{' '}
+                              <span class="mf-num font-semibold text-slate-400">
+                                {fmtSize(playlistSummary.estimatedBytes)}
+                              </span>{' '}
+                              total for {playlistSummary.selected} entries ·{' '}
+                              {playlistSummary.modeLabel}
+                            </>
+                          ) : (
+                            <>{playlistSummary.modeLabel} — size unknown until analysis</>
+                          )}
+                        </p>
+                      )}
                       {busy ? (
                         <button
                           onClick={isPlaylist ? stopAfterCurrent : cancelActive}
@@ -640,7 +775,13 @@ export function App() {
               </div>
             )}
 
-            <PipelineStatus onRetry={() => void retryLastFailed()} onCancel={cancelActive} />
+            <PipelineStatus
+              onRetry={() => void retryLastFailed()}
+              onCancel={cancelActive}
+              onPause={pauseActive}
+              paused={paused !== null}
+              onResume={resumePaused}
+            />
           </main>
         )}
       </div>
@@ -670,7 +811,7 @@ export function App() {
         </div>
       )}
 
-      <footer class="flex shrink-0 items-center justify-between gap-4 border-t border-white/[0.06] bg-ink-950/85 px-4 py-1.5 text-[11px] text-slate-500 backdrop-blur">
+      <footer class="flex shrink-0 items-center justify-between gap-4 border-t border-white/[0.06] bg-ink-950 px-4 py-1.5 text-[11px] text-slate-500">
         <EnginesStatus />
         <span class="flex items-center gap-1">
           <button
@@ -687,14 +828,32 @@ export function App() {
             console
           </button>
           {[
-            { label: 'import cookies', fn: () => void window.mf.importCookies() },
-            { label: 'clear cookies', fn: () => void window.mf.clearCookies() },
-            { label: 'logs folder', fn: () => void window.mf.openLogsFolder() },
-            { label: 'clear result', fn: () => resetAnalysis() },
+            {
+              label: 'import cookies',
+              title:
+                'Load a cookies.txt file (Netscape format) to unlock age-gated, region-locked or bot-checked content. Optional for public videos.',
+              fn: () => void window.mf.importCookies(),
+            },
+            {
+              label: 'clear cookies',
+              title: 'Remove the stored cookies.txt. Safe — it only affects restricted links.',
+              fn: () => void window.mf.clearCookies(),
+            },
+            {
+              label: 'logs folder',
+              title: 'Open the folder where MediaForge keeps its diagnostic logs.',
+              fn: () => void window.mf.openLogsFolder(),
+            },
+            {
+              label: 'clear result',
+              title: 'Dismiss the current analysis and start over.',
+              fn: () => resetAnalysis(),
+            },
           ].map((action) => (
             <button
               key={action.label}
               onClick={action.fn}
+              title={action.title}
               class="rounded-md px-2 py-1 transition hover:bg-white/[0.06] hover:text-slate-200"
             >
               {action.label}

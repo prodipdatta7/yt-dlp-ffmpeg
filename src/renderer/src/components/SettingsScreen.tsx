@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks'
-import type { UpdaterApplyResult, UpdaterCheckResult } from '../../../shared/ipcContract'
 import { setThemePref, themePref, type ThemePref } from '../signals/uiState'
-import { CookieIcon, DocIcon, FolderIcon, PaletteIcon, RefreshIcon, ShieldIcon } from './icons'
+import { DriverUpdateCard } from './DriverUpdateCard'
+import { CookieIcon, DocIcon, FolderIcon, InfoIcon, PaletteIcon, ShieldIcon } from './icons'
 import { Pill } from './ui'
 
 function Section({
@@ -37,7 +37,6 @@ const btn =
   'mf-focus-ring rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50'
 const btnPrimary = `${btn} bg-gradient-to-br from-sky-500 to-indigo-500 text-white shadow shadow-sky-500/20 hover:brightness-110`
 const btnGhost = `${btn} border border-white/[0.1] text-slate-300 hover:border-sky-500/60 hover:text-white`
-const btnGo = `${btn} bg-gradient-to-br from-emerald-500 to-teal-400 text-slate-950 font-semibold shadow shadow-emerald-500/25 hover:brightness-110`
 
 export function SettingsScreen() {
   const [settings, setSettings] = useState<{
@@ -45,10 +44,6 @@ export function SettingsScreen() {
     cookieFileSet: boolean
     theme: ThemePref
   } | null>(null)
-  const [check, setCheck] = useState<UpdaterCheckResult | null>(null)
-  const [apply, setApply] = useState<UpdaterApplyResult | null>(null)
-  const [phase, setPhase] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     window.mf
@@ -71,26 +66,6 @@ export function SettingsScreen() {
   async function browse() {
     const dir = await window.mf.chooseDestDir()
     if (dir) setSettings((prev) => (prev ? { ...prev, lastOutputDir: dir } : prev))
-  }
-
-  async function runCheck() {
-    setBusy(true)
-    setApply(null)
-    setPhase('Checking GitHub releases…')
-    const result = await window.mf.updaterCheck()
-    setCheck(result)
-    setPhase(null)
-    setBusy(false)
-  }
-
-  async function runApply() {
-    setBusy(true)
-    setPhase('Downloading yt-dlp.exe + SHA2-256SUMS…')
-    const result = await window.mf.updaterApply()
-    setApply(result)
-    setPhase(null)
-    setBusy(false)
-    if (result.ok) window.mf.getBinariesInfo().catch(() => undefined)
   }
 
   return (
@@ -152,7 +127,7 @@ export function SettingsScreen() {
       <Section
         icon={<CookieIcon class="size-4.5" />}
         title="Cookies"
-        description="Needed for age-restricted or bot-checked content. Stored locally, never logged or transmitted anywhere else."
+        description="Some sites only let you in when you're logged in. This is optional for normal public videos — you only need it for age-gated, region-locked, members-only, age-confirmed, or bot-checked content."
       >
         <div class="flex items-center justify-between gap-3">
           <span class="text-sm text-slate-300">
@@ -186,56 +161,39 @@ export function SettingsScreen() {
             </button>
           )}
         </div>
+        <p class="mt-3 flex items-start gap-2 rounded-lg border border-white/[0.06] bg-black/20 p-3 text-xs leading-relaxed text-slate-500">
+          <InfoIcon class="mt-0.5 size-3.5 shrink-0 text-slate-600" />
+          <span>
+            <span class="font-medium text-slate-400">Why:</span> a site blocks the download until it
+            recognises a signed-in account. <span class="font-medium text-slate-400">How:</span> use
+            a browser extension that exports <span class="mf-num">cookies.txt</span> (Netscape
+            format), then import it here. The file is copied into your private user-data folder,
+            read <em>locally</em> by the engine, and never uploaded, logged, or shared — clear it
+            anytime to remove it.
+          </span>
+        </p>
       </Section>
 
-      <Section
-        icon={<RefreshIcon class="size-4.5" />}
-        title="Core drivers · yt-dlp"
-        description="Media platforms change constantly and the bundled extractor can go stale. Updates come from official yt-dlp releases and are SHA-256 verified before an atomic swap; failed swaps roll back automatically."
-      >
-        <div className="flex items-center gap-2">
-          <button onClick={() => void runCheck()} disabled={busy} className={btnPrimary}>
-            Check for updates
-          </button>
-          {check?.updateAvailable && (
-            <button onClick={() => void runApply()} disabled={busy} className={btnGo}>
-              Update → v{check.latest}
-            </button>
-          )}
-        </div>
-        {(phase || check || apply) && (
-          <div className="mt-3 space-y-1.5 rounded-xl border border-white/[0.06] bg-black/25 p-3.5 text-sm">
-            {phase && (
-              <p class="flex items-center gap-2 text-sky-300">
-                <RefreshIcon class="size-3.5 animate-spin" />
-                {phase}
-              </p>
-            )}
-            {check && (
-              <p className="text-slate-400">
-                Installed{' '}
-                <span className="mf-num text-slate-200">{check.current ?? 'unknown'}</span> · Latest
-                release{' '}
-                <span className="mf-num text-slate-200">{check.latest ?? check.error ?? '?'}</span>
-              </p>
-            )}
-            {check && !check.updateAvailable && !check.error && (
-              <p className="font-medium text-emerald-400">You are up to date.</p>
-            )}
-            {apply?.ok && (
-              <p className="font-medium text-emerald-400">
-                Updated to v{apply.newVersion} — engines reloaded.
-              </p>
-            )}
-            {apply && !apply.ok && (
-              <p className={apply.rolledBack ? 'text-amber-300' : 'text-rose-300'}>
-                {apply.rolledBack ? 'Rolled back safely. ' : ''}
-                {apply.error}
-              </p>
-            )}
-          </div>
-        )}
-      </Section>
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-white">Core drivers</h3>
+        <span class="text-[11px] text-slate-600">
+          checksum-verified · atomic swap · auto rollback
+        </span>
+      </div>
+
+      <DriverUpdateCard
+        kind="yt-dlp"
+        title="yt-dlp"
+        description="Extracts media info and downloads streams. Platforms change constantly, so this can go stale. Updates come from official yt-dlp releases and are SHA-256 verified before an atomic swap; failed swaps roll back automatically."
+        sourceLabel="official yt-dlp GitHub releases"
+      />
+
+      <DriverUpdateCard
+        kind="ffmpeg"
+        title="FFmpeg"
+        description="Muxes and transcodes the downloaded streams. Updates come from BtbN's LGPL Windows builds, verified the same way. The archive is tens of MB, so this can take a moment."
+        sourceLabel="BtbN FFmpeg-Builds (LGPL)"
+      />
 
       <Section
         icon={<DocIcon class="size-4.5" />}

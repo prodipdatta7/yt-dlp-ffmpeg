@@ -1,5 +1,6 @@
 import type { AnalyzeResult } from '../../../shared/models'
-import { fmtCount, fmtDuration, fmtEta, fmtSpeed } from '../utils/format'
+import { fmtCount, fmtDuration, fmtEta, fmtSize, fmtSpeed } from '../utils/format'
+import { sourceLabel } from '../utils/source'
 import { activeJob, lastJobEvent } from '../signals/jobState'
 import { queueRows } from '../signals/queueState'
 import {
@@ -9,11 +10,15 @@ import {
   ClockIcon,
   CloseIcon,
   EyeIcon,
+  FilmIcon,
   FolderIcon,
   GaugeIcon,
+  HardDriveIcon,
   LayersIcon,
+  PauseIcon,
   PlayIcon,
   QueueIcon,
+  SlidersIcon,
   Spinner,
 } from './icons'
 import { Pill, StatTile } from './ui'
@@ -94,6 +99,7 @@ export function LoadingSkeleton() {
 /** Horizontal banner for a single video — pairs with the tabbed panel below it. */
 export function VideoBanner({ result }: { result: AnalyzeResult }) {
   const { metadata } = result
+  const source = sourceLabel(metadata.webpageUrl)
   const chips: Array<{ Icon: typeof ClockIcon; text: string }> = []
   if (metadata.durationSec !== null)
     chips.push({ Icon: ClockIcon, text: fmtDuration(metadata.durationSec) })
@@ -134,6 +140,12 @@ export function VideoBanner({ result }: { result: AnalyzeResult }) {
           {metadata.uploader ?? 'Unknown channel'}
         </p>
         <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-medium text-slate-500">
+          {source && (
+            <Pill tone="sky">
+              <FilmIcon class="size-3" />
+              {source}
+            </Pill>
+          )}
           {chips.map(({ Icon, text }, i) => (
             <span key={i} class="inline-flex items-center gap-1.5">
               <Icon class="size-3 shrink-0" />
@@ -163,6 +175,7 @@ export function PlaylistBanner({
   const { metadata } = result
   const total = (result.playlistEntries ?? []).length
   const hydrating = !!hydration && hydration.done < hydration.total
+  const source = sourceLabel(metadata.webpageUrl)
 
   return (
     <div class="mf-card mf-card-hover flex shrink-0 items-center gap-3.5 p-3.5">
@@ -184,6 +197,12 @@ export function PlaylistBanner({
             <LayersIcon class="size-3" />
             Playlist
           </Pill>
+          {source && (
+            <Pill tone="sky">
+              <FilmIcon class="size-3" />
+              {source}
+            </Pill>
+          )}
           <Pill>{total} entries</Pill>
           {hydrating && (
             <Pill tone="sky">
@@ -261,6 +280,7 @@ export function PlaylistEntries({
     if (status === 'done') return <CheckIcon class="size-4 shrink-0 text-emerald-400" />
     if (status === 'failed') return <AlertIcon class="size-4 shrink-0 text-rose-400" />
     if (status === 'cancelled') return <CloseIcon class="size-4 shrink-0 text-amber-400" />
+    if (status === 'paused') return <PauseIcon class="size-4 shrink-0 text-amber-400" />
     if (status === 'downloading') return <Spinner class="size-4 shrink-0 text-sky-400" />
     return null
   }
@@ -380,6 +400,12 @@ export function PlaylistEntries({
                     <span class="mf-num w-9 shrink-0 text-right text-[11px] font-bold text-sky-400">
                       {livePercent !== null ? `${Math.round(livePercent)}%` : '···'}
                     </span>
+                    {liveEvent?.downloadedBytes != null && (
+                      <span class="mf-num hidden items-center gap-1 text-[10.5px] text-slate-500 lg:inline-flex">
+                        {fmtSize(liveEvent.downloadedBytes)}
+                        {liveEvent.totalBytes != null ? ` / ${fmtSize(liveEvent.totalBytes)}` : ''}
+                      </span>
+                    )}
                     <span class="mf-num hidden items-center gap-1 text-[10.5px] text-slate-500 sm:inline-flex">
                       <GaugeIcon class="size-3 shrink-0" />
                       {fmtSpeed(liveEvent?.speedBps ?? null)}
@@ -439,10 +465,52 @@ export function PlaylistEntries({
 }
 
 /** Metadata stat tiles — the Details tab content. */
-export function DetailsGrid({ result }: { result: AnalyzeResult }) {
+export function DetailsGrid({
+  result,
+  playlistSummary,
+}: {
+  result: AnalyzeResult
+  playlistSummary?: {
+    selected: number
+    total: number
+    estimatedBytes: number | null
+    modeLabel: string
+  }
+}) {
   const { metadata } = result
   return (
     <div class="mf-card min-h-0 flex-1 overflow-y-auto p-4">
+      {playlistSummary && (
+        <div class="mb-4 rounded-xl border border-sky-500/25 bg-sky-500/[0.07] p-3.5">
+          <p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-300">
+            Download summary
+          </p>
+          <div class="mt-2.5 grid grid-cols-2 gap-2.5 lg:grid-cols-3">
+            <StatTile
+              icon={<LayersIcon class="size-3" />}
+              label="Entries"
+              value={`${playlistSummary.selected} of ${playlistSummary.total}`}
+            />
+            <StatTile
+              icon={<HardDriveIcon class="size-3" />}
+              label="Estimated size"
+              value={
+                playlistSummary.estimatedBytes !== null
+                  ? fmtSize(playlistSummary.estimatedBytes)
+                  : '—'
+              }
+            />
+            <StatTile
+              icon={<SlidersIcon class="size-3" />}
+              label="Quality"
+              value={playlistSummary.modeLabel}
+            />
+          </div>
+          <p class="mt-2 text-[10px] leading-relaxed text-slate-500">
+            Estimated from typical bitrates for the chosen quality — actual size varies per video.
+          </p>
+        </div>
+      )}
       <div class="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
         <StatTile
           icon={<ClockIcon class="size-3" />}
@@ -467,22 +535,15 @@ export function DetailsGrid({ result }: { result: AnalyzeResult }) {
       </div>
       <dl class="mt-4 flex flex-col gap-2 text-xs">
         {(() => {
-          let host: string | null = null
-          if (metadata.webpageUrl) {
-            try {
-              host = new URL(metadata.webpageUrl).hostname
-            } catch {
-              host = null
-            }
-          }
+          const source = sourceLabel(metadata.webpageUrl)
           return (
             <>
-              {host && (
+              {source && (
                 <div class="flex items-baseline justify-between gap-4 border-b border-white/[0.05] pb-1.5">
                   <dt class="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                    Source host
+                    Source
                   </dt>
-                  <dd class="mf-num min-w-0 truncate text-right text-slate-300">{host}</dd>
+                  <dd class="mf-num min-w-0 truncate text-right text-slate-300">{source}</dd>
                 </div>
               )}
               {metadata.webpageUrl && (

@@ -3,7 +3,7 @@ import { signal } from '@preact/signals'
 export interface QueueRow {
   url: string
   title: string
-  status: 'pending' | 'downloading' | 'done' | 'failed' | 'cancelled'
+  status: 'pending' | 'downloading' | 'paused' | 'done' | 'failed' | 'cancelled'
 }
 
 export const queueRows = signal<QueueRow[]>([])
@@ -25,7 +25,10 @@ export function resolveCurrentJob(status: 'completed' | 'cancelled' | 'failed'):
 }
 
 const isSettled = (row: QueueRow): boolean =>
-  row.status === 'done' || row.status === 'failed' || row.status === 'cancelled'
+  row.status === 'done' ||
+  row.status === 'failed' ||
+  row.status === 'cancelled' ||
+  row.status === 'paused'
 
 /** Removes completed/failed/cancelled rows; ignored while a queue run owns the row order. */
 export function clearSettledQueueRows(): void {

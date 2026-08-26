@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
-import { analyzing, analysis, analyzeError, resetAnalysis } from '../signals/appState'
+import { analyzing, analysis, analyzeError, resetAnalysis, urlInput } from '../signals/appState'
 import { openSettings } from '../signals/uiState'
 import {
   AlertIcon,
@@ -15,7 +15,10 @@ import {
 const URL_PATTERN = /^https?:\/\/\S+$/i
 
 export function UrlBar() {
-  const [value, setValue] = useState('')
+  const value = urlInput.value
+  const setValue = (v: string): void => {
+    urlInput.value = v
+  }
   const [clipUrl, setClipUrl] = useState<string | null>(null)
   const [dropping, setDropping] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -43,6 +46,11 @@ export function UrlBar() {
 
   function cancel() {
     void window.mf.analyzeCancel()
+  }
+
+  function reset() {
+    setValue('')
+    resetAnalysis()
   }
 
   function acceptDrop(raw: string | undefined): void {
@@ -203,19 +211,30 @@ export function UrlBar() {
               Cancel
             </button>
           ) : (
-            <button
-              type="submit"
-              disabled={invalid || value.trim().length === 0}
-              className={`mf-focus-ring m-1.5 inline-flex shrink-0 items-center gap-2 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-500 px-5 text-sm font-bold text-white shadow-lg shadow-sky-500/25 transition-all duration-150 hover:brightness-110 active:scale-[0.98] ${
-                invalid || value.trim().length === 0
-                  ? 'cursor-not-allowed opacity-35 shadow-none'
-                  : ''
-              }`}
-              title="Analyze (Enter)"
-            >
-              Analyze
-              <ArrowRightIcon class="size-4" />
-            </button>
+            <>
+              <button
+                type="submit"
+                disabled={value.trim().length === 0}
+                className={`mf-focus-ring m-1.5 inline-flex shrink-0 items-center gap-2 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-500 px-5 text-sm font-bold text-white shadow-lg shadow-sky-500/25 transition-all duration-150 hover:brightness-110 active:scale-[0.98] ${
+                  value.trim().length === 0 ? 'cursor-not-allowed opacity-35 shadow-none' : ''
+                }`}
+                title="Analyze (Enter)"
+              >
+                Analyze
+                <ArrowRightIcon class="size-4" />
+              </button>
+              {analysis.value && (
+                <button
+                  type="button"
+                  onClick={reset}
+                  title="Reset and clear the current result"
+                  aria-label="Reset for a new link"
+                  class="mf-focus-ring m-1.5 inline-flex shrink-0 items-center gap-2 rounded-xl border border-white/[0.12] px-4 text-xs font-semibold text-slate-200 transition hover:border-rose-500/60 hover:text-rose-300 active:scale-[0.98]"
+                >
+                  Reset
+                </button>
+              )}
+            </>
           )}
         </form>
       </div>

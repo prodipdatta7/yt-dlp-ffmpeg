@@ -33,6 +33,7 @@ import {
   type LogEntryPayload,
   type PingResult,
 } from '../../shared/ipcContract'
+import type { UpdaterDriverKind } from '../../shared/models'
 import {
   BITRATE_TIERS,
   CONTAINERS,
@@ -82,13 +83,13 @@ export interface IpcDeps {
     theme: 'system' | 'light' | 'dark'
   }
   markFirstRunSeen: () => boolean
-  updaterCheck: () => Promise<{
+  updaterCheck: (kind: UpdaterDriverKind) => Promise<{
     current: string | null
     latest: string | null
     updateAvailable: boolean
     error?: string
   }>
-  updaterApply: () => Promise<{
+  updaterApply: (kind: UpdaterDriverKind) => Promise<{
     ok: boolean
     newVersion?: string
     rolledBack?: boolean
@@ -179,8 +180,12 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
     return deps.setSettings(patch)
   })
   ipcMain.handle(MF_SETTINGS_MARK_FIRST_RUN, () => deps.markFirstRunSeen())
-  ipcMain.handle(MF_UPDATER_CHECK, () => deps.updaterCheck())
-  ipcMain.handle(MF_UPDATER_APPLY, () => deps.updaterApply())
+  ipcMain.handle(MF_UPDATER_CHECK, (_event, payload: unknown) =>
+    deps.updaterCheck(readUpdaterKind(payload)),
+  )
+  ipcMain.handle(MF_UPDATER_APPLY, (_event, payload: unknown) =>
+    deps.updaterApply(readUpdaterKind(payload)),
+  )
 }
 
 function extractUrl(payload: unknown): string | null {
@@ -189,6 +194,10 @@ function extractUrl(payload: unknown): string | null {
   if (url.length === 0 || url.length > MAX_URL_LENGTH) return null
   if (!/^https?:\/\//i.test(url)) return null
   return url
+}
+
+function readUpdaterKind(payload: unknown): UpdaterDriverKind {
+  return payload === 'ffmpeg' ? 'ffmpeg' : 'yt-dlp'
 }
 
 const FORMAT_ID_PATTERN = /^[\w.-]{1,64}$/

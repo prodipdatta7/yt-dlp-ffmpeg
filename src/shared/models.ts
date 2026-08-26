@@ -5,6 +5,7 @@ export type MfErrorCode =
   | 'MF_NETWORK'
   | 'MF_RATE_LIMITED'
   | 'MF_EXTRACTOR_STALE'
+  | 'MF_UNSUPPORTED_SOURCE'
   | 'MF_DISK_FULL'
   | 'MF_LIVE_STREAM'
   | 'MF_CANCELLED'
@@ -20,6 +21,8 @@ export const ERROR_MESSAGES: Record<MfErrorCode, string> = {
   MF_NETWORK: 'Network problem detected. Check your connection and try again.',
   MF_RATE_LIMITED: 'The platform is rate-limiting requests. Please retry later.',
   MF_EXTRACTOR_STALE: 'Engine update required. Use "Update Core Drivers" in Settings.',
+  MF_UNSUPPORTED_SOURCE:
+    "This link doesn't point to a supported media source. Try a video or audio page on a supported site.",
   MF_DISK_FULL: 'Not enough free disk space to complete this operation.',
   MF_LIVE_STREAM: 'This is a live stream and will be recorded.',
   MF_CANCELLED: 'Operation cancelled.',
@@ -106,6 +109,8 @@ export interface JobEvent {
   percent: number | null
   speedBps: number | null
   etaSec: number | null
+  downloadedBytes?: number | null
+  totalBytes?: number | null
   message?: string
 }
 
@@ -115,3 +120,9 @@ export interface JobDonePayload {
   errorCode?: MfErrorCode
   outputPath?: string
 }
+
+export type UpdaterPhase =
+  'checking' | 'downloading' | 'verifying' | 'swapping' | 'verifying-install'
+
+/** Which core driver an update targets. */
+export type UpdaterDriverKind = 'yt-dlp' | 'ffmpeg'

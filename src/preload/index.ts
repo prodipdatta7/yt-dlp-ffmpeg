@@ -23,6 +23,7 @@ import {
   MF_SETTINGS_SET,
   MF_UPDATER_APPLY,
   MF_UPDATER_CHECK,
+  MF_UPDATER_PHASE,
   type AnalyzeResponse,
   type AnalyzeStreamEvent,
   type BinariesInfoResult,
@@ -36,7 +37,9 @@ import {
   type PingResult,
   type UpdaterApplyResult,
   type UpdaterCheckResult,
+  type UpdaterPhaseEvent,
 } from '../shared/ipcContract'
+import type { UpdaterDriverKind } from '../shared/models'
 
 const api: MfApi = {
   ping: (): Promise<PingResult> => ipcRenderer.invoke(MF_PING),
@@ -82,8 +85,16 @@ const api: MfApi = {
     patch: Partial<Pick<MfSettingsView, 'theme' | 'lastOutputDir'>>,
   ): Promise<MfSettingsView> => ipcRenderer.invoke(MF_SETTINGS_SET, patch),
   markFirstRunSeen: (): Promise<boolean> => ipcRenderer.invoke(MF_SETTINGS_MARK_FIRST_RUN),
-  updaterCheck: (): Promise<UpdaterCheckResult> => ipcRenderer.invoke(MF_UPDATER_CHECK),
-  updaterApply: (): Promise<UpdaterApplyResult> => ipcRenderer.invoke(MF_UPDATER_APPLY),
+  updaterCheck: (kind: UpdaterDriverKind): Promise<UpdaterCheckResult> =>
+    ipcRenderer.invoke(MF_UPDATER_CHECK, kind),
+  updaterApply: (kind: UpdaterDriverKind): Promise<UpdaterApplyResult> =>
+    ipcRenderer.invoke(MF_UPDATER_APPLY, kind),
+  onUpdaterPhase: (listener: (event: UpdaterPhaseEvent) => void): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: UpdaterPhaseEvent): void =>
+      listener(payload)
+    ipcRenderer.on(MF_UPDATER_PHASE, wrapped)
+    return () => ipcRenderer.removeListener(MF_UPDATER_PHASE, wrapped)
+  },
 }
 
 contextBridge.exposeInMainWorld('mf', api)

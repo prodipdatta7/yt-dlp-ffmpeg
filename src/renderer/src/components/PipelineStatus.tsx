@@ -1,7 +1,16 @@
 import type { JobEvent, JobPhase } from '../../../shared/models'
+import { ERROR_MESSAGES } from '../../../shared/models'
 import { activeJob, jobDone, lastJobEvent, launchError } from '../signals/jobState'
-import { fmtEta, fmtSpeed } from '../utils/format'
-import { AlertIcon, ClockIcon, GaugeIcon, Spinner } from './icons'
+import { fmtEta, fmtSize, fmtSpeed } from '../utils/format'
+import {
+  AlertIcon,
+  ClockIcon,
+  GaugeIcon,
+  HardDriveIcon,
+  PauseIcon,
+  PlayIcon,
+  Spinner,
+} from './icons'
 
 const PHASE_LABELS: Record<JobPhase, string> = {
   queued: 'Queued',
@@ -11,6 +20,13 @@ const PHASE_LABELS: Record<JobPhase, string> = {
   finalizing: 'Finalizing output',
   done: 'Done',
 }
+
+const PHASE_STEPS: Array<{ id: JobPhase; label: string }> = [
+  { id: 'downloading-video', label: 'Video' },
+  { id: 'downloading-audio', label: 'Audio' },
+  { id: 'merging', label: 'Merge' },
+  { id: 'finalizing', label: 'Finalize' },
+]
 
 function MetricChip({
   icon,
@@ -35,9 +51,15 @@ function MetricChip({
 export function PipelineStatus({
   onRetry,
   onCancel,
+  onPause,
+  paused = false,
+  onResume,
 }: {
   onRetry?: () => void
   onCancel?: () => void
+  onPause?: () => void
+  paused?: boolean
+  onResume?: () => void
 }) {
   const job = activeJob.value
   const done = jobDone.value
@@ -58,6 +80,7 @@ export function PipelineStatus({
   }
 
   function statusLabel(): string {
+    if (paused) return 'Paused'
     if (done) {
       if (done.status === 'completed') return 'Complete'
       if (done.status === 'cancelled') return 'Cancelled'
@@ -68,19 +91,33 @@ export function PipelineStatus({
     return isLiveJob ? 'Recording live' : PHASE_LABELS[event.phase]
   }
 
+  function pauseBlocked(): boolean {
+    return (
+      event?.phase === 'merging' ||
+      event?.phase === 'finalizing' ||
+      event?.phase === 'queued' ||
+      isLiveJob
+    )
+  }
+
   const barColor = failed
     ? 'from-rose-600 to-rose-400'
     : done?.status === 'cancelled'
       ? 'from-amber-500 to-amber-300'
       : 'from-go-500 to-go-400'
 
-  const pctColor = failed
-    ? 'text-rose-400'
-    : done?.status === 'cancelled'
-      ? 'text-amber-400'
-      : completedAll
-        ? 'text-emerald-400'
-        : 'text-sky-400'
+  const pctColor = paused
+    ? 'text-amber-400'
+    : failed
+      ? 'text-rose-400'
+      : done?.status === 'cancelled'
+        ? 'text-amber-400'
+        : completedAll
+          ? 'text-emerald-400'
+          : 'text-sky-400'
+
+  const activeIdx = event ? PHASE_STEPS.findIndex((s) => s.id === event.phase) : -1
+  const showStepper = (!!job && !!event) || paused
 
   return (
     <div class="mf-rise shrink-0 rounded-xl border border-[var(--mf-line)] bg-[var(--surface-card-hi)] shadow-sm">
@@ -90,22 +127,60 @@ export function PipelineStatus({
         ) : (
           <span
             className={`size-2 shrink-0 rounded-full ${
-              failed
-                ? 'bg-rose-500'
-                : done?.status === 'cancelled'
-                  ? 'bg-amber-400'
-                  : idle
-                    ? 'bg-slate-600'
-                    : 'bg-emerald-400'
+              paused
+                ? 'bg-amber-400'
+                : failed
+                  ? 'bg-rose-500'
+                  : done?.status === 'cancelled'
+                    ? 'bg-amber-400'
+                    : idle
+                      ? 'bg-slate-600'
+                      : 'bg-emerald-400'
             }`}
           />
         )}
         <span
-          class="w-36 min-w-0 shrink-0 truncate text-xs font-semibold text-slate-200"
+          class="w-28 min-w-0 shrink-0 truncate text-xs font-semibold text-slate-200"
           title={event ? PHASE_LABELS[event.phase] : undefined}
         >
           {statusLabel()}
         </span>
+
+        {showStepper && (
+          <div class="flex min-w-0 shrink-0 items-center gap-1" aria-hidden="true">
+            {PHASE_STEPS.map((step, i) => {
+              const stepDone = paused
+                ? activeIdx > 0 && i < activeIdx
+                : completedAll || (activeIdx >= 0 && i < activeIdx)
+              const stepActive = !completedAll && !paused && i === activeIdx
+              return (
+                <span key={step.id} class="flex items-center gap-1">
+                  {i > 0 && (
+                    <span
+                      className={`h-px w-3.5 ${stepDone || (paused && i <= activeIdx) ? 'bg-emerald-400/50' : 'bg-slate-600/50'}`}
+                    />
+                  )}
+                  <span
+                    className={`size-1.5 rounded-full transition-colors duration-300 ${
+                      stepDone ? 'bg-emerald-400' : stepActive ? 'bg-sky-400' : 'bg-slate-600'
+                    } ${stepActive ? 'mf-breathe' : ''}`}
+                  />
+                  <span
+                    className={`text-[9px] font-semibold uppercase tracking-wider transition-colors duration-300 ${
+                      stepDone
+                        ? 'text-emerald-400/80'
+                        : stepActive
+                          ? 'text-sky-300'
+                          : 'text-slate-600'
+                    }`}
+                  >
+                    {step.label}
+                  </span>
+                </span>
+              )
+            })}
+          </div>
+        )}
 
         <div class="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-500/20">
           <div
@@ -117,7 +192,7 @@ export function PipelineStatus({
             class={`relative h-full rounded-full bg-gradient-to-r ${barColor} transition-[width] duration-500 ease-out ${
               job && percent !== null && percent < 100 ? 'mf-progress-fill' : ''
             }`}
-            style={`width: ${idle || (done && !completedAll) ? 0 : percent !== null ? Math.max(2, Math.min(100, percent)) : 8}%;`}
+            style={`width: ${idle || (!paused && done && !completedAll) ? 0 : percent !== null ? Math.max(2, Math.min(100, percent)) : 8}%;`}
           />
         </div>
 
@@ -131,6 +206,17 @@ export function PipelineStatus({
               : '···'}
         </span>
 
+        {event?.downloadedBytes != null && event.downloadedBytes > 0 && (
+          <MetricChip
+            icon={<HardDriveIcon class="size-3" />}
+            label="Size"
+            value={
+              event.totalBytes != null
+                ? `${fmtSize(event.downloadedBytes)} / ${fmtSize(event.totalBytes)}`
+                : fmtSize(event.downloadedBytes)
+            }
+          />
+        )}
         <MetricChip
           icon={<GaugeIcon class="size-3" />}
           label="Speed"
@@ -143,15 +229,35 @@ export function PipelineStatus({
         />
 
         {job ? (
+          <span class="flex shrink-0 items-center gap-1.5">
+            {!pauseBlocked() && (
+              <button
+                onClick={() => onPause?.()}
+                title="Pause — keeps partial files, resume continues where it stopped"
+                class="mf-focus-ring inline-flex items-center gap-1.5 rounded-lg border border-sky-500/40 bg-sky-500/10 px-2.5 py-1 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/20 active:scale-[0.98]"
+              >
+                <PauseIcon class="size-3" />
+                Pause
+              </button>
+            )}
+            <button
+              onClick={cancel}
+              className={`mf-focus-ring rounded-lg border px-3 py-1 text-xs font-semibold transition hover:brightness-110 active:scale-[0.98] ${
+                isLiveJob
+                  ? 'border-amber-500/50 bg-amber-500/15 text-amber-300'
+                  : 'border-rose-500/40 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20'
+              }`}
+            >
+              {isLiveJob ? 'Stop & Save' : 'Cancel'}
+            </button>
+          </span>
+        ) : paused ? (
           <button
-            onClick={cancel}
-            className={`mf-focus-ring shrink-0 rounded-lg border px-3 py-1 text-xs font-semibold transition hover:brightness-110 active:scale-[0.98] ${
-              isLiveJob
-                ? 'border-amber-500/50 bg-amber-500/15 text-amber-300'
-                : 'border-rose-500/40 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20'
-            }`}
+            onClick={onResume}
+            class="mf-focus-ring inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-gradient-to-br from-go-500 to-go-400 px-3 py-1 text-xs font-bold text-white shadow shadow-go-500/25 transition hover:brightness-110 active:scale-[0.98]"
           >
-            {isLiveJob ? 'Stop & Save' : 'Cancel'}
+            <PlayIcon class="size-3" />
+            Resume
           </button>
         ) : (
           done &&
@@ -167,14 +273,21 @@ export function PipelineStatus({
         )}
       </div>
 
-      {(event?.message || launchError.value) && (
-        <p class="flex items-start gap-2 border-t border-[var(--mf-line)] px-3.5 py-1.5 text-xs leading-relaxed text-amber-300">
-          <AlertIcon class="mt-0.5 size-3.5 shrink-0" />
-          {launchError.value ?? `${event?.message} — partial files are kept and will resume.`}
+      {paused ? (
+        <p class="flex items-start gap-2 border-t border-[var(--mf-line)] px-3.5 py-1.5 text-xs leading-relaxed text-slate-400">
+          <PauseIcon class="mt-0.5 size-3.5 shrink-0 text-amber-400" />
+          Paused — partial files are kept. Resume continues from where it stopped.
         </p>
+      ) : (
+        (event?.message || launchError.value) && (
+          <p class="flex items-start gap-2 border-t border-[var(--mf-line)] px-3.5 py-1.5 text-xs leading-relaxed text-amber-300">
+            <AlertIcon class="mt-0.5 size-3.5 shrink-0" />
+            {launchError.value ?? `${event?.message} — partial files are kept and will resume.`}
+          </p>
+        )
       )}
 
-      {done && (
+      {done && !paused && (
         <div
           class={`flex items-center justify-between gap-3 border-t border-[var(--mf-line)] px-3.5 py-1.5 text-xs ${
             done.status === 'completed'
@@ -195,7 +308,8 @@ export function PipelineStatus({
                   ? 'Network dropped — the download can resume where it stopped.'
                   : done.errorCode === 'MF_RATE_LIMITED'
                     ? 'The platform is rate-limiting requests. Try again shortly.'
-                    : 'Download failed. Check the logs for details.'}
+                    : (ERROR_MESSAGES[done.errorCode ?? 'MF_UNKNOWN'] ??
+                      'Download failed. Check the logs for details.')}
               </span>
             )}
           </span>

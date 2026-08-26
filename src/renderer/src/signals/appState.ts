@@ -8,6 +8,9 @@ export const analysis = signal<AnalyzeResult | null>(null)
 export const analyzeError = signal<{ code: MfErrorCode; message: string } | null>(null)
 export const playlistHydration = signal<{ done: number; total: number } | null>(null)
 
+/** The URL text in the link bar. Kept in a signal so it survives view switches/remounts. */
+export const urlInput = signal('')
+
 export function resetAnalysis(): void {
   analysis.value = null
   analyzeError.value = null

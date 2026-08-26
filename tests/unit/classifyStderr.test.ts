@@ -25,7 +25,10 @@ describe('classifyStderr per error catalog (AGENTS.md §10)', () => {
     { code: 'MF_RATE_LIMITED', lines: ['ERROR: HTTP Error 429: Too Many Requests'] },
     { code: 'MF_RATE_LIMITED', lines: ['WARNING: [youtube] HTTP Error 403: Forbidden'] },
     { code: 'MF_EXTRACTOR_STALE', lines: ['ERROR: [youtube] abc: Unable to extract uploader id'] },
-    { code: 'MF_EXTRACTOR_STALE', lines: ['ERROR: Unsupported URL: https://x.test/v'] },
+    {
+      code: 'MF_UNSUPPORTED_SOURCE',
+      lines: ['ERROR: Unsupported URL: https://x.test/v'],
+    },
     { code: 'MF_DISK_FULL', lines: ['ERROR: unable to write data: No space left on device'] },
     { code: 'MF_DISK_FULL', lines: ['write failed: ENOSPC'] },
     {

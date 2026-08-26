@@ -6,12 +6,13 @@ import {
   stopRequested,
 } from '../signals/queueState'
 import { lastJobEvent } from '../signals/jobState'
-import { fmtEta, fmtSpeed } from '../utils/format'
-import { CheckIcon, CloseIcon, ClockIcon, AlertIcon, GaugeIcon, Spinner } from './icons'
+import { fmtEta, fmtSize, fmtSpeed } from '../utils/format'
+import { AlertIcon, CheckIcon, ClockIcon, CloseIcon, GaugeIcon, PauseIcon, Spinner } from './icons'
 
 const STATUS_PILL: Record<string, string> = {
   pending: 'border-white/10 bg-white/[0.03] text-slate-500',
   downloading: 'border-sky-500/40 bg-sky-500/10 text-sky-300',
+  paused: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
   done: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
   failed: 'border-rose-500/30 bg-rose-500/10 text-rose-300',
   cancelled: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
@@ -19,6 +20,7 @@ const STATUS_PILL: Record<string, string> = {
 
 function StatusGlyph({ status }: { status: string }) {
   if (status === 'downloading') return <Spinner class="size-3.5 shrink-0 text-sky-400" />
+  if (status === 'paused') return <PauseIcon class="size-3.5 shrink-0 text-amber-400" />
   if (status === 'done') return <CheckIcon class="size-3.5 shrink-0 text-emerald-400" />
   if (status === 'failed') return <AlertIcon class="size-3.5 shrink-0 text-rose-400" />
   if (status === 'cancelled') return <CloseIcon class="size-3.5 shrink-0 text-amber-400" />
@@ -173,7 +175,8 @@ export function QueueList({
                   {!running &&
                     (row.status === 'done' ||
                       row.status === 'failed' ||
-                      row.status === 'cancelled') && (
+                      row.status === 'cancelled' ||
+                      row.status === 'paused') && (
                       <button
                         onClick={() => removeQueueRow(row.url)}
                         title="Remove from queue"
@@ -204,6 +207,12 @@ export function QueueList({
                   <span class="mf-num w-9 shrink-0 text-right text-[11px] font-bold text-sky-400">
                     {livePercent !== null ? `${Math.round(livePercent)}%` : '···'}
                   </span>
+                  {event?.downloadedBytes != null && (
+                    <span class="mf-num hidden items-center gap-1 text-[10.5px] text-slate-500 lg:inline-flex">
+                      {fmtSize(event.downloadedBytes)}
+                      {event.totalBytes != null ? ` / ${fmtSize(event.totalBytes)}` : ''}
+                    </span>
+                  )}
                   <span class="mf-num hidden items-center gap-1 text-[10.5px] text-slate-500 sm:inline-flex">
                     <GaugeIcon class="size-3 shrink-0" />
                     {fmtSpeed(event?.speedBps ?? null)}

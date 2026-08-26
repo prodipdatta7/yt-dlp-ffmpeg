@@ -23,7 +23,7 @@ import type {
   JobDonePayload,
   JobEvent,
 } from '../shared/ipcContract'
-import { MF_LOG_LINE } from '../shared/ipcContract'
+import { MF_LOG_LINE, MF_UPDATER_PHASE } from '../shared/ipcContract'
 import { LogBus } from './logs/logBus'
 import { ERROR_MESSAGES } from '../shared/models'
 import { createLogger, type Logger } from './store/logger'
@@ -32,7 +32,9 @@ import { MfLaunchError } from './jobs/orchestrator'
 import { sweepOrphanedTempDirs } from './fsops/tempSweep'
 import { platformDir as platformDirName } from './binaries/locator'
 import { YtDlpUpdater } from './binaries/updater'
-import { createWindowOptions, getWindowSecurityFlags } from './windowOptions'
+import { FfmpegUpdater } from './binaries/ffmpegUpdater'
+import type { UpdaterDriverKind, UpdaterPhase } from '../shared/models'
+import { chromeThemeColors, createWindowOptions, getWindowSecurityFlags } from './windowOptions'
 
 function binaryCandidates(logger: Logger): BinaryCandidate[] {
   const dirName = platformDir(process.platform, process.arch)
@@ -103,13 +105,10 @@ function resolvedTheme(pref: string | undefined): 'light' | 'dark' {
 }
 
 function applyChromeTheme(theme: 'light' | 'dark'): void {
-  const colors =
-    theme === 'dark'
-      ? { color: '#05070d', symbolColor: '#94a3b8' }
-      : { color: '#eef2f7', symbolColor: '#475569' }
+  const { color, symbolColor } = chromeThemeColors(theme)
   for (const win of BrowserWindow.getAllWindows()) {
     try {
-      if (!win.isDestroyed()) win.setTitleBarOverlay(colors)
+      if (!win.isDestroyed()) win.setTitleBarOverlay({ color, symbolColor })
     } catch {
       /* overlay unsupported off-Windows */
     }
@@ -164,10 +163,26 @@ app.whenReady().then(() => {
   })
 
   const overrideDir = join(userDataDir, 'binaries', platformDirName(process.platform, process.arch))
+  const sendUpdaterPhase = (
+    kind: UpdaterDriverKind,
+    phase: UpdaterPhase,
+    detail?: string,
+  ): void => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send(MF_UPDATER_PHASE, { kind, phase, detail })
+    }
+  }
   const updater = new YtDlpUpdater({
     overrideDir,
     getCurrentVersion: async () => (await binariesService.getInfo()).ytdlp.version,
     logger,
+    onPhase: (phase, detail) => sendUpdaterPhase('yt-dlp', phase, detail),
+  })
+  const ffmpegUpdater = new FfmpegUpdater({
+    overrideDir,
+    getCurrentVersion: async () => (await binariesService.getInfo()).ffmpeg.version,
+    logger,
+    onPhase: (phase, detail) => sendUpdaterPhase('ffmpeg', phase, detail),
   })
 
   if (process.env.MF_MEMORY_PROBE === '1') {
@@ -323,9 +338,10 @@ app.whenReady().then(() => {
         settings.save({ ...settings.load(), firstRunNoticeSeen: true })
         return true
       },
-      updaterCheck: () => updater.check(),
-      updaterApply: async () => {
-        const result = await updater.apply()
+      updaterCheck: (kind: UpdaterDriverKind) =>
+        kind === 'ffmpeg' ? ffmpegUpdater.check() : updater.check(),
+      updaterApply: async (kind: UpdaterDriverKind) => {
+        const result = kind === 'ffmpeg' ? await ffmpegUpdater.apply() : await updater.apply()
         if (result.ok) binariesService.invalidate()
         return result
       },

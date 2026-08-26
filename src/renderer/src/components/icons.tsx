@@ -61,6 +61,15 @@ export function ArrowRightIcon({ class: cls }: IconProps) {
   )
 }
 
+export function PauseIcon({ class: cls }: IconProps) {
+  return (
+    <Svg class={cls} filled>
+      <rect x="6" y="4" width="4" height="16" rx="1.2" />
+      <rect x="14" y="4" width="4" height="16" rx="1.2" />
+    </Svg>
+  )
+}
+
 export function DownloadIcon({ class: cls }: IconProps) {
   return (
     <Svg class={cls}>

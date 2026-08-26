@@ -5,6 +5,8 @@ import type {
   JobEvent,
   MfErrorCode,
   PlaylistEntryPreview,
+  UpdaterDriverKind,
+  UpdaterPhase,
 } from './models'
 
 export type { MfErrorCode }
@@ -29,6 +31,7 @@ export const MF_LOG_CLEAR = 'mf:log:clear' as const
 export const MF_LOG_LINE = 'mf:log:line' as const
 export const MF_UPDATER_CHECK = 'mf:updater:check' as const
 export const MF_UPDATER_APPLY = 'mf:updater:apply' as const
+export const MF_UPDATER_PHASE = 'mf:updater:phase' as const
 export const MF_SETTINGS_GET = 'mf:settings:get' as const
 export const MF_SETTINGS_SET = 'mf:settings:set' as const
 export const MF_SETTINGS_MARK_FIRST_RUN = 'mf:settings:mark-first-run' as const
@@ -96,6 +99,13 @@ export interface UpdaterApplyResult {
   error?: string
 }
 
+/** Streams the updater's fine-grained progress (checking → installing → verified) to the UI. */
+export interface UpdaterPhaseEvent {
+  kind: UpdaterDriverKind
+  phase: UpdaterPhase
+  detail?: string
+}
+
 export interface MfApi {
   ping(): Promise<PingResult>
   getBinariesInfo(): Promise<BinariesInfoResult>
@@ -120,8 +130,9 @@ export interface MfApi {
     patch: Partial<Pick<MfSettingsView, 'theme' | 'lastOutputDir'>>,
   ): Promise<MfSettingsView>
   markFirstRunSeen(): Promise<boolean>
-  updaterCheck(): Promise<UpdaterCheckResult>
-  updaterApply(): Promise<UpdaterApplyResult>
+  updaterCheck(kind: UpdaterDriverKind): Promise<UpdaterCheckResult>
+  updaterApply(kind: UpdaterDriverKind): Promise<UpdaterApplyResult>
+  onUpdaterPhase(listener: (event: UpdaterPhaseEvent) => void): () => void
 }
 
 export type { Container, JobConfig, JobDonePayload, JobEvent, PlaylistEntryPreview } from './models'

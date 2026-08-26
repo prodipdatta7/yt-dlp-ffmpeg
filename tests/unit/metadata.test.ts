@@ -134,3 +134,60 @@ describe('mapRawInfo vs live fixture (EC-06 detection)', () => {
     expect(result.metadata.viewCount).toBe(4211)
   })
 })
+
+describe('mapRawInfo thumbnail extraction (string or thumbnails[])', () => {
+  it('uses the playlist thumbnail from a `thumbnail` string', () => {
+    const res = mapRawInfo(
+      {
+        _type: 'playlist',
+        id: 'P',
+        title: 'T',
+        thumbnail: 'https://img/playlist.jpg',
+        entries: [{ id: 'a', title: 'A', url: 'https://x/a' }],
+      },
+      'https://x/pl',
+    )
+    expect(res.kind).toBe('playlist')
+    if (res.kind === 'playlist') expect(res.metadata.thumbnailUrl).toBe('https://img/playlist.jpg')
+  })
+
+  it('uses the playlist thumbnail from a `thumbnails[]` array', () => {
+    const res = mapRawInfo(
+      {
+        _type: 'playlist',
+        id: 'P',
+        title: 'T',
+        thumbnails: [{ url: 'https://img/pl2.jpg' }],
+        entries: [{ id: 'a', title: 'A', url: 'https://x/a' }],
+      },
+      'https://x/pl',
+    )
+    if (res.kind === 'playlist') expect(res.metadata.thumbnailUrl).toBe('https://img/pl2.jpg')
+  })
+
+  it('maps entry preview thumbnails from the `thumbnails[]` array', () => {
+    const res = mapRawInfo(
+      {
+        _type: 'playlist',
+        id: 'P',
+        title: 'T',
+        entries: [
+          { id: 'a', title: 'A', url: 'https://x/a', thumbnails: [{ url: 'https://img/a.jpg' }] },
+        ],
+      },
+      'https://x/pl',
+    )
+    if (res.kind === 'playlist') {
+      expect(res.playlistEntries?.[0]?.thumbnailUrl).toBe('https://img/a.jpg')
+    }
+  })
+
+  it('maps a single video thumbnail from `thumbnails[]` when `thumbnail` is absent', () => {
+    const res = mapRawInfo(
+      { id: 'v', title: 'V', thumbnails: [{ url: 'https://img/v.jpg' }], formats: [] },
+      'https://x/v',
+    )
+    expect(res.kind).toBe('video')
+    expect(res.metadata.thumbnailUrl).toBe('https://img/v.jpg')
+  })
+})
