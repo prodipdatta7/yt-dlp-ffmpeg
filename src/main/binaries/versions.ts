@@ -39,4 +39,9 @@ export class VersionProber {
     this.cache.set(kind, version)
     return version
   }
+
+  invalidate(kind?: BinaryKind): void {
+    if (kind) this.cache.delete(kind)
+    else this.cache.clear()
+  }
 }

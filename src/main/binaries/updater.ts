@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import type { UpdaterPhase } from '../../shared/models'
 import { parseYtDlpVersion } from './versions'
 import { runCapture } from './runner'
+import { restoreBackup, swapBinary } from './swap'
 import type { Logger } from '../store/logger'
 
 const YTDLP_OWNER = 'yt-dlp'
@@ -174,24 +175,13 @@ export class YtDlpUpdater {
       this.deps.onPhase?.('swapping', tag)
       mkdirSync(this.deps.overrideDir, { recursive: true })
       const target = join(this.deps.overrideDir, 'yt-dlp.exe')
-      const backup = join(this.deps.overrideDir, 'yt-dlp.exe.bak')
-      const hadPrevious = existsSync(target)
-      if (hadPrevious) copyFileSync(target, backup)
-      const tmpFile = `${target}.${Date.now()}.tmp`
-      writeFileSync(tmpFile, exeBytes)
-      try {
-        rmSync(target, { force: true })
-        renameSync(tmpFile, target)
-      } catch (swapError) {
-        rmSync(tmpFile, { force: true })
-        throw swapError
-      }
+      const { backupPath } = swapBinary(target, exeBytes)
 
       this.deps.onPhase?.('verifying-install', tag)
       const installedVersion = await (this.deps.verifyInstalled ?? defaultVerify)(target)
       if (!installedVersion || compareVersions(installedVersion, tag) !== 0) {
         rmSync(target, { force: true })
-        if (hadPrevious && existsSync(backup)) copyFileSync(backup, target)
+        restoreBackup(target, backupPath)
         this.deps.logger?.warn('swapped binary failed verification — rolled back')
         return {
           ok: false,

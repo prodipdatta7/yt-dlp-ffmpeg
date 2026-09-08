@@ -80,7 +80,10 @@ export function spawnProcess(binaryPath: string, args: string[], opts: SpawnOpti
   }
 
   const result = new Promise<RunResult>((resolve, reject) => {
-    child.on('error', reject)
+    child.on('error', (spawnError) => {
+      if (timer) clearTimeout(timer)
+      reject(spawnError)
+    })
     child.on('close', (code, signal) => {
       out.end()
       err.end()

@@ -1,20 +1,11 @@
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { UpdaterPhase } from '../../shared/models'
 import { runCapture, spawnProcess } from './runner'
 import { parseFfmpegVersion } from './versions'
 import { downloadBuffer, releaseDownloadUrl, resolveLatestTag, sha256Hex } from './updater'
+import { restoreBackup, swapBinary } from './swap'
 import type { Logger } from '../store/logger'
 
 const FFMPEG_OWNER = 'BtbN'
@@ -195,37 +186,20 @@ export class FfmpegUpdater {
 
         mkdirSync(this.deps.overrideDir, { recursive: true })
         const target = join(this.deps.overrideDir, 'ffmpeg.exe')
-        const backup = join(this.deps.overrideDir, 'ffmpeg.exe.bak')
-        const hadPrevious = existsSync(target)
-        if (hadPrevious) copyFileSync(target, backup)
-        const tmpExe = `${target}.${Date.now()}.tmp`
-        writeFileSync(tmpExe, readFileSync(exe))
-        try {
-          rmSync(target, { force: true })
-          renameSync(tmpExe, target)
-        } catch (swapError) {
-          rmSync(tmpExe, { force: true })
-          throw swapError
-        }
+        const { backupPath: exeBackup } = swapBinary(target, exe)
 
-        if (ffprobe) {
-          const probeTarget = join(this.deps.overrideDir, 'ffprobe.exe')
-          if (existsSync(probeTarget)) copyFileSync(probeTarget, `${probeTarget}.bak`)
-          const tmpProbe = `${probeTarget}.${Date.now()}.tmp`
-          writeFileSync(tmpProbe, readFileSync(ffprobe))
-          try {
-            rmSync(probeTarget, { force: true })
-            renameSync(tmpProbe, probeTarget)
-          } catch (swapError) {
-            rmSync(tmpProbe, { force: true })
-            throw swapError
-          }
-        }
+        const probeTarget = join(this.deps.overrideDir, 'ffprobe.exe')
+        const probeBackup = `${probeTarget}.bak`
+        if (ffprobe) swapBinary(probeTarget, ffprobe)
 
         const finalVersion = await (this.deps.verifyInstalled ?? defaultVerify)(target)
         if (!finalVersion) {
           rmSync(target, { force: true })
-          if (hadPrevious && existsSync(backup)) copyFileSync(backup, target)
+          restoreBackup(target, exeBackup)
+          if (ffprobe) {
+            rmSync(probeTarget, { force: true })
+            restoreBackup(probeTarget, probeBackup)
+          }
           this.deps.logger?.warn('swapped ffmpeg failed verification — rolled back')
           return {
             ok: false,

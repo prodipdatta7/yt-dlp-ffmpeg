@@ -25,12 +25,18 @@ export class BinariesService {
   }
 
   getInfo(): Promise<BinariesInfoResult> {
-    if (!this.cached) this.cached = this.probeAll()
+    if (!this.cached) {
+      this.cached = this.probeAll().catch((error: unknown) => {
+        this.cached = null
+        throw error
+      })
+    }
     return this.cached
   }
 
   invalidate(): void {
     this.cached = null
+    this.prober.invalidate()
   }
 
   private async probeAll(): Promise<BinariesInfoResult> {
