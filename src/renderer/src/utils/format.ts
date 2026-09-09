@@ -24,6 +24,19 @@ export function fmtSpeed(bps: number | null): string {
   return `${(bps / 1024 / 1024).toFixed(1)} MB/s`
 }
 
+export function fmtRelativeTime(ms: number): string {
+  const diffSec = Math.round((Date.now() - ms) / 1000)
+  if (diffSec < 5) return 'just now'
+  if (diffSec < 60) return `${diffSec}s ago`
+  const diffMin = Math.round(diffSec / 60)
+  if (diffMin < 60) return `${diffMin}m ago`
+  const diffHr = Math.round(diffMin / 60)
+  if (diffHr < 24) return `${diffHr}h ago`
+  const diffDay = Math.round(diffHr / 24)
+  if (diffDay < 7) return `${diffDay}d ago`
+  return new Date(ms).toLocaleDateString()
+}
+
 export function fmtEta(sec: number | null): string {
   if (sec === null || !Number.isFinite(sec) || sec < 0) return '—:—'
   const m = Math.floor(sec / 60)

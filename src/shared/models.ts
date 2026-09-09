@@ -128,3 +128,12 @@ export type UpdaterPhase =
 
 /** Which core driver an update targets. */
 export type UpdaterDriverKind = 'yt-dlp' | 'ffmpeg'
+
+/**
+ * Leftover partial-download folders (from cancelled/failed jobs) are kept as a
+ * recovery safety net for this many days, then swept automatically on app
+ * startup. Single source of truth for both the main-process sweep and the
+ * Storage settings UI copy.
+ */
+export const LEFTOVER_RETENTION_DAYS = 7
+export const LEFTOVER_RETENTION_MS = LEFTOVER_RETENTION_DAYS * 24 * 60 * 60 * 1000

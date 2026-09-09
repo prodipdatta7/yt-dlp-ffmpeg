@@ -1,7 +1,9 @@
 import { existsSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { LEFTOVER_RETENTION_MS } from '../../shared/models'
 
-export const ORPHAN_TEMP_MAX_AGE_MS = 24 * 60 * 60 * 1000
+/** Leftover job dirs older than this are swept on startup — see LEFTOVER_RETENTION_MS. */
+export const ORPHAN_TEMP_MAX_AGE_MS = LEFTOVER_RETENTION_MS
 
 export function sweepOrphanedTempDirs(
   tempRoot: string,
