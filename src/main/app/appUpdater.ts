@@ -68,9 +68,24 @@ export interface AppUpdateInstallResult {
   error?: string
 }
 
-/** Matches `nsis.artifactName` in `electron-builder.yml` — the exact asset name each release publishes. */
+/**
+ * Matches `nsis.artifactName` in `electron-builder.yml` — the local build filename, and the name
+ * `release.yml` records inside `SHA256SUMS` (that file's *contents* are opaque text, so GitHub's
+ * asset-name rewrite below never touches it).
+ */
 export function installerAssetName(version: string): string {
   return `${PRODUCT_NAME}-Setup-${version}.exe`
+}
+
+/**
+ * GitHub silently rewrites spaces to periods in a release **asset's** filename (the one baked
+ * into its download URL) while leaving the human-readable label alone — confirmed empirically:
+ * `MediaForge Desktop-Setup-0.2.2.exe` uploads as `MediaForge.Desktop-Setup-0.2.2.exe`. Requesting
+ * the un-rewritten name 404s, so the download URL must use this, while checksum lookup must use
+ * the original `installerAssetName` (what's actually written inside `SHA256SUMS`).
+ */
+export function githubAssetUrlName(fileName: string): string {
+  return fileName.replace(/ /g, '.')
 }
 
 const NO_UPDATE = 'No update available — you are already up to date.'
@@ -118,7 +133,11 @@ export async function downloadAndInstallAppUpdate(
     }
 
     const fileName = installerAssetName(latestVersion)
-    const exeUrl = releaseDownloadUrl(APP_OWNER, APP_REPO, encodeURIComponent(fileName))
+    const exeUrl = releaseDownloadUrl(
+      APP_OWNER,
+      APP_REPO,
+      encodeURIComponent(githubAssetUrlName(fileName)),
+    )
     const sumsUrl = releaseDownloadUrl(APP_OWNER, APP_REPO, 'SHA256SUMS')
 
     deps.onPhase?.('downloading')

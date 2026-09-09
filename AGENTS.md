@@ -291,7 +291,18 @@ it to `app.getVersion()`. The Settings **About** section's "View Release" button
 trusts a stale prior check), then downloads `${productName}-Setup-${version}.exe` — the exact name
 `electron-builder.yml`'s `nsis.artifactName` produces (`installerAssetName`) — plus a `SHA256SUMS`
 sidecar that `.github/workflows/release.yml` now computes via `Get-FileHash` and uploads alongside
-the installer. It checksum-verifies (reusing `extractExpectedChecksum`/`sha256Hex` from the yt-dlp
+the installer.
+
+> **Gotcha (confirmed against real releases):** GitHub silently rewrites spaces to periods in a
+> release **asset's** filename — the one baked into its download URL — while leaving `SHA256SUMS`'s
+> *contents* (opaque text) alone. `MediaForge Desktop-Setup-0.2.2.exe` uploads and downloads as
+> `MediaForge.Desktop-Setup-0.2.2.exe`, but `SHA256SUMS` still reads `... MediaForge Desktop-Setup-
+> 0.2.2.exe`. Requesting the un-rewritten name 404s. `githubAssetUrlName()` applies the space→period
+> rewrite for the download URL only; checksum lookup still uses the original `installerAssetName`.
+> If `productName` ever changes to include other GitHub-unsafe characters, re-verify this rewrite
+> against a real uploaded asset rather than assuming it's space-only.
+
+It checksum-verifies (reusing `extractExpectedChecksum`/`sha256Hex` from the yt-dlp
 updater) before writing anything to disk, writes the verified installer to
 `<userData>/updates/`, spawns it detached (array args, `shell:false`, `windowsHide:false` so the
 NSIS wizard is visible), then the caller (`main/index.ts`) sets `forceClose = true` and

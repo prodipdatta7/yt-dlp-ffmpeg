@@ -1,7 +1,7 @@
 {
   "name": "mediaforge-desktop",
   "productName": "MediaForge Desktop",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Zero-dependency GUI wrapper around the yt-dlp and FFmpeg CLIs.",
   "license": "MIT",
   "author": {

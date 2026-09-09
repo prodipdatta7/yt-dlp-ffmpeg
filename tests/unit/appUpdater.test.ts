@@ -7,6 +7,7 @@ import {
   appReleasesUrl,
   checkAppUpdate,
   downloadAndInstallAppUpdate,
+  githubAssetUrlName,
   installerAssetName,
 } from '../../src/main/app/appUpdater'
 
@@ -47,13 +48,19 @@ function routesForTag(tag: string): Record<string, FetchRoute> {
   }
 }
 
+/** The GitHub-rewritten (space → period) asset URL — see `githubAssetUrlName`. */
+function exeUrlFor(latestVersion: string): string {
+  const rewritten = githubAssetUrlName(installerAssetName(latestVersion))
+  return `https://github.com/${OWNER}/${REPO}/releases/latest/download/${encodeURIComponent(rewritten)}`
+}
+
 function installRoutes(latestVersion: string, exeBytes = EXE_BYTES): Record<string, FetchRoute> {
   const fileName = installerAssetName(latestVersion)
-  const exeUrl = `https://github.com/${OWNER}/${REPO}/releases/latest/download/${encodeURIComponent(fileName)}`
   const sumsUrl = `https://github.com/${OWNER}/${REPO}/releases/latest/download/SHA256SUMS`
   return {
     ...routesForTag(`v${latestVersion}`),
-    [exeUrl]: { body: exeBytes },
+    [exeUrlFor(latestVersion)]: { body: exeBytes },
+    // SHA256SUMS content still uses the original (un-rewritten) filename — see AGENTS.md AM-15.
     [sumsUrl]: { body: Buffer.from(sumsText(fileName, EXE_BYTES), 'utf8') },
   }
 }
@@ -103,6 +110,14 @@ describe('installerAssetName', () => {
   })
 })
 
+describe('githubAssetUrlName', () => {
+  it('rewrites spaces to periods, matching GitHub’s actual asset-name behavior', () => {
+    expect(githubAssetUrlName('MediaForge Desktop-Setup-0.3.0.exe')).toBe(
+      'MediaForge.Desktop-Setup-0.3.0.exe',
+    )
+  })
+})
+
 describe('downloadAndInstallAppUpdate', () => {
   it('downloads, checksum-verifies, writes and launches the installer', async () => {
     const dir = freshDir()
@@ -127,10 +142,7 @@ describe('downloadAndInstallAppUpdate', () => {
   it('rejects a tampered download and never launches anything', async () => {
     const dir = freshDir()
     const routes = installRoutes('0.3.0')
-    const exeUrl = `https://github.com/${OWNER}/${REPO}/releases/latest/download/${encodeURIComponent(
-      installerAssetName('0.3.0'),
-    )}`
-    routes[exeUrl] = { body: Buffer.from('TAMPERED-PAYLOAD', 'utf8') }
+    routes[exeUrlFor('0.3.0')] = { body: Buffer.from('TAMPERED-PAYLOAD', 'utf8') }
     const launched: string[] = []
 
     const result = await downloadAndInstallAppUpdate({
