@@ -154,6 +154,79 @@ describe('DownloadOrchestrator', () => {
     expect(orch.cancel()).toBe(false)
     expect(orch.isBusy()).toBe(false)
   })
+
+  it('allows bounded parallel launches and rejects over the concurrency cap (D2a)', async () => {
+    const root = tempRoot()
+    const orch = new DownloadOrchestrator({
+      resolveYtDlp: async () => ({ kind: 'yt-dlp', path: NODE, source: 'bundled' }),
+      resolveFfmpeg: async () => ({ kind: 'ffmpeg', path: NODE, source: 'bundled' }),
+      tempRoot: root,
+      spawnArgPrefix: ['tests/fixtures/fake-bin/fake-ytdlp-hang.mjs'],
+      getMaxConcurrent: () => 2,
+    })
+
+    const boxes: DoneBox[] = [{ value: null }, { value: null }]
+    const id1 = await orch.launch(
+      { ...CONFIG(root), url: 'https://x.test/a' },
+      () => undefined,
+      (d) => {
+        boxes[0].value = d
+      },
+    )
+    const id2 = await orch.launch(
+      { ...CONFIG(root), url: 'https://x.test/b' },
+      () => undefined,
+      (d) => {
+        boxes[1].value = d
+      },
+    )
+    expect(id1).not.toBe(id2)
+    expect(orch.activeCount()).toBe(2)
+
+    await expect(
+      orch.launch(
+        { ...CONFIG(root), url: 'https://x.test/c' },
+        () => undefined,
+        () => undefined,
+      ),
+    ).rejects.toThrow(/concurrency/i)
+
+    expect(orch.cancel(id1)).toBe(true)
+    expect(orch.cancel(id2)).toBe(true)
+    await waitForDone(boxes[0])
+    await waitForDone(boxes[1])
+  }, 30_000)
+
+  it('disk preflight sums reserved estimates across in-flight jobs (D2a)', async () => {
+    const root = tempRoot()
+    const orch = new DownloadOrchestrator({
+      resolveYtDlp: async () => ({ kind: 'yt-dlp', path: NODE, source: 'bundled' }),
+      resolveFfmpeg: async () => ({ kind: 'ffmpeg', path: NODE, source: 'bundled' }),
+      tempRoot: root,
+      spawnArgPrefix: ['tests/fixtures/fake-bin/fake-ytdlp-hang.mjs'],
+      getMaxConcurrent: () => 3,
+      getFreeDiskBytes: async () => 200 * 1024 * 1024,
+    })
+
+    const box: DoneBox = { value: null }
+    const id = await orch.launch(
+      { ...CONFIG(root), url: 'https://x.test/big1', estimatedBytes: 80 * 1024 * 1024 },
+      () => undefined,
+      (d) => {
+        box.value = d
+      },
+    )
+    // 80 + 80 + 50MB margin = 210MB > 200MB free → reject
+    await expect(
+      orch.launch(
+        { ...CONFIG(root), url: 'https://x.test/big2', estimatedBytes: 80 * 1024 * 1024 },
+        () => undefined,
+        () => undefined,
+      ),
+    ).rejects.toMatchObject({ code: 'MF_DISK_FULL' })
+    orch.cancel(id)
+    await waitForDone(box)
+  }, 30_000)
 })
 
 function destOf(root: string): string {

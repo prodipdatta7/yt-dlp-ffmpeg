@@ -56,17 +56,17 @@ export function LogConsole({ dock = false }: { dock?: boolean }) {
   return (
     <div
       class={`flex min-h-0 flex-1 flex-col overflow-hidden ${
-        dock ? 'border-t border-white/[0.09] bg-[var(--surface-console)]' : 'mf-card'
+        dock ? 'border-t border-line bg-[var(--surface-console)]' : 'mf-card'
       }`}
     >
-      <div class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-white/[0.06] px-4 py-2">
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-2">
         <span class="flex items-center gap-2">
           <TerminalIcon class="size-4 text-emerald-300" />
           <h3 class="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-300">
             Live Console
           </h3>
         </span>
-        <span class="mf-num rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] text-slate-500">
+        <span class="mf-num rounded-full border border-line-strong bg-wash-1 px-2 py-0.5 text-[10px] text-slate-500">
           {visible.length}/{entries.length}
         </span>
         <span
@@ -85,7 +85,7 @@ export function LogConsole({ dock = false }: { dock?: boolean }) {
             className={`mf-focus-ring rounded-lg border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide transition ${
               showProtocol
                 ? 'border-sky-400/40 bg-sky-500/15 text-sky-300'
-                : 'border-white/[0.08] bg-white/[0.03] text-slate-500 hover:text-slate-300'
+                : 'border-line bg-wash-1 text-slate-500 hover:text-slate-300'
             }`}
           >
             protocol
@@ -98,7 +98,7 @@ export function LogConsole({ dock = false }: { dock?: boolean }) {
               onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
               placeholder="Filter…"
               spellcheck={false}
-              class="w-36 rounded-lg border border-white/[0.08] bg-black/30 py-1 pl-7 pr-2 font-mono text-[11px] text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-sky-500/50"
+              class="w-36 rounded-lg border border-line bg-recess py-1 pl-7 pr-2 font-mono text-[11px] text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-sky-500/50"
             />
           </div>
           <button
@@ -106,7 +106,7 @@ export function LogConsole({ dock = false }: { dock?: boolean }) {
               clearLogs()
               void window.mf.logClear()
             }}
-            class="mf-focus-ring rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[11px] font-medium text-slate-400 transition hover:border-rose-500/40 hover:text-rose-300"
+            class="mf-focus-ring rounded-lg border border-line bg-wash-1 px-2.5 py-1 text-[11px] font-medium text-slate-400 transition hover:border-rose-500/40 hover:text-rose-300"
           >
             Clear
           </button>
@@ -115,7 +115,7 @@ export function LogConsole({ dock = false }: { dock?: boolean }) {
               onClick={toggleLogDock}
               title="Close console (Ctrl+`)"
               aria-label="Close console"
-              class="mf-focus-ring flex size-6 items-center justify-center rounded-lg text-slate-500 transition hover:bg-white/[0.06] hover:text-slate-200"
+              class="mf-focus-ring flex size-6 items-center justify-center rounded-lg text-slate-500 transition hover:bg-wash-2 hover:text-slate-200"
             >
               <CloseIcon class="size-3" />
             </button>
@@ -126,7 +126,7 @@ export function LogConsole({ dock = false }: { dock?: boolean }) {
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        class="min-h-0 flex-1 overflow-y-auto bg-black/40 py-2 font-mono text-[11px] leading-[1.6]"
+        class="min-h-0 flex-1 overflow-y-auto bg-recess py-2 font-mono text-[11px] leading-[1.6]"
       >
         {visible.length === 0 ? (
           <p class="flex h-full items-center justify-center px-6 text-center font-sans text-xs text-slate-600">
@@ -135,7 +135,7 @@ export function LogConsole({ dock = false }: { dock?: boolean }) {
           </p>
         ) : (
           visible.map((entry, i) => (
-            <div key={`${entry.ts}-${i}`} class="flex gap-2 px-3 py-px hover:bg-white/[0.03]">
+            <div key={`${entry.ts}-${i}`} class="flex gap-2 px-3 py-px hover:bg-wash-1">
               <span class="shrink-0 select-none text-slate-700">{fmtTs(entry.ts)}</span>
               <span
                 className={`shrink-0 select-none ${
@@ -144,7 +144,9 @@ export function LogConsole({ dock = false }: { dock?: boolean }) {
               >
                 [{entry.source}]
               </span>
-              <span className={`min-w-0 whitespace-pre-wrap break-all ${lineClass(entry)}`}>
+              <span
+                className={`mf-select-text min-w-0 whitespace-pre-wrap break-all ${lineClass(entry)}`}
+              >
                 {entry.text}
               </span>
             </div>
@@ -155,7 +157,7 @@ export function LogConsole({ dock = false }: { dock?: boolean }) {
       {!stuck && visible.length > 0 && (
         <button
           onClick={() => setStuck(true)}
-          class="absolute bottom-4 right-5 rounded-full border border-sky-400/30 bg-slate-900/95 px-3.5 py-1.5 text-[11px] font-semibold text-sky-300 shadow-lg transition hover:bg-slate-800"
+          class="absolute bottom-4 right-5 rounded-full border border-sky-400/30 bg-[var(--mf-console-chip)] px-3.5 py-1.5 text-[11px] font-semibold text-sky-300 shadow-lg transition hover:bg-wash-2"
         >
           ↓ Jump to latest
         </button>

@@ -5,6 +5,8 @@ import type {
   JobEvent,
   MfErrorCode,
   PlaylistEntryPreview,
+  SearchResultItem,
+  SearchSort,
   UpdaterDriverKind,
   UpdaterPhase,
 } from './models'
@@ -35,6 +37,13 @@ export const MF_UPDATER_PHASE = 'mf:updater:phase' as const
 export const MF_SETTINGS_GET = 'mf:settings:get' as const
 export const MF_SETTINGS_SET = 'mf:settings:set' as const
 export const MF_SETTINGS_MARK_FIRST_RUN = 'mf:settings:mark-first-run' as const
+export const MF_PARTIALS_LIST = 'mf:partials:list' as const
+export const MF_PARTIALS_OPEN = 'mf:partials:open' as const
+export const MF_PARTIALS_CLEAR = 'mf:partials:clear' as const
+export const MF_REVEAL_PATH = 'mf:reveal-path' as const
+export const MF_OPEN_FILE = 'mf:open-file' as const
+export const MF_SEARCH_START = 'mf:search:start' as const
+export const MF_SEARCH_CANCEL = 'mf:search:cancel' as const
 
 export interface PingResult {
   pong: string
@@ -76,6 +85,18 @@ export interface MfSettingsView {
   cookieFileSet: boolean
   firstRunNoticeSeen: boolean
   theme: 'system' | 'light' | 'dark'
+  playlistConcurrency: number
+  notifyOnComplete: boolean
+  queueSnapshot: {
+    rows: Array<{
+      url: string
+      title: string
+      status: 'pending' | 'downloading' | 'paused' | 'done' | 'failed' | 'cancelled'
+    }>
+    runMode: 'sequential' | 'parallel'
+    selectionJson?: string
+    playlistTitle?: string
+  } | null
 }
 
 export interface LogEntryPayload {
@@ -106,6 +127,35 @@ export interface UpdaterPhaseEvent {
   detail?: string
 }
 
+export interface PartialDirInfo {
+  path: string
+  bytes: number
+  fileCount: number
+  mtimeMs: number
+}
+
+export interface PartialsListResult {
+  tempRoot: string
+  items: PartialDirInfo[]
+}
+
+export interface PartialsClearResult {
+  ok: boolean
+  cleared: number
+  failed?: number
+}
+
+export interface SearchRequest {
+  platform: string
+  query: string
+  limit: number
+  sort: SearchSort
+}
+
+export type SearchResponse =
+  | { kind: 'ok'; results: SearchResultItem[] }
+  | { kind: 'error'; code: MfErrorCode; message: string }
+
 export interface MfApi {
   ping(): Promise<PingResult>
   getBinariesInfo(): Promise<BinariesInfoResult>
@@ -127,12 +177,35 @@ export interface MfApi {
   onLogLine(listener: (entry: LogEntryPayload) => void): () => void
   getSettings(): Promise<MfSettingsView>
   setSettings(
-    patch: Partial<Pick<MfSettingsView, 'theme' | 'lastOutputDir'>>,
+    patch: Partial<
+      Pick<
+        MfSettingsView,
+        'theme' | 'lastOutputDir' | 'playlistConcurrency' | 'notifyOnComplete' | 'queueSnapshot'
+      >
+    >,
   ): Promise<MfSettingsView>
   markFirstRunSeen(): Promise<boolean>
+  listPartials(): Promise<PartialsListResult>
+  openPartialDir(path: string): Promise<{ ok: boolean }>
+  clearPartials(path?: string): Promise<PartialsClearResult>
+  /** Reveal a file or folder in the OS file manager (Explorer). */
+  revealPath(path: string): Promise<{ ok: boolean }>
+  /** Open a file with the OS-registered default application (e.g. play a video). */
+  openFile(path: string): Promise<{ ok: boolean }>
   updaterCheck(kind: UpdaterDriverKind): Promise<UpdaterCheckResult>
   updaterApply(kind: UpdaterDriverKind): Promise<UpdaterApplyResult>
   onUpdaterPhase(listener: (event: UpdaterPhaseEvent) => void): () => void
+  searchStart(req: SearchRequest): Promise<SearchResponse>
+  searchCancel(): Promise<{ ok: boolean }>
 }
 
-export type { Container, JobConfig, JobDonePayload, JobEvent, PlaylistEntryPreview } from './models'
+export type {
+  Container,
+  JobConfig,
+  JobDonePayload,
+  JobEvent,
+  PlaylistEntryPreview,
+  SearchPlatform,
+  SearchResultItem,
+  SearchSort,
+} from './models'

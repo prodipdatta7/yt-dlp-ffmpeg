@@ -35,13 +35,14 @@ These amend the PRD. Traceability: `AM-nn` may appear in commit messages and tes
 | AM-04 | 3.3B | Bitrate tiers (320/192/128 kbps) apply only to lossy targets (MP3, M4A/AAC, Vorbis/OGG). When FLAC or WAV is selected, hide/disable the bitrate selector and transcode from best source audio. |
 | AM-05 | EC-04 | The app cannot reconnect the OS network. "Retry loop" means: detect failure, retry spawning `yt-dlp` (default resume via `.part` files) up to N=3 times with backoff (5s/15s/30s), then surface the **Resume Download** button. |
 | AM-06 | EC-03 + 3.5 | Cleanup rule: delete temp files **only after verifying** the final output exists and is > 0 bytes. On any failure, retain partials (enables resume). Pre-flight disk space check before starting a job; abort early with required-bytes message when estimable. |
-| AM-07 | 7 | Playlists ARE in scope as a *sequential queue*: if metadata reports `_type: playlist`, enumerate entries (`--flat-playlist`) and enqueue them one-at-a-time through the normal single-job pipeline, with per-entry status rows. Never more than one concurrent child job. |
+| AM-07 | 7 | Playlists ARE in scope as a queue: if metadata reports `_type: playlist`, enumerate entries (`--flat-playlist`) and enqueue them through the normal single-job pipeline, with per-entry status rows. Default run is sequential (one child at a time). Optional **parallel** mode (UI: "Download in Parallel") allows up to N=2–5 concurrent jobs via a Map-based orchestrator (D2a / `specs/UI_Design_Update_Plan.md`); disk preflight reserves the **sum** of in-flight estimates. |
 | AM-08 | EC-02/EC-07 | A Settings screen exists (referenced but unspecified in PRD): default output folder, cookie-file import, check-for-updates, open logs folder, version info. See §9/M6. |
 | AM-09 | 3.2 | Cancel semantics defined for ALL phases: cancel kills the child process **tree** (win32: `taskkill /PID <pid> /T /F`), keeps partial files, resets UI to idle. Applies mid-analysis and mid-download. |
 | AM-10 | 5.2 | Memory ceilings cover **Electron processes only** (measured via `app.getAppMetrics()` sum: main + renderer + gpu + utility). FFmpeg/yt-dlp are separate OS processes — excluded from the ceiling but RSS-logged during performance tests. Idle target ≤120MB, peak ≤450MB. |
 | AM-11 | — | Additions the PRD omitted: structured logging with redaction (§11.3), error catalog mapping CLI stderr → user messages (§10), licensing/distribution notes (§14), filename safety delegated primarily to yt-dlp flags `--windows-filenames --trim-filenames` with app-side sanitizer as defense-in-depth (§7.4). |
 | AM-12 | 5.3 | Tailwind CSS v4 is sanctioned as a **build-time-only** styling layer (compiles to static CSS before packaging ⇒ zero runtime weight, honors §5.3's actual target of installer/runtime size). Plain CSS / CSS Modules remain allowed side-by-side where utility classes don't fit. React remains banned — renderer framework stays Preact (AM rationale: identical rendering, ~10× smaller runtime). No UI kits/icon libraries still applies; use inline SVG icons. |
 | AM-13 | 7.6 | FFmpeg self-updating is now in scope (was excluded for v1). Updates come from `BtbN/FFmpeg-Builds` **LGPL** `ffmpeg-master-latest-win64-lgpl.zip` + its `.sha256` sidecar (same source as `fetch-binaries.mjs`), checksum-verified before a `tar -xf` extraction, atomic swap into `<userData>/binaries/win32/`, and rollback on failure. Because the rolling build has no comparable version tag, "newer" is detected by comparing the installed build's zip hash (stored in `.ffmpeg-update.json`). The Settings updater is now split into per-driver **yt-dlp** and **FFmpeg** cards (`DriverUpdateCard`). |
+| AM-14 | — | In-app keyword search (M8, new — not in the original PRD) is scoped to the small set of platforms yt-dlp can natively *query*: it exposes a `PREFIXn:query` pseudo-URL syntax for a handful of extractors (verified against `supportedsites.md`: `ytsearch`/`ytsearchdate`, `scsearch`, `bilisearch`, plus niche ones we don't surface — `nicosearch`, `yvsearch`, `rkfnsearch`, `prxseries`/`prxstories`). It has **no such mechanism** for the majority of this app's existing paste-a-link platforms (TikTok, Instagram, Facebook, X, Vimeo, Twitch, Reddit, Rumble, Dailymotion, Internet Archive…) — yt-dlp can resolve a URL on those sites but cannot browse/query them, so they are not offered in the Search tab's platform picker and remain paste-a-link-only in the Downloader tab. Do not add a platform to `SEARCH_PLATFORMS` (`src/shared/models.ts`) without re-confirming its prefix still exists upstream. |
 
 ## 3. Locked Technology Decisions
 
@@ -60,6 +61,28 @@ Do not introduce alternatives without updating this section first.
 | Lint/format | ESLint (flat config, `typescript-eslint`) + Prettier | CI-equivalent local gate |
 | Runtime deps budget | Renderer: Preact + signals ONLY. Main: none beyond Electron itself unless justified in the PR. Build-time tooling (Tailwind, etc.) exempt — it must not ship in the bundle | Keeps installer small (PRD §5.3) |
 | Node.js | ≥ 20 LTS | |
+
+### 3.1 Design tokens (renderer)
+
+Themes live in `src/renderer/src/styles/global.css` (`:root` = Warm Studio light,
+`:root[data-theme='dark']` = Warm Ember). Prefer **intent-named** Tailwind colors over
+opacity washes of `white`/`black`:
+
+| Token | Utility examples | Intent |
+|-------|------------------|--------|
+| `--color-ink` | `text-ink` | Primary readable text on page/card surfaces |
+| `--color-wash-1/2` | `bg-wash-1`, `hover:bg-wash-2` | Subtle hover / chip fills |
+| `--color-recess` | `bg-recess` | Recessed wells (inputs, segmented controls, nav) |
+| `--color-line` / `--color-line-strong` | `border-line`, `border-line-strong` | Hairline / stronger borders |
+| `--color-ink-950` | `bg-ink-950` | Title bar + footer chrome |
+
+`white`/`black` stay **literal** (CTA on-accent text, badge dots). Accent ramps keep their
+Tailwind names (`sky-*` = vermillion, `indigo-*` = gold) for historical continuity — treat them
+as brand aliases, not literal hues.
+
+Native title-bar colors come from `src/shared/themeChrome.ts` (`THEME_CHROME`);
+`windowOptions.ts` imports that module. `tests/unit/themeChrome.test.ts` fails if
+`--color-ink-950` in CSS drifts from the manifest.
 
 ## 4. Architecture
 
@@ -80,6 +103,7 @@ Three-process model mandated by PRD §5.1:
                                        │ • SettingsStore          │
                                        │ • UpdaterService         │
                                        │ • DialogService          │
+                                       │ • SearchService (M8)     │
                                        └───────────┬──────────────┘
                                     spawn(args[])  │  stdout/stderr lines
                                        ┌───────────▼──────────────┐
@@ -117,7 +141,7 @@ mediaforge/
     │   ├── index.ts               ← app lifecycle, window, close-guard (EC-05)
     │   ├── binaries/              ← locator.ts, runner.ts, versions.ts, updater.ts
     │   ├── jobs/                  ← orchestrator.ts, argBuilders.ts, progressParser.ts
-    │   ├── media/                 ← metadata.ts (-J parse → typed model), urlCleaner.ts
+    │   ├── media/                 ← metadata.ts (-J parse → typed model), urlCleaner.ts, search.ts (M8)
     │   ├── fsops/                 ← paths.ts, sanitizer.ts, diskSpace.ts
     │   ├── store/                 ← settingsStore.ts, logger.ts
     │   └── ipc/                   ← handlers.ts (all channels registered here)
@@ -132,7 +156,8 @@ mediaforge/
             ├── main.tsx           ← Preact mount
             ├── App.tsx            ← screens: Input, Preview/Config, PipelineStatus, Settings
             ├── components/        ← UrlBar, FormatMatrix, ModeSelector, ProgressBar, LogLine…
-            ├── signals/           ← appState, jobState
+            │                         SearchBar/SearchResults/SearchScreen (M8)
+            ├── signals/           ← appState, jobState, searchState (M8)
             └── styles/            ← *.css (modules)
 ```
 
@@ -255,6 +280,39 @@ successful apply. FFmpeg self-updating is now in scope (see the "Core drivers" u
    applied checksum is stored in `.ffmpeg-update.json`.
 5. Extraction uses `tar -xf` (spawn with array args, no shell) — Windows 10+ ships bsdtar.
 
+### 7.7 In-app search (M8)
+
+```text
+yt-dlp -J --no-warnings --flat-playlist "ytsearch20:lofi hip hop"
+```
+
+`SearchService` (`src/main/media/search.ts`) builds the pseudo-URL via `buildSearchQuery`
+(`src/main/media/argBuilders.ts` — the only place that composes it, per the §7 choke-point rule)
+as `${prefix}${limit}:${query}`, then reuses `buildAnalyzeArgs` + `mapRawInfo` unchanged: yt-dlp
+returns a search result set as a `_type: "playlist"` object, so it maps through the exact same
+flat-playlist code path as an actual playlist. The whole pseudo-URL is one argv element (AM-02) —
+no shell, so the raw query text needs no escaping.
+
+Deliberately **no per-entry hydration** (unlike playlist analysis, which spawns one extra
+`yt-dlp -J` per entry via `AnalyzeService.hydrateEntries` to fill in duration/views/uploader).
+Hydrating N search results would mean N full extractions just to render a result grid — exactly
+the "heavy" cost that earned this feature its own tab instead of living on the Downloader screen.
+Result cards show only what the platform's flat search response already includes (title, url,
+duration, view count, uploader, thumbnail where present); opening one in the Downloader tab runs
+a normal full analysis for that single URL.
+
+Advanced filters (duration range, minimum views) are pure client-side array filters over the
+already-fetched result set (`filteredResults` computed signal in `signals/searchState.ts`) — they
+never re-query yt-dlp. Only the sort toggle re-queries: "Newest" swaps `prefix` for a platform's
+`dateSortPrefix` (only YouTube and Niconico have one upstream; unsupported platforms only offer
+Relevance). There is no pagination — "more results" means re-running the same query with a larger
+`limit`, which replaces the result set rather than appending to it (yt-dlp's search extractors
+don't expose a cursor).
+
+Server-side validation (`parseSearchRequest` in `ipc/handlers.ts`) checks `platform` against the
+`SEARCH_PLATFORMS` allowlist, trims/caps `query` to `MAX_SEARCH_QUERY_LENGTH`, and clamps `limit`
+to `[1, MAX_SEARCH_LIMIT]` — never trust the renderer's platform id or limit (§6.3).
+
 ## 8. IPC Contract
 
 All channel names + payload types live in `src/shared/ipcContract.ts`. Handlers validate inputs.
@@ -269,6 +327,8 @@ All channel names + payload types live in `src/shared/ipcContract.ts`. Handlers 
 | R→M invoke | `settings:get` / `settings:set` | `Settings` / `Partial<Settings>` → `Settings` |
 | R→M invoke | `binaries:getInfo` | `{}` → `{ytdlp:{version,source:bundled\|override}, ffmpeg:{version}}` |
 | R→M invoke | `updater:check` / `updater:apply` | `{}` → `{current,latest}` / `{ok,newVersion}` |
+| R→M invoke | `search:start` (M8) | `SearchRequest{platform, query, limit, sort}` → `{kind:'ok', results: SearchResultItem[]}` or `{kind:'error', code, message}` |
+| R→M invoke | `search:cancel` (M8) | `{}` → `{ok}` |
 | M→R event | `job:event` | `JobEvent{jobId, phase, percent, speedBps, etaSec, message?}` |
 | M→R event | `job:done` | `{jobId, status: completed\|cancelled\|failed, errorCode?, outputPath?}` |
 
@@ -316,6 +376,36 @@ AC: updater against mocked release API (vitest, no network) · tampered-binary t
 Scope: electron-builder NSIS config bundling binaries, icon/licensing page (§14), memory profiling harness (AM-10 methodology), installer size report, clean-VM smoke matrix.
 AC: installer builds and installs on clean Win10 + Win11 VM · happy-path download works there · idle RSS ≤120MB and peak Electron RSS ≤450MB recorded in `specs/perf-report.md` (or deviations approved) · installer size reported vs ≤180MB budget.
 
+### M8 — In-app platform search (AM-14, new — not in the original PRD)
+Scope: a dedicated **Search** tab (own nav item, alongside Downloader/Queue/Settings) for
+keyword search against the handful of platforms yt-dlp can natively query — v1 ships **YouTube,
+SoundCloud, Bilibili** only (§7.7/AM-14). Everything else stays paste-a-link-only.
+
+- **Search bar** (`SearchBar.tsx`): three sections in one control — left is a platform picker
+  (`Segmented`, `SEARCH_PLATFORMS`), middle is the query input, right is the Search/Cancel button.
+  A far-right **Filters** toggle opens an inline panel (not a floating popover, to avoid
+  outside-click handling for v1): sort (Relevance / Newest — Newest only offered where a
+  `dateSortPrefix` exists), result count (`SEARCH_RESULT_LIMITS`), min/max duration, min views.
+- **Results** (`SearchResults.tsx`): a card grid below the bar reusing `EntryThumb`/`CheckSquare`
+  from the playlist-entries UI for visual consistency. Multi-select toolbar offers **Open in
+  Downloader** (exactly one selected — dispatches a `mf:analyze-url` window event that `UrlBar`
+  listens for, switching to the Downloader tab and running a normal full analysis on that one
+  URL) and **Add to Queue** (one or more selected — opens a quality-preset modal reusing
+  `ModeSelector` with `formats: []`, exactly like queuing an already-analyzed playlist, then feeds
+  the same `runQueue`/`runParallelQueue` pipeline via `App.tsx`'s `launchQueueFromSearch`).
+- **Main process**: `SearchService` (§7.7) — one flat `-J` call per search, no hydration, own
+  cancel/`activeHandles` state separate from `AnalyzeService` so a Downloader analysis and a
+  Search query can run concurrently without fighting over cancellation.
+- **IPC**: `search:start` / `search:cancel` (§8), request/response validated server-side
+  (`parseSearchRequest`) against `SEARCH_PLATFORMS`, `MAX_SEARCH_QUERY_LENGTH`, `MAX_SEARCH_LIMIT`.
+
+AC: `buildSearchQuery` unit-tested for prefix/limit/query composition and limit clamping ·
+`SearchService` unit-tested for platform/query validation short-circuiting before any process
+spawn (mirrors the `AnalyzeService` input-validation tests) · typecheck/lint/test gate green ·
+manually verified: search returns and renders results, "Open in Downloader" switches tabs and
+re-analyzes the single URL, "Add to Queue" queues multiple selected results through the existing
+Queue tab.
+
 ## 10. Error Catalog & Edge Case Matrix (amended)
 
 `classifyStderr(stderrLines): ErrorCode` — extend this table whenever new patterns appear; every
@@ -351,8 +441,8 @@ every `MF_*` error logs full sanitized stderr under DEBUG for diagnostics.
 ## 12. Testing Requirements
 
 - **Unit (Vitest):** urlCleaner, argBuilders (snapshot argv), progressParser (synthetic streams),
-  sanitizer, classifyStderr, locator precedence, settingsStore atomicity. No Electron imports —
-  keep logic in pure modules.
+  sanitizer, classifyStderr, locator precedence, settingsStore atomicity, `buildSearchQuery` +
+  `SearchService` input validation (M8, §7.7). No Electron imports — keep logic in pure modules.
 - **Integration:** runner against stub executables in `tests/fixtures/fake-bin/` (scripts that
   emit canned `MF|` lines, hang, exit non-zero, etc.). Real-network tests are opt-in
   (`MF_E2E_REAL=1`) and hit one small public Creative Commons clip only.

@@ -17,8 +17,13 @@ import { pipeline } from 'node:stream/promises'
 
 const OUT_DIR = join(process.cwd(), 'binaries', 'win32')
 const YT_DLP_URL = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe'
-const FFMPEG_ZIP_URL =
-  'https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-lgpl.zip'
+const FFMPEG_RELEASE_API_URL = 'https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest'
+// BtbN has switched their master-build asset name between a stable alias
+// (ffmpeg-master-latest-win64-lgpl.zip) and a commit-based one
+// (ffmpeg-N-126482-g903325e279-win64-lgpl.zip) more than once, so match either
+// scheme instead of hardcoding one. Excludes the "-shared" build and the
+// version-pinned "ffmpeg-n<digit>..." release builds (e.g. ffmpeg-n9.0-...).
+const FFMPEG_ASSET_RE = /^ffmpeg-(?!n\d).*-win64-lgpl\.zip$/
 const MIN_BYTES = 1_000_000
 
 const force = process.argv.includes('--force')
@@ -28,6 +33,21 @@ async function download(url, dest) {
   const res = await fetch(url, { redirect: 'follow' })
   if (!res.ok || !res.body) throw new Error(`HTTP ${res.status} for ${url}`)
   await pipeline(Readable.fromWeb(res.body), createWriteStream(dest))
+}
+
+async function resolveFfmpegZipUrl() {
+  const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN
+  const headers = {
+    'User-Agent': 'mediaforge-fetch-binaries',
+    Accept: 'application/vnd.github+json',
+  }
+  if (token) headers.Authorization = `Bearer ${token}`
+  const res = await fetch(FFMPEG_RELEASE_API_URL, { headers })
+  if (!res.ok) throw new Error(`HTTP ${res.status} for ${FFMPEG_RELEASE_API_URL}`)
+  const release = await res.json()
+  const asset = (release.assets ?? []).find((a) => FFMPEG_ASSET_RE.test(a.name))
+  if (!asset) throw new Error(`no ffmpeg win64-lgpl asset found in release ${release.tag_name}`)
+  return asset.browser_download_url
 }
 
 function extractZip(zipPath, destDir) {
@@ -67,7 +87,8 @@ async function main() {
     const work = mkdtempSync(join(tmpdir(), 'mf-ffmpeg-'))
     try {
       const zipPath = join(work, 'ffmpeg.zip')
-      await download(FFMPEG_ZIP_URL, zipPath)
+      const ffmpegZipUrl = await resolveFfmpegZipUrl()
+      await download(ffmpegZipUrl, zipPath)
       if (statSync(zipPath).size < MIN_BYTES) throw new Error('ffmpeg zip looks truncated')
       extractZip(zipPath, work)
       const found = findFile(work, 'ffmpeg.exe')

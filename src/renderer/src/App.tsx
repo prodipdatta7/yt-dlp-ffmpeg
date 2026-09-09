@@ -13,6 +13,9 @@ import {
 import { QueueList } from './components/QueueList'
 import { UrlBar } from './components/UrlBar'
 import { LogConsole } from './components/LogConsole'
+import { FirstRunModal } from './components/FirstRunModal'
+import { ShortcutsOverlay } from './components/ShortcutsOverlay'
+import { SearchScreen } from './components/SearchScreen'
 import {
   DownloadIcon,
   FolderIcon,
@@ -20,6 +23,7 @@ import {
   LinkIcon,
   LogoBolt,
   QueueIcon,
+  SearchIcon,
   ShieldIcon,
   SlidersIcon,
   TerminalIcon,
@@ -41,6 +45,8 @@ import {
 import { appendLogEntry, setLogHistory } from './signals/logState'
 import {
   activeJob,
+  activeJobsById,
+  applyJobEvent,
   beginJob,
   endJob,
   jobDone,
@@ -49,14 +55,18 @@ import {
   launchError,
 } from './signals/jobState'
 import {
+  patchQueueRow,
   queueRows,
+  queueRunMode,
   queueRunning,
-  resolveCurrentJob,
+  resolveJob,
   stopRequested,
-  waitForCurrentJob,
+  waitForJob,
+  type JobResult,
+  type QueueRunMode,
 } from './signals/queueState'
 import type { DownloadStartResponse } from '../../shared/ipcContract'
-import type { FormatRow, JobConfig } from '../../shared/models'
+import type { FormatRow, JobConfig, SearchResultItem } from '../../shared/models'
 import { estimateEntryBytes } from './utils/estimate'
 import { fmtSize } from './utils/format'
 import { POPULAR_SOURCES } from './utils/source'
@@ -90,7 +100,7 @@ function EngineBadge({ label, info, role }: { label: string; info: EngineInfo; r
       <span class="size-1.5 rounded-full bg-emerald-500" />
       <span>
         {label} <span class="mf-num text-slate-400">{info.version}</span>
-        <span class="ml-1 rounded border border-white/10 px-1 text-[9px] uppercase">
+        <span class="ml-1 rounded border border-line-strong px-1 text-[9px] uppercase">
           {info.source === 'override' ? 'env' : info.source}
         </span>
       </span>
@@ -123,14 +133,23 @@ function EnginesStatus() {
 
 const NAV_ITEMS: Array<{ id: ViewId; label: string; Icon: typeof DownloadIcon }> = [
   { id: 'download', label: 'Downloader', Icon: DownloadIcon },
+  { id: 'search', label: 'Search', Icon: SearchIcon },
   { id: 'queue', label: 'Queue', Icon: QueueIcon },
   { id: 'settings', label: 'Settings', Icon: GearIcon },
 ]
 
-function NavRail({ working, onShowNotice }: { working: boolean; onShowNotice: () => void }) {
+function NavRail({
+  working,
+  onShowNotice,
+  onShowShortcuts,
+}: {
+  working: boolean
+  onShowNotice: () => void
+  onShowShortcuts: () => void
+}) {
   const view = activeView.value
   return (
-    <nav class="flex w-16 shrink-0 flex-col items-center gap-1.5 border-r border-white/[0.06] bg-black/25 py-3">
+    <nav class="flex w-14 shrink-0 flex-col items-center gap-1.5 border-r border-line bg-recess py-3 sm:w-16">
       {NAV_ITEMS.map(({ id, label, Icon }) => {
         const isActive = view === id
         return (
@@ -140,10 +159,10 @@ function NavRail({ working, onShowNotice }: { working: boolean; onShowNotice: ()
             title={label}
             aria-label={label}
             aria-current={isActive ? 'page' : undefined}
-            class={`mf-focus-ring group relative flex size-11 items-center justify-center rounded-xl transition-all duration-150 ${
+            class={`mf-focus-ring group relative flex size-10 items-center justify-center rounded-xl transition-all duration-150 sm:size-11 ${
               isActive
                 ? 'bg-gradient-to-br from-sky-500/25 to-indigo-500/20 text-sky-300 shadow-inner'
-                : 'text-slate-500 hover:bg-white/[0.05] hover:text-slate-200'
+                : 'text-slate-500 hover:bg-wash-2 hover:text-slate-200'
             }`}
           >
             {isActive && (
@@ -157,10 +176,18 @@ function NavRail({ working, onShowNotice }: { working: boolean; onShowNotice: ()
         )
       })}
       <button
+        onClick={onShowShortcuts}
+        title="Keyboard shortcuts (?)"
+        aria-label="Show keyboard shortcuts"
+        class="mf-focus-ring mt-auto flex size-10 items-center justify-center rounded-xl text-slate-600 transition hover:bg-wash-2 hover:text-slate-300 sm:size-11"
+      >
+        <span class="text-sm font-bold">?</span>
+      </button>
+      <button
         onClick={onShowNotice}
         title="Compliance notice"
         aria-label="Show compliance notice"
-        class="mf-focus-ring mt-auto flex size-11 items-center justify-center rounded-xl text-slate-600 transition hover:bg-white/[0.05] hover:text-slate-300"
+        class="mf-focus-ring flex size-10 items-center justify-center rounded-xl text-slate-600 transition hover:bg-wash-2 hover:text-slate-300 sm:size-11"
       >
         <ShieldIcon class="size-5" />
       </button>
@@ -170,10 +197,10 @@ function NavRail({ working, onShowNotice }: { working: boolean; onShowNotice: ()
 
 function TitleBar() {
   return (
-    <header class="app-drag relative z-20 flex h-[46px] shrink-0 items-center gap-3 border-b border-white/[0.06] bg-ink-950 pl-4 pr-40">
+    <header class="app-drag relative z-20 flex h-[46px] shrink-0 items-center gap-3 border-b border-line bg-ink-950 pl-4 pr-40">
       <LogoMark />
       <div class="flex items-baseline gap-2">
-        <h1 class="text-[15px] font-bold leading-none tracking-tight text-white">MediaForge</h1>
+        <h1 class="text-[15px] font-bold leading-none tracking-tight text-ink">MediaForge</h1>
         <span class="text-[9px] font-semibold uppercase tracking-[0.22em] text-slate-600">
           Desktop
         </span>
@@ -245,7 +272,7 @@ function HeroState() {
               <LinkIcon class="size-6 text-sky-400" />
             </span>
           </span>
-          <p class="text-base font-bold tracking-tight text-white">
+          <p class="text-base font-bold tracking-tight text-ink">
             Paste a link, or drop one anywhere.
           </p>
           <p class="mt-1.5 max-w-sm text-xs leading-relaxed text-slate-500">
@@ -270,7 +297,7 @@ function HeroState() {
               class="mf-card mf-card-hover mf-rise p-3.5 text-left"
               style={`animation-delay: ${80 + i * 70}ms`}
             >
-              <span class="flex size-8 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.04] text-sky-300 shadow-inner">
+              <span class="flex size-8 items-center justify-center rounded-lg border border-line bg-wash-1 text-sky-300 shadow-inner">
                 <Icon class="size-4" />
               </span>
               <p class="mt-2.5 text-xs font-semibold text-slate-200">{title}</p>
@@ -282,7 +309,7 @@ function HeroState() {
           {POPULAR_SOURCES.map((site) => (
             <span
               key={site}
-              class="rounded-full border border-white/[0.07] bg-white/[0.03] px-2.5 py-0.5 text-[11px] font-medium text-slate-500"
+              class="rounded-full border border-line bg-wash-1 px-2.5 py-0.5 text-[11px] font-medium text-slate-500"
             >
               {site}
             </span>
@@ -296,6 +323,53 @@ function HeroState() {
   )
 }
 
+function QueueDraftModal({
+  items,
+  onCancel,
+  onConfirm,
+}: {
+  items: SearchResultItem[]
+  onCancel: () => void
+  onConfirm: (selection: JobSelection) => void
+}) {
+  const [selection, setSelection] = useState<JobSelection | null>(null)
+  return (
+    <div class="fixed inset-0 z-30 flex items-center justify-center bg-scrim/60 p-4">
+      <div class="mf-card mf-rise w-full max-w-md p-4">
+        <h2 class="text-sm font-bold tracking-tight text-ink">
+          Queue {items.length} search result{items.length === 1 ? '' : 's'}
+        </h2>
+        <p class="mt-1 text-xs leading-relaxed text-slate-500">
+          Pick one quality preset applied to every selected result, same as queuing a playlist.
+        </p>
+        <div class="mt-3">
+          <ModeSelector
+            formats={[]}
+            durationSec={null}
+            onSelection={setSelection}
+            disabled={false}
+          />
+        </div>
+        <div class="mt-4 flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            class="mf-focus-ring rounded-xl border border-line-strong px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-rose-500/60 hover:text-rose-300"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => selection && onConfirm(selection)}
+            disabled={!selection || !selection.destDir}
+            class="mf-focus-ring rounded-xl bg-gradient-to-r from-go-500 to-go-400 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-go-500/30 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+          >
+            Queue {items.length}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function App() {
   const [bridgeNote, setBridgeNote] = useState('bridge ok')
   const [selection, setSelection] = useState<JobSelection | null>(null)
@@ -303,16 +377,21 @@ export function App() {
   const [selectedEntries, setSelectedEntries] = useState<ReadonlySet<string>>(new Set())
   const [streamTab, setStreamTab] = useState<StreamTab>('streams')
   const [showNotice, setShowNotice] = useState(false)
+  const [showShortcuts, setShowShortcuts] = useState(false)
+  const [playlistConcurrency, setPlaylistConcurrency] = useState(3)
   const [paused, setPaused] = useState<{ config: JobConfig; queue: PausedQueueRun | null } | null>(
     null,
   )
+  const [queueDraft, setQueueDraft] = useState<SearchResultItem[] | null>(null)
   const pausedRef = useRef(paused)
   const runCtxRef = useRef<{
     entries: Array<{ url: string; title: string }>
     selection: JobSelection
     playlistTitle?: string
+    runMode: QueueRunMode
   } | null>(null)
   const scrollRef = useRef<HTMLElement>(null)
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     pausedRef.current = paused
@@ -326,6 +405,30 @@ export function App() {
         if (s.theme === 'light' || s.theme === 'dark' || s.theme === 'system') {
           setThemePref(s.theme)
         }
+        setPlaylistConcurrency(s.playlistConcurrency)
+        if (s.queueSnapshot && s.queueSnapshot.rows.length > 0) {
+          queueRows.value = s.queueSnapshot.rows.map((r) => ({
+            ...r,
+            status:
+              r.status === 'downloading' ? 'pending' : r.status === 'paused' ? 'pending' : r.status,
+            jobId: undefined,
+          }))
+          queueRunMode.value = s.queueSnapshot.runMode
+          if (s.queueSnapshot.selectionJson) {
+            try {
+              const sel = JSON.parse(s.queueSnapshot.selectionJson) as JobSelection
+              setSelection(sel)
+              runCtxRef.current = {
+                entries: s.queueSnapshot.rows.map((r) => ({ url: r.url, title: r.title })),
+                selection: sel,
+                playlistTitle: s.queueSnapshot.playlistTitle,
+                runMode: s.queueSnapshot.runMode,
+              }
+            } catch {
+              /* ignore corrupt selection */
+            }
+          }
+        }
       })
       .catch(() => undefined)
     window.mf
@@ -334,11 +437,17 @@ export function App() {
       .catch(() => setBridgeNote('ipc error'))
 
     const offEvent = window.mf.onJobEvent((event) => {
-      lastJobEvent.value = event
+      applyJobEvent(event)
     })
     const offDone = window.mf.onJobDone((done) => {
       endJob(done)
-      resolveCurrentJob(done.status)
+      const row = queueRows.value.find((r) => r.jobId === done.jobId)
+      if (row) patchQueueRow(row.url, { partialDir: done.partialDir })
+      resolveJob(done.jobId, {
+        status: done.status,
+        outputPath: done.outputPath,
+        skipped: done.skipped,
+      })
     })
     const offEntry = window.mf.onAnalyzeEntry((event) => {
       applyAnalyzeStream(event)
@@ -354,6 +463,20 @@ export function App() {
       if (event.ctrlKey && event.key === '`') {
         event.preventDefault()
         toggleLogDock()
+        return
+      }
+      const target = event.target as HTMLElement | null
+      const typing =
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.isContentEditable === true
+      if (event.key === '?' && !event.ctrlKey && !event.metaKey && !typing) {
+        event.preventDefault()
+        setShowShortcuts((v) => !v)
+        return
+      }
+      if (event.key === 'Escape') {
+        setShowShortcuts(false)
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -366,8 +489,35 @@ export function App() {
     }
   }, [])
 
+  useEffect(() => {
+    if (persistTimer.current) clearTimeout(persistTimer.current)
+    persistTimer.current = setTimeout(() => {
+      const rows = queueRows.value
+      const ctx = runCtxRef.current
+      void window.mf.setSettings({
+        queueSnapshot:
+          rows.length === 0
+            ? null
+            : {
+                rows: rows.map(({ url, title, status }) => ({
+                  url,
+                  title,
+                  status: status === 'downloading' ? 'pending' : status,
+                })),
+                runMode: queueRunMode.value,
+                selectionJson: ctx ? JSON.stringify(ctx.selection) : undefined,
+                playlistTitle: ctx?.playlistTitle,
+              },
+      })
+    }, 400)
+    return () => {
+      if (persistTimer.current) clearTimeout(persistTimer.current)
+    }
+  }, [queueRows.value, queueRunMode.value])
+
   const result = analysis.value
-  const busy = activeJob.value !== null || queueRunning.value
+  const busy =
+    Object.keys(activeJobsById.value).length > 0 || activeJob.value !== null || queueRunning.value
 
   useEffect(() => {
     const r = analysis.value
@@ -416,7 +566,7 @@ export function App() {
     setSelectedEntries(select ? new Set(result.playlistEntries!.map((e) => e.url)) : new Set())
   }
 
-  async function runSingleJob(config: JobConfig): Promise<'completed' | 'cancelled' | 'failed'> {
+  async function runSingleJob(config: JobConfig): Promise<JobResult> {
     launchError.value = null
     let response: DownloadStartResponse
     try {
@@ -428,12 +578,12 @@ export function App() {
       lastFailedConfig.value = config
       jobDone.value = { jobId: 'launch', status: 'failed', errorCode: response.code }
       launchError.value = response.message
-      return 'failed'
+      return { status: 'failed' }
     }
     beginJob(config, response.jobId)
-    const status = await waitForCurrentJob()
-    if (status === 'failed') lastFailedConfig.value = config
-    return status
+    const result = await waitForJob(response.jobId)
+    if (result.status === 'failed') lastFailedConfig.value = config
+    return result
   }
 
   async function runQueue(
@@ -444,6 +594,7 @@ export function App() {
   ): Promise<void> {
     stopRequested.value = false
     queueRunning.value = true
+    queueRunMode.value = 'sequential'
     if (fromIndex === 0) {
       queueRows.value = entries.map((e) => ({ url: e.url, title: e.title, status: 'pending' }))
     }
@@ -452,25 +603,25 @@ export function App() {
         if (stopRequested.value) break
         const config = configFor(entries[i].url, sel, false, playlistTitle)
         lastJobEvent.value = null
-        queueRows.value = queueRows.value.map((row, idx) =>
-          idx === i ? { ...row, status: 'downloading' } : row,
-        )
-        let status: 'completed' | 'cancelled' | 'failed'
+        patchQueueRow(entries[i].url, { status: 'downloading' })
+        let result: JobResult
         try {
-          status = await runSingleJob(config)
+          result = await runSingleJob(config)
         } catch {
           lastFailedConfig.value = config
-          status = 'failed'
+          result = { status: 'failed' }
         }
+        const { status } = result
         if (status === 'cancelled' && pausedRef.current !== null) {
-          queueRows.value = queueRows.value.map((row, idx) =>
-            idx === i ? { ...row, status: 'paused' } : row,
-          )
+          patchQueueRow(entries[i].url, { status: 'paused', jobId: undefined })
           break
         }
-        queueRows.value = queueRows.value.map((row, idx) =>
-          idx === i ? { ...row, status: status === 'completed' ? 'done' : status } : row,
-        )
+        patchQueueRow(entries[i].url, {
+          status: status === 'completed' ? 'done' : status,
+          jobId: undefined,
+          outputPath: result.outputPath,
+          skipped: result.skipped,
+        })
       }
       if (stopRequested.value && pausedRef.current === null) {
         queueRows.value = queueRows.value.map((row) =>
@@ -482,17 +633,116 @@ export function App() {
     }
   }
 
-  async function startDownload() {
+  async function runParallelQueue(
+    entries: Array<{ url: string; title: string }>,
+    sel: JobSelection,
+    playlistTitle: string | undefined,
+  ): Promise<void> {
+    stopRequested.value = false
+    queueRunning.value = true
+    queueRunMode.value = 'parallel'
+    queueRows.value = entries.map((e) => ({ url: e.url, title: e.title, status: 'pending' }))
+
+    const concurrency = Math.max(2, Math.min(5, playlistConcurrency))
+    let nextIndex = 0
+    let inFlight = 0
+
+    const launchNext = async (): Promise<void> => {
+      while (!stopRequested.value && nextIndex < entries.length && inFlight < concurrency) {
+        const i = nextIndex
+        nextIndex += 1
+        const entry = entries[i]
+        const config = configFor(entry.url, sel, false, playlistTitle)
+        inFlight += 1
+        patchQueueRow(entry.url, { status: 'downloading' })
+
+        void (async () => {
+          try {
+            launchError.value = null
+            let response: DownloadStartResponse
+            try {
+              response = await window.mf.downloadStart(config)
+            } catch {
+              response = { kind: 'error', code: 'MF_UNKNOWN', message: 'Unexpected IPC failure.' }
+            }
+            if (response.kind !== 'ok') {
+              lastFailedConfig.value = config
+              patchQueueRow(entry.url, { status: 'failed', jobId: undefined })
+            } else {
+              beginJob(config, response.jobId)
+              patchQueueRow(entry.url, { jobId: response.jobId })
+              const result = await waitForJob(response.jobId)
+              if (result.status === 'failed') lastFailedConfig.value = config
+              patchQueueRow(entry.url, {
+                status: result.status === 'completed' ? 'done' : result.status,
+                jobId: undefined,
+                outputPath: result.outputPath,
+                skipped: result.skipped,
+              })
+            }
+          } catch {
+            lastFailedConfig.value = config
+            patchQueueRow(entry.url, { status: 'failed', jobId: undefined })
+          } finally {
+            inFlight -= 1
+            if (!stopRequested.value) await launchNext()
+          }
+        })()
+      }
+    }
+
+    try {
+      await launchNext()
+      while (inFlight > 0) {
+        await new Promise((r) => setTimeout(r, 100))
+      }
+      if (stopRequested.value) {
+        queueRows.value = queueRows.value.map((row) =>
+          row.status === 'pending' ? { ...row, status: 'cancelled' } : row,
+        )
+      }
+    } finally {
+      queueRunning.value = false
+    }
+  }
+
+  function openSearchResultInDownloader(item: SearchResultItem) {
+    activeView.value = 'download'
+    window.dispatchEvent(new CustomEvent('mf:analyze-url', { detail: { url: item.url } }))
+  }
+
+  async function launchQueueFromSearch(items: SearchResultItem[], sel: JobSelection) {
+    if (busy) return
+    const entries = items.map((item) => ({ url: item.url, title: item.title }))
+    setPaused(null)
+    setQueueDraft(null)
+    runCtxRef.current = { entries, selection: sel, playlistTitle: undefined, runMode: 'sequential' }
+    activeView.value = 'queue'
+    await runQueue(entries, sel, undefined, 0)
+  }
+
+  async function startDownload(mode: QueueRunMode = 'sequential') {
     const r = analysis.value
-    if (!r || !selection || activeJob.value || queueRunning.value) return
+    if (!r || !selection || Object.keys(activeJobsById.value).length > 0 || queueRunning.value) {
+      return
+    }
 
     if (r.kind === 'playlist') {
       const entries = (r.playlistEntries ?? []).filter((e) => selectedEntries.has(e.url))
       if (entries.length === 0) return
       setPaused(null)
-      runCtxRef.current = { entries, selection, playlistTitle: r.metadata.title }
+      runCtxRef.current = {
+        entries,
+        selection,
+        playlistTitle: r.metadata.title,
+        runMode: mode,
+      }
       activeView.value = 'queue'
-      await runQueue(entries, selection, r.metadata.title, 0)
+      if (mode === 'parallel') {
+        await runParallelQueue(entries, selection, r.metadata.title)
+      } else {
+        await runQueue(entries, selection, r.metadata.title, 0)
+      }
       return
     }
 
@@ -508,19 +758,52 @@ export function App() {
     await runSingleJob(config)
   }
 
+  async function retryQueueRow(url: string) {
+    const ctx = runCtxRef.current
+    const row = queueRows.value.find((r) => r.url === url)
+    if (!ctx || !row || row.status !== 'failed' || queueRunning.value) return
+    const config = configFor(url, ctx.selection, false, ctx.playlistTitle)
+    patchQueueRow(url, { status: 'downloading', partialDir: undefined })
+    queueRunning.value = true
+    try {
+      const result = await runSingleJob(config)
+      patchQueueRow(url, {
+        status: result.status === 'completed' ? 'done' : result.status,
+        jobId: undefined,
+        outputPath: result.outputPath,
+        skipped: result.skipped,
+      })
+    } finally {
+      queueRunning.value = false
+    }
+  }
+
   function stopAfterCurrent() {
     stopRequested.value = true
   }
 
   function cancelActive() {
     stopRequested.value = true
-    const job = activeJob.value
-    if (job) void window.mf.downloadCancel(job.jobId)
+    const jobs = Object.values(activeJobsById.value)
+    if (jobs.length === 0) {
+      const job = activeJob.value
+      if (job) void window.mf.downloadCancel(job.jobId)
+      return
+    }
+    for (const job of jobs) {
+      void window.mf.downloadCancel(job.jobId)
+    }
+  }
+
+  function cancelQueueRow(url: string) {
+    const row = queueRows.value.find((r) => r.url === url)
+    if (!row?.jobId) return
+    void window.mf.downloadCancel(row.jobId)
   }
 
   function pauseActive() {
     const job = activeJob.value
-    if (!job) return
+    if (!job || queueRunMode.value === 'parallel') return
     const ctx = runCtxRef.current
     const idx = queueRows.value.findIndex((row) => row.status === 'downloading')
     setPaused({
@@ -539,6 +822,7 @@ export function App() {
           entries: p.queue.entries,
           selection: p.queue.selection,
           playlistTitle: p.queue.playlistTitle,
+          runMode: 'sequential',
         }
       : null
     if (p.queue) {
@@ -606,15 +890,34 @@ export function App() {
       <TitleBar />
 
       <div class="flex min-h-0 flex-1">
-        <NavRail working={busy} onShowNotice={() => setShowNotice(true)} />
+        <NavRail
+          working={busy}
+          onShowNotice={() => setShowNotice(true)}
+          onShowShortcuts={() => setShowShortcuts(true)}
+        />
 
         {activeView.value === 'settings' ? (
           <main class="mf-rise min-h-0 flex-1 overflow-y-auto px-6 py-8">
             <SettingsScreen />
           </main>
+        ) : activeView.value === 'search' ? (
+          <main class="mf-rise flex min-h-0 flex-1 flex-col gap-3 px-4 pb-3 pt-3.5">
+            <SearchScreen
+              onOpenInDownloader={openSearchResultInDownloader}
+              onAddToQueue={(items) => setQueueDraft(items)}
+              busy={busy}
+            />
+          </main>
         ) : activeView.value === 'queue' ? (
           <main class="mf-rise min-h-0 flex-1 overflow-y-auto px-6 py-8">
-            <QueueList onStopAfterCurrent={stopAfterCurrent} onCancelAll={cancelActive} />
+            <QueueList
+              onStopAfterCurrent={
+                queueRunMode.value === 'sequential' ? stopAfterCurrent : undefined
+              }
+              onCancelAll={cancelActive}
+              onCancelRow={queueRunMode.value === 'parallel' ? cancelQueueRow : undefined}
+              onRetryRow={retryQueueRow}
+            />
           </main>
         ) : (
           <main ref={scrollRef} class="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-3 pt-3.5">
@@ -627,7 +930,7 @@ export function App() {
                 <LoadingSkeleton />
               </div>
             ) : (
-              <div class="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_380px] items-stretch gap-3 overflow-hidden">
+              <div class="mf-main-grid grid min-h-0 flex-1 items-stretch gap-3 overflow-hidden">
                 <section class="flex min-h-0 flex-col gap-2.5">
                   {isPlaylist ? (
                     <PlaylistBanner result={result!} hydration={playlistHydration.value} />
@@ -650,7 +953,7 @@ export function App() {
                       <div
                         role="tablist"
                         aria-label="Analysis sections"
-                        class="flex shrink-0 gap-1 rounded-xl border border-white/[0.07] bg-black/25 p-1"
+                        class="flex shrink-0 gap-1 rounded-xl border border-line bg-recess p-1"
                       >
                         {tabs.map(({ id, label }) => (
                           <button
@@ -661,7 +964,7 @@ export function App() {
                             class={`mf-focus-ring flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${
                               streamTab === id
                                 ? 'bg-gradient-to-br from-sky-500 to-indigo-500 text-white shadow shadow-go-500/25'
-                                : 'text-slate-400 hover:bg-white/[0.05] hover:text-white'
+                                : 'text-slate-400 hover:bg-wash-2 hover:text-ink'
                             }`}
                           >
                             {label}
@@ -749,11 +1052,44 @@ export function App() {
                       )}
                       {busy ? (
                         <button
-                          onClick={isPlaylist ? stopAfterCurrent : cancelActive}
+                          onClick={
+                            isPlaylist && queueRunMode.value === 'sequential'
+                              ? stopAfterCurrent
+                              : cancelActive
+                          }
                           class="mt-2 w-full shrink-0 rounded-xl bg-gradient-to-br from-rose-600 to-rose-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-rose-500/25 transition hover:brightness-110 active:scale-[0.98]"
                         >
-                          {isPlaylist ? 'Stop After Current' : 'Cancel Download'}
+                          {isPlaylist
+                            ? queueRunMode.value === 'parallel'
+                              ? 'Cancel All'
+                              : 'Stop After Current'
+                            : 'Cancel Download'}
                         </button>
+                      ) : isPlaylist ? (
+                        <div class="mt-2 flex w-full shrink-0 flex-col gap-2">
+                          <button
+                            onClick={() => void startDownload('sequential')}
+                            disabled={!canStart}
+                            className={`mf-focus-ring w-full rounded-xl border border-line-strong px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-sky-500/50 hover:text-ink active:scale-[0.98] ${
+                              canStart ? '' : 'cursor-not-allowed opacity-40'
+                            }`}
+                          >
+                            {playlistSelected === playlistTotal
+                              ? `Download Sequentially · ${playlistTotal}`
+                              : `Download Sequentially · ${playlistSelected}`}
+                          </button>
+                          <button
+                            onClick={() => void startDownload('parallel')}
+                            disabled={!canStart}
+                            className={`mf-focus-ring w-full rounded-xl bg-gradient-to-r from-go-500 to-go-400 px-5 py-3 text-sm font-bold text-white shadow-xl shadow-go-500/30 transition-all duration-150 hover:brightness-110 hover:shadow-go-400/40 active:scale-[0.98] ${
+                              canStart ? '' : 'cursor-not-allowed opacity-40 shadow-none'
+                            }`}
+                          >
+                            {playlistSelected === playlistTotal
+                              ? `Download in Parallel · ${playlistTotal}`
+                              : `Download in Parallel · ${playlistSelected}`}
+                          </button>
+                        </div>
                       ) : (
                         <button
                           onClick={() => void startDownload()}
@@ -762,11 +1098,7 @@ export function App() {
                             canStart ? '' : 'cursor-not-allowed opacity-40 shadow-none'
                           }`}
                         >
-                          {isPlaylist
-                            ? playlistSelected === playlistTotal
-                              ? `Download All · ${playlistTotal}`
-                              : `Download Selected · ${playlistSelected}`
-                            : 'Start Download'}
+                          Start Download
                         </button>
                       )}
                     </div>
@@ -787,31 +1119,29 @@ export function App() {
       </div>
 
       {logDockOpen.value && (
-        <section class="flex h-[280px] shrink-0 flex-col">
+        <section class="mf-log-dock flex shrink-0 flex-col">
           <LogConsole dock />
         </section>
       )}
 
-      {showNotice && (
-        <div class="flex items-center justify-between gap-4 border-t border-amber-900/60 bg-amber-950/40 px-5 py-2 text-xs text-amber-200">
-          <p class="flex items-center gap-2">
-            <ShieldIcon class="size-4 shrink-0" />
-            MediaForge is a passive client — you are responsible for complying with the terms and
-            copyright of the sites you download from.
-          </p>
-          <button
-            onClick={() => {
-              setShowNotice(false)
-              void window.mf.markFirstRunSeen()
-            }}
-            class="app-no-drag mf-focus-ring shrink-0 rounded-lg border border-amber-700 px-3 py-1 font-medium transition hover:bg-amber-900/50"
-          >
-            Understood
-          </button>
-        </div>
+      <FirstRunModal
+        open={showNotice}
+        onDismiss={() => {
+          setShowNotice(false)
+          void window.mf.markFirstRunSeen()
+        }}
+      />
+      <ShortcutsOverlay open={showShortcuts} onClose={() => setShowShortcuts(false)} />
+
+      {queueDraft && (
+        <QueueDraftModal
+          items={queueDraft}
+          onCancel={() => setQueueDraft(null)}
+          onConfirm={(sel) => void launchQueueFromSearch(queueDraft, sel)}
+        />
       )}
 
-      <footer class="flex shrink-0 items-center justify-between gap-4 border-t border-white/[0.06] bg-ink-950 px-4 py-1.5 text-[11px] text-slate-500">
+      <footer class="flex shrink-0 items-center justify-between gap-4 border-t border-line bg-ink-950 px-3 py-1.5 text-[11px] text-slate-500 sm:px-4">
         <EnginesStatus />
         <span class="flex items-center gap-1">
           <button
@@ -821,7 +1151,7 @@ export function App() {
             className={`mf-focus-ring inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-medium transition ${
               logDockOpen.value
                 ? 'bg-emerald-500/10 text-emerald-300'
-                : 'hover:bg-white/[0.06] hover:text-slate-200'
+                : 'hover:bg-wash-2 hover:text-slate-200'
             }`}
           >
             <TerminalIcon class="size-3.5" />
@@ -854,7 +1184,7 @@ export function App() {
               key={action.label}
               onClick={action.fn}
               title={action.title}
-              class="rounded-md px-2 py-1 transition hover:bg-white/[0.06] hover:text-slate-200"
+              class="rounded-md px-2 py-1 transition hover:bg-wash-2 hover:text-slate-200"
             >
               {action.label}
             </button>

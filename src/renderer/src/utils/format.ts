@@ -16,12 +16,27 @@ export function fmtCount(n: number | null): string {
 
 export function fmtSize(bytes: number | null): string {
   if (bytes === null || !Number.isFinite(bytes)) return '—'
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  const mb = bytes / 1024 / 1024
+  if (mb >= 1024) return `${(mb / 1024).toFixed(2)} GB`
+  return `${mb.toFixed(1)} MB`
 }
 
 export function fmtSpeed(bps: number | null): string {
   if (bps === null || !Number.isFinite(bps)) return '— MB/s'
   return `${(bps / 1024 / 1024).toFixed(1)} MB/s`
+}
+
+export function fmtRelativeTime(ms: number): string {
+  const diffSec = Math.round((Date.now() - ms) / 1000)
+  if (diffSec < 5) return 'just now'
+  if (diffSec < 60) return `${diffSec}s ago`
+  const diffMin = Math.round(diffSec / 60)
+  if (diffMin < 60) return `${diffMin}m ago`
+  const diffHr = Math.round(diffMin / 60)
+  if (diffHr < 24) return `${diffHr}h ago`
+  const diffDay = Math.round(diffHr / 24)
+  if (diffDay < 7) return `${diffDay}d ago`
+  return new Date(ms).toLocaleDateString()
 }
 
 export function fmtEta(sec: number | null): string {

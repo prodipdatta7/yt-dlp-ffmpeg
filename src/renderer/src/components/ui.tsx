@@ -42,13 +42,14 @@ export function Segmented<T extends string | number>({
   return (
     <div
       role="radiogroup"
-      class={`inline-flex gap-1 rounded-xl border border-white/[0.07] bg-black/30 p-1 ${cls}`}
+      class={`inline-flex gap-1 rounded-xl border border-line bg-recess p-1 ${cls}`}
     >
       {options.map((opt) => {
         const active = opt.value === value
         return (
           <button
             key={String(opt.value)}
+            type="button"
             role="radio"
             aria-checked={active}
             disabled={disabled}
@@ -56,7 +57,7 @@ export function Segmented<T extends string | number>({
             class={`mf-focus-ring rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all duration-150 ${
               active
                 ? 'bg-gradient-to-br from-sky-500 to-indigo-500 text-white shadow shadow-sky-500/25'
-                : 'text-slate-400 hover:bg-white/[0.05] hover:text-white'
+                : 'text-slate-400 hover:bg-wash-2 hover:text-ink'
             } disabled:cursor-not-allowed disabled:opacity-50`}
           >
             {opt.label}
@@ -80,13 +81,14 @@ export function Chip({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
       aria-pressed={active}
       class={`mf-focus-ring mf-num rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${
         active
           ? 'border-sky-400/60 bg-sky-500/15 text-sky-200 shadow-[0_0_12px_-4px_var(--mf-glow)]'
-          : 'border-white/[0.08] bg-white/[0.03] text-slate-400 hover:border-white/20 hover:text-white'
+          : 'border-line bg-wash-1 text-slate-400 hover:border-line-strong hover:text-ink'
       } disabled:cursor-not-allowed disabled:opacity-50`}
     >
       {children}
@@ -104,7 +106,7 @@ export function StatTile({
   value: string
 }) {
   return (
-    <div class="rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-1.5">
+    <div class="rounded-lg border border-line bg-wash-1 px-2.5 py-1.5">
       <p class="flex items-center gap-1 text-[9px] uppercase tracking-wider text-slate-500">
         {icon}
         {label}
@@ -124,7 +126,7 @@ export function Pill({
   children: ComponentChildren
 }) {
   const tones: Record<string, string> = {
-    neutral: 'border-white/10 bg-white/[0.04] text-slate-400',
+    neutral: 'border-line-strong bg-wash-1 text-slate-400',
     sky: 'border-sky-500/25 bg-sky-500/10 text-sky-300',
     emerald: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300',
     rose: 'border-rose-500/25 bg-rose-500/10 text-rose-300',

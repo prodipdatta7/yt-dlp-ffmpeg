@@ -105,12 +105,12 @@ export function FormatMatrix({
 
   return (
     <div class="mf-card mf-card-hover flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-3">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
         <div class="flex items-baseline gap-2">
           <h3 class="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
             Available Streams
           </h3>
-          <span class="mf-num rounded-full border border-white/10 bg-white/[0.04] px-2 text-[11px] text-slate-400">
+          <span class="mf-num rounded-full border border-line-strong bg-wash-1 px-2 text-[11px] text-slate-400">
             {visible.length}/{formats.length}
           </span>
           {onRowActivate && (
@@ -127,10 +127,10 @@ export function FormatMatrix({
               value={query}
               onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
               placeholder="Filter streams…"
-              class="w-40 rounded-lg border border-white/[0.08] bg-black/30 py-1.5 pl-8 pr-2 text-xs text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-sky-500/50"
+              class="w-40 rounded-lg border border-line bg-recess py-1.5 pl-8 pr-2 text-xs text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-sky-500/50"
             />
           </div>
-          <div class="flex rounded-lg border border-white/[0.08] bg-black/30 p-0.5">
+          <div class="flex rounded-lg border border-line bg-recess p-0.5">
             {tabs.map((t) => (
               <button
                 key={t.id}
@@ -176,18 +176,31 @@ export function FormatMatrix({
               </th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-white/[0.05] text-slate-300">
+          <tbody class="divide-y divide-line text-slate-300">
             {visible.map((f) => {
               const isVideo = f.vcodec !== null
               const isAudioOnly = f.vcodec === null && f.acodec !== null
               const picked = pickedIds?.has(f.formatId) === true
+              const activate = onRowActivate ? () => onRowActivate(f) : undefined
               return (
                 <tr
                   key={`${f.formatId}-${f.ext}`}
-                  title={onRowActivate ? 'Click to target this stream in Advanced mode' : undefined}
-                  onClick={() => onRowActivate?.(f)}
+                  title={activate ? 'Click to target this stream in Advanced mode' : undefined}
+                  onClick={activate}
+                  onKeyDown={
+                    activate
+                      ? (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            activate()
+                          }
+                        }
+                      : undefined
+                  }
+                  tabIndex={activate ? 0 : undefined}
+                  role={activate ? 'button' : undefined}
                   aria-selected={picked}
-                  class={`transition-colors odd:bg-white/[0.015] ${onRowActivate ? 'cursor-pointer' : ''} ${
+                  class={`mf-focus-ring transition-colors odd:bg-wash-1 ${activate ? 'cursor-pointer' : ''} ${
                     picked ? 'bg-sky-500/[0.09] hover:bg-sky-500/[0.12]' : 'hover:bg-sky-500/[0.06]'
                   }`}
                 >
@@ -204,7 +217,7 @@ export function FormatMatrix({
                       class={`inline-flex items-center gap-1 rounded-md border px-1.5 py-px text-[10px] font-bold uppercase tracking-wide ${
                         isVideo
                           ? 'border-violet-500/25 bg-violet-500/10 text-violet-300'
-                          : 'border-white/10 bg-white/[0.04] text-slate-400'
+                          : 'border-line-strong bg-wash-1 text-slate-400'
                       }`}
                     >
                       {isVideo ? (

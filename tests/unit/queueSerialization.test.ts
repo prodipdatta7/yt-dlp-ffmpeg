@@ -11,7 +11,7 @@ function tempRoot(): string {
   return mkdtempSync(join(tmpdir(), 'mf-queue-'))
 }
 
-describe('AM-07 queue serialization (never more than one concurrent child job)', () => {
+describe('AM-07 queue serialization (default maxConcurrent=1)', () => {
   it('rejects a second launch while the first is still running', async () => {
     const root = tempRoot()
     const orch = new DownloadOrchestrator({
@@ -46,7 +46,7 @@ describe('AM-07 queue serialization (never more than one concurrent child job)',
           doneBox.value = d
         },
       ),
-    ).rejects.toThrow(/already running/)
+    ).rejects.toThrow(/concurrency limit/i)
 
     orch.cancel()
     for (let i = 0; i < 100 && doneBox.value === null; i += 1) {

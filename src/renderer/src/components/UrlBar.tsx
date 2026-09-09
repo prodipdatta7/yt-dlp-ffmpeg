@@ -95,12 +95,21 @@ export function UrlBar() {
     }
     window.addEventListener('mf:focus-url', onFocusRequest)
 
+    const onAnalyzeUrlRequest = (event: Event): void => {
+      const url = (event as CustomEvent<{ url: string }>).detail?.url
+      if (!url || analyzing.value) return
+      setValue(url)
+      void runAnalyze(url)
+    }
+    window.addEventListener('mf:analyze-url', onAnalyzeUrlRequest)
+
     return () => {
       window.removeEventListener('focus', refreshClip)
       window.removeEventListener('dragover', onDragOver)
       window.removeEventListener('dragleave', onDragLeave)
       window.removeEventListener('drop', onDrop)
       window.removeEventListener('mf:focus-url', onFocusRequest)
+      window.removeEventListener('mf:analyze-url', onAnalyzeUrlRequest)
     }
   }, [value])
 
@@ -139,10 +148,10 @@ export function UrlBar() {
                 ? 'border-sky-400/40'
                 : invalid
                   ? 'border-rose-500/50'
-                  : 'border-white/[0.12] focus-within:border-sky-400/60 focus-within:shadow-[0_0_0_3px_var(--mf-glow)]'
+                  : 'border-line-strong focus-within:border-sky-400/60 focus-within:shadow-[0_0_0_3px_var(--mf-glow)]'
           }`}
         >
-          <span class="flex w-11 shrink-0 items-center justify-center border-r border-white/[0.06]">
+          <span class="flex w-11 shrink-0 items-center justify-center border-r border-line">
             {analyzing.value ? (
               <Spinner class="size-4 text-sky-400" />
             ) : (
@@ -195,7 +204,7 @@ export function UrlBar() {
               onClick={() => setValue('')}
               title="Clear"
               aria-label="Clear input"
-              class="mf-focus-ring my-auto flex size-7 shrink-0 items-center justify-center rounded-lg text-slate-600 transition hover:bg-white/[0.06] hover:text-slate-200"
+              class="mf-focus-ring my-auto flex size-7 shrink-0 items-center justify-center rounded-lg text-slate-600 transition hover:bg-wash-2 hover:text-slate-200"
             >
               <CloseIcon class="size-3.5" />
             </button>
@@ -205,7 +214,7 @@ export function UrlBar() {
             <button
               type="button"
               onClick={cancel}
-              class="mf-focus-ring m-1.5 inline-flex shrink-0 items-center gap-2 rounded-xl border border-white/[0.12] px-4 text-xs font-semibold text-slate-200 transition hover:border-rose-500/60 hover:text-rose-300 active:scale-[0.98]"
+              class="mf-focus-ring m-1.5 inline-flex shrink-0 items-center gap-2 rounded-xl border border-line-strong px-4 text-xs font-semibold text-slate-200 transition hover:border-rose-500/60 hover:text-rose-300 active:scale-[0.98]"
             >
               <Spinner class="size-3.5" />
               Cancel
@@ -229,7 +238,7 @@ export function UrlBar() {
                   onClick={reset}
                   title="Reset and clear the current result"
                   aria-label="Reset for a new link"
-                  class="mf-focus-ring m-1.5 inline-flex shrink-0 items-center gap-2 rounded-xl border border-white/[0.12] px-4 text-xs font-semibold text-slate-200 transition hover:border-rose-500/60 hover:text-rose-300 active:scale-[0.98]"
+                  class="mf-focus-ring m-1.5 inline-flex shrink-0 items-center gap-2 rounded-xl border border-line-strong px-4 text-xs font-semibold text-slate-200 transition hover:border-rose-500/60 hover:text-rose-300 active:scale-[0.98]"
                 >
                   Reset
                 </button>
@@ -240,10 +249,16 @@ export function UrlBar() {
       </div>
 
       {analyzeError.value && (
-        <div class="flex items-start justify-between gap-4 rounded-xl border border-rose-500/25 bg-rose-950/40 px-3.5 py-2.5">
+        <div
+          class="flex items-start justify-between gap-4 rounded-xl border border-rose-500/25 bg-rose-950/40 px-3.5 py-2.5"
+          role="alert"
+          aria-live="assertive"
+        >
           <div class="flex min-w-0 items-start gap-2.5">
             <AlertIcon class="mt-0.5 size-3.5 shrink-0 text-rose-400" />
-            <p class="text-xs leading-relaxed text-rose-200">{analyzeError.value.message}</p>
+            <p class="mf-select-text text-xs leading-relaxed text-rose-200">
+              {analyzeError.value.message}
+            </p>
           </div>
           <span class="flex shrink-0 gap-2">
             {(analyzeError.value.code === 'MF_AGE_RESTRICTED' ||

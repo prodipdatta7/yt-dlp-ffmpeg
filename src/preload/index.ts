@@ -16,6 +16,13 @@ import {
   MF_LOG_HISTORY,
   MF_LOG_LINE,
   MF_PING,
+  MF_PARTIALS_CLEAR,
+  MF_PARTIALS_LIST,
+  MF_PARTIALS_OPEN,
+  MF_REVEAL_PATH,
+  MF_OPEN_FILE,
+  MF_SEARCH_CANCEL,
+  MF_SEARCH_START,
   MF_SETTINGS_CLEAR_COOKIES,
   MF_SETTINGS_GET,
   MF_SETTINGS_IMPORT_COOKIES,
@@ -34,7 +41,11 @@ import {
   type LogEntryPayload,
   type MfApi,
   type MfSettingsView,
+  type PartialsClearResult,
+  type PartialsListResult,
   type PingResult,
+  type SearchRequest,
+  type SearchResponse,
   type UpdaterApplyResult,
   type UpdaterCheckResult,
   type UpdaterPhaseEvent,
@@ -82,9 +93,21 @@ const api: MfApi = {
   },
   getSettings: (): Promise<MfSettingsView> => ipcRenderer.invoke(MF_SETTINGS_GET),
   setSettings: (
-    patch: Partial<Pick<MfSettingsView, 'theme' | 'lastOutputDir'>>,
+    patch: Partial<
+      Pick<
+        MfSettingsView,
+        'theme' | 'lastOutputDir' | 'playlistConcurrency' | 'notifyOnComplete' | 'queueSnapshot'
+      >
+    >,
   ): Promise<MfSettingsView> => ipcRenderer.invoke(MF_SETTINGS_SET, patch),
   markFirstRunSeen: (): Promise<boolean> => ipcRenderer.invoke(MF_SETTINGS_MARK_FIRST_RUN),
+  listPartials: (): Promise<PartialsListResult> => ipcRenderer.invoke(MF_PARTIALS_LIST),
+  openPartialDir: (path: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke(MF_PARTIALS_OPEN, path),
+  clearPartials: (path?: string): Promise<PartialsClearResult> =>
+    ipcRenderer.invoke(MF_PARTIALS_CLEAR, path),
+  revealPath: (path: string): Promise<{ ok: boolean }> => ipcRenderer.invoke(MF_REVEAL_PATH, path),
+  openFile: (path: string): Promise<{ ok: boolean }> => ipcRenderer.invoke(MF_OPEN_FILE, path),
   updaterCheck: (kind: UpdaterDriverKind): Promise<UpdaterCheckResult> =>
     ipcRenderer.invoke(MF_UPDATER_CHECK, kind),
   updaterApply: (kind: UpdaterDriverKind): Promise<UpdaterApplyResult> =>
@@ -95,6 +118,9 @@ const api: MfApi = {
     ipcRenderer.on(MF_UPDATER_PHASE, wrapped)
     return () => ipcRenderer.removeListener(MF_UPDATER_PHASE, wrapped)
   },
+  searchStart: (req: SearchRequest): Promise<SearchResponse> =>
+    ipcRenderer.invoke(MF_SEARCH_START, req),
+  searchCancel: (): Promise<{ ok: boolean }> => ipcRenderer.invoke(MF_SEARCH_CANCEL),
 }
 
 contextBridge.exposeInMainWorld('mf', api)
