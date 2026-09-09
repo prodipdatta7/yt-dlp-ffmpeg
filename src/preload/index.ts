@@ -21,6 +21,8 @@ import {
   MF_PARTIALS_OPEN,
   MF_REVEAL_PATH,
   MF_OPEN_FILE,
+  MF_SEARCH_CANCEL,
+  MF_SEARCH_START,
   MF_SETTINGS_CLEAR_COOKIES,
   MF_SETTINGS_GET,
   MF_SETTINGS_IMPORT_COOKIES,
@@ -42,6 +44,8 @@ import {
   type PartialsClearResult,
   type PartialsListResult,
   type PingResult,
+  type SearchRequest,
+  type SearchResponse,
   type UpdaterApplyResult,
   type UpdaterCheckResult,
   type UpdaterPhaseEvent,
@@ -114,6 +118,9 @@ const api: MfApi = {
     ipcRenderer.on(MF_UPDATER_PHASE, wrapped)
     return () => ipcRenderer.removeListener(MF_UPDATER_PHASE, wrapped)
   },
+  searchStart: (req: SearchRequest): Promise<SearchResponse> =>
+    ipcRenderer.invoke(MF_SEARCH_START, req),
+  searchCancel: (): Promise<{ ok: boolean }> => ipcRenderer.invoke(MF_SEARCH_CANCEL),
 }
 
 contextBridge.exposeInMainWorld('mf', api)

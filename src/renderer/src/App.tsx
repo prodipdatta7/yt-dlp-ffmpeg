@@ -15,6 +15,7 @@ import { UrlBar } from './components/UrlBar'
 import { LogConsole } from './components/LogConsole'
 import { FirstRunModal } from './components/FirstRunModal'
 import { ShortcutsOverlay } from './components/ShortcutsOverlay'
+import { SearchScreen } from './components/SearchScreen'
 import {
   DownloadIcon,
   FolderIcon,
@@ -22,6 +23,7 @@ import {
   LinkIcon,
   LogoBolt,
   QueueIcon,
+  SearchIcon,
   ShieldIcon,
   SlidersIcon,
   TerminalIcon,
@@ -64,7 +66,7 @@ import {
   type QueueRunMode,
 } from './signals/queueState'
 import type { DownloadStartResponse } from '../../shared/ipcContract'
-import type { FormatRow, JobConfig } from '../../shared/models'
+import type { FormatRow, JobConfig, SearchResultItem } from '../../shared/models'
 import { estimateEntryBytes } from './utils/estimate'
 import { fmtSize } from './utils/format'
 import { POPULAR_SOURCES } from './utils/source'
@@ -131,6 +133,7 @@ function EnginesStatus() {
 
 const NAV_ITEMS: Array<{ id: ViewId; label: string; Icon: typeof DownloadIcon }> = [
   { id: 'download', label: 'Downloader', Icon: DownloadIcon },
+  { id: 'search', label: 'Search', Icon: SearchIcon },
   { id: 'queue', label: 'Queue', Icon: QueueIcon },
   { id: 'settings', label: 'Settings', Icon: GearIcon },
 ]
@@ -320,6 +323,53 @@ function HeroState() {
   )
 }
 
+function QueueDraftModal({
+  items,
+  onCancel,
+  onConfirm,
+}: {
+  items: SearchResultItem[]
+  onCancel: () => void
+  onConfirm: (selection: JobSelection) => void
+}) {
+  const [selection, setSelection] = useState<JobSelection | null>(null)
+  return (
+    <div class="fixed inset-0 z-30 flex items-center justify-center bg-scrim/60 p-4">
+      <div class="mf-card mf-rise w-full max-w-md p-4">
+        <h2 class="text-sm font-bold tracking-tight text-ink">
+          Queue {items.length} search result{items.length === 1 ? '' : 's'}
+        </h2>
+        <p class="mt-1 text-xs leading-relaxed text-slate-500">
+          Pick one quality preset applied to every selected result, same as queuing a playlist.
+        </p>
+        <div class="mt-3">
+          <ModeSelector
+            formats={[]}
+            durationSec={null}
+            onSelection={setSelection}
+            disabled={false}
+          />
+        </div>
+        <div class="mt-4 flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            class="mf-focus-ring rounded-xl border border-line-strong px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-rose-500/60 hover:text-rose-300"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => selection && onConfirm(selection)}
+            disabled={!selection || !selection.destDir}
+            class="mf-focus-ring rounded-xl bg-gradient-to-r from-go-500 to-go-400 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-go-500/30 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+          >
+            Queue {items.length}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function App() {
   const [bridgeNote, setBridgeNote] = useState('bridge ok')
   const [selection, setSelection] = useState<JobSelection | null>(null)
@@ -332,6 +382,7 @@ export function App() {
   const [paused, setPaused] = useState<{ config: JobConfig; queue: PausedQueueRun | null } | null>(
     null,
   )
+  const [queueDraft, setQueueDraft] = useState<SearchResultItem[] | null>(null)
   const pausedRef = useRef(paused)
   const runCtxRef = useRef<{
     entries: Array<{ url: string; title: string }>
@@ -655,6 +706,21 @@ export function App() {
     }
   }
 
+  function openSearchResultInDownloader(item: SearchResultItem) {
+    activeView.value = 'download'
+    window.dispatchEvent(new CustomEvent('mf:analyze-url', { detail: { url: item.url } }))
+  }
+
+  async function launchQueueFromSearch(items: SearchResultItem[], sel: JobSelection) {
+    if (busy) return
+    const entries = items.map((item) => ({ url: item.url, title: item.title }))
+    setPaused(null)
+    setQueueDraft(null)
+    runCtxRef.current = { entries, selection: sel, playlistTitle: undefined, runMode: 'sequential' }
+    activeView.value = 'queue'
+    await runQueue(entries, sel, undefined, 0)
+  }
+
   async function startDownload(mode: QueueRunMode = 'sequential') {
     const r = analysis.value
     if (!r || !selection || Object.keys(activeJobsById.value).length > 0 || queueRunning.value) {
@@ -833,6 +899,14 @@ export function App() {
         {activeView.value === 'settings' ? (
           <main class="mf-rise min-h-0 flex-1 overflow-y-auto px-6 py-8">
             <SettingsScreen />
+          </main>
+        ) : activeView.value === 'search' ? (
+          <main class="mf-rise flex min-h-0 flex-1 flex-col gap-3 px-4 pb-3 pt-3.5">
+            <SearchScreen
+              onOpenInDownloader={openSearchResultInDownloader}
+              onAddToQueue={(items) => setQueueDraft(items)}
+              busy={busy}
+            />
           </main>
         ) : activeView.value === 'queue' ? (
           <main class="mf-rise min-h-0 flex-1 overflow-y-auto px-6 py-8">
@@ -1058,6 +1132,14 @@ export function App() {
         }}
       />
       <ShortcutsOverlay open={showShortcuts} onClose={() => setShowShortcuts(false)} />
+
+      {queueDraft && (
+        <QueueDraftModal
+          items={queueDraft}
+          onCancel={() => setQueueDraft(null)}
+          onConfirm={(sel) => void launchQueueFromSearch(queueDraft, sel)}
+        />
+      )}
 
       <footer class="flex shrink-0 items-center justify-between gap-4 border-t border-line bg-ink-950 px-3 py-1.5 text-[11px] text-slate-500 sm:px-4">
         <EnginesStatus />

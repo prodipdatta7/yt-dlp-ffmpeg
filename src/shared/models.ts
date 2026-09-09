@@ -10,6 +10,7 @@ export type MfErrorCode =
   | 'MF_LIVE_STREAM'
   | 'MF_CANCELLED'
   | 'MF_INVALID_URL'
+  | 'MF_INVALID_QUERY'
   | 'MF_UNKNOWN'
 
 export const ERROR_MESSAGES: Record<MfErrorCode, string> = {
@@ -27,6 +28,7 @@ export const ERROR_MESSAGES: Record<MfErrorCode, string> = {
   MF_LIVE_STREAM: 'This is a live stream and will be recorded.',
   MF_CANCELLED: 'Operation cancelled.',
   MF_INVALID_URL: 'Enter a valid media link starting with http:// or https://.',
+  MF_INVALID_QUERY: 'Enter a search term.',
   MF_UNKNOWN: 'Something went wrong. Open the logs folder for details.',
 }
 
@@ -81,6 +83,41 @@ export const LOSSY_AUDIO_FORMATS: readonly AudioFormat[] = ['mp3', 'm4a', 'ogg']
 export const LOSSLESS_AUDIO_FORMATS: readonly AudioFormat[] = ['flac', 'wav']
 export type BitrateTier = '320K' | '192K' | '128K'
 export const BITRATE_TIERS: readonly BitrateTier[] = ['320K', '192K', '128K']
+
+/**
+ * In-app keyword search (M8) only covers platforms yt-dlp itself can query via a native
+ * `PREFIXn:query` pseudo-URL extractor — it cannot browse a site that has no search API.
+ * Verified against yt-dlp's supportedsites.md (search-capable extractors: ytsearch,
+ * ytsearchdate, scsearch, bilisearch, plus niche ones like nicosearch/yvsearch/rkfnsearch
+ * that we don't surface). Do not add a platform here without confirming its prefix still
+ * exists in that list — everything else (TikTok, Instagram, Facebook, X, Vimeo, Twitch,
+ * Reddit, Rumble, Dailymotion…) stays paste-a-link-only in the Downloader tab.
+ */
+export interface SearchPlatform {
+  id: string
+  label: string
+  /** yt-dlp search-prefix extractor name, e.g. "ytsearch" (combines with a count + query as `${prefix}${n}:${query}`). */
+  prefix: string
+  /** Prefix that sorts by upload date (newest first) instead of relevance, when the extractor has one. */
+  dateSortPrefix?: string
+}
+
+export const SEARCH_PLATFORMS: readonly SearchPlatform[] = [
+  { id: 'youtube', label: 'YouTube', prefix: 'ytsearch', dateSortPrefix: 'ytsearchdate' },
+  { id: 'soundcloud', label: 'SoundCloud', prefix: 'scsearch' },
+  { id: 'bilibili', label: 'Bilibili', prefix: 'bilisearch' },
+]
+
+export type SearchSort = 'relevance' | 'newest'
+export const SEARCH_RESULT_LIMITS = [10, 20, 30, 50] as const
+export const DEFAULT_SEARCH_LIMIT = 20
+export const MAX_SEARCH_LIMIT = 50
+export const MAX_SEARCH_QUERY_LENGTH = 200
+
+/** One search hit — the flat-playlist row yt-dlp's search extractor returned, tagged with its platform. */
+export interface SearchResultItem extends PlaylistEntryPreview {
+  platform: string
+}
 
 export type DownloadMode = 'video-audio' | 'audio-only' | 'advanced'
 

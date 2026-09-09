@@ -25,6 +25,8 @@ import {
   MF_PARTIALS_CLEAR,
   MF_REVEAL_PATH,
   MF_OPEN_FILE,
+  MF_SEARCH_CANCEL,
+  MF_SEARCH_START,
   MF_UPDATER_APPLY,
   MF_UPDATER_CHECK,
   type AnalyzeResponse,
@@ -40,14 +42,18 @@ import {
   type PartialsClearResult,
   type PartialsListResult,
   type PingResult,
+  type SearchResponse,
 } from '../../shared/ipcContract'
-import type { UpdaterDriverKind } from '../../shared/models'
+import type { SearchSort, UpdaterDriverKind } from '../../shared/models'
 import {
   BITRATE_TIERS,
   CONTAINERS,
   LOSSLESS_AUDIO_FORMATS,
   LOSSY_AUDIO_FORMATS,
+  MAX_SEARCH_LIMIT,
+  MAX_SEARCH_QUERY_LENGTH,
   RESOLUTION_TIERS,
+  SEARCH_PLATFORMS,
   ERROR_MESSAGES,
   type AudioFormat,
   type BitrateTier,
@@ -105,6 +111,13 @@ export interface IpcDeps {
     rolledBack?: boolean
     error?: string
   }>
+  search: (
+    platform: string,
+    query: string,
+    limit: number,
+    sort: SearchSort,
+  ) => Promise<SearchResponse>
+  cancelSearch: () => { ok: boolean }
 }
 
 function invalidUrl(): AnalyzeResponse {
@@ -237,6 +250,45 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
   ipcMain.handle(MF_UPDATER_APPLY, (_event, payload: unknown) =>
     deps.updaterApply(readUpdaterKind(payload)),
   )
+
+  ipcMain.handle(MF_SEARCH_START, async (_event, payload: unknown): Promise<SearchResponse> => {
+    const req = parseSearchRequest(payload)
+    if (!req) {
+      return { kind: 'error', code: 'MF_INVALID_QUERY', message: ERROR_MESSAGES.MF_INVALID_QUERY }
+    }
+    try {
+      return await deps.search(req.platform, req.query, req.limit, req.sort)
+    } catch (error) {
+      const code = error instanceof MfError ? error.code : 'MF_UNKNOWN'
+      logger?.warn('search failed', { code })
+      return { kind: 'error', code, message: ERROR_MESSAGES[code] }
+    }
+  })
+  ipcMain.handle(MF_SEARCH_CANCEL, () => deps.cancelSearch())
+}
+
+function parseSearchRequest(
+  payload: unknown,
+): { platform: string; query: string; limit: number; sort: SearchSort } | null {
+  if (!payload || typeof payload !== 'object') return null
+  const raw = payload as Record<string, unknown>
+
+  if (typeof raw.platform !== 'string' || !SEARCH_PLATFORMS.some((p) => p.id === raw.platform)) {
+    return null
+  }
+  if (typeof raw.query !== 'string') return null
+  const query = raw.query.trim()
+  if (query.length === 0 || query.length > MAX_SEARCH_QUERY_LENGTH) return null
+
+  let limit = 20
+  if (raw.limit !== undefined) {
+    if (typeof raw.limit !== 'number' || !Number.isFinite(raw.limit)) return null
+    limit = Math.min(MAX_SEARCH_LIMIT, Math.max(1, Math.trunc(raw.limit)))
+  }
+
+  const sort: SearchSort = raw.sort === 'newest' ? 'newest' : 'relevance'
+
+  return { platform: raw.platform, query, limit, sort }
 }
 
 function extractUrl(payload: unknown): string | null {

@@ -95,12 +95,21 @@ export function UrlBar() {
     }
     window.addEventListener('mf:focus-url', onFocusRequest)
 
+    const onAnalyzeUrlRequest = (event: Event): void => {
+      const url = (event as CustomEvent<{ url: string }>).detail?.url
+      if (!url || analyzing.value) return
+      setValue(url)
+      void runAnalyze(url)
+    }
+    window.addEventListener('mf:analyze-url', onAnalyzeUrlRequest)
+
     return () => {
       window.removeEventListener('focus', refreshClip)
       window.removeEventListener('dragover', onDragOver)
       window.removeEventListener('dragleave', onDragLeave)
       window.removeEventListener('drop', onDrop)
       window.removeEventListener('mf:focus-url', onFocusRequest)
+      window.removeEventListener('mf:analyze-url', onAnalyzeUrlRequest)
     }
   }, [value])
 

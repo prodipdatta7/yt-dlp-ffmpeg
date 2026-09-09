@@ -16,6 +16,7 @@ import { BinariesService } from './binaries/service'
 import { platformDir, type BinaryCandidate } from './binaries/locator'
 import { registerIpcHandlers } from './ipc/handlers'
 import { AnalyzeService, MfError } from './media/metadata'
+import { SearchService } from './media/search'
 import { DownloadOrchestrator } from './jobs/orchestrator'
 import type {
   AnalyzeResponse,
@@ -24,7 +25,9 @@ import type {
   JobDonePayload,
   JobEvent,
   MfSettingsView,
+  SearchResponse,
 } from '../shared/ipcContract'
+import type { SearchSort } from '../shared/models'
 import { MF_LOG_LINE, MF_UPDATER_PHASE } from '../shared/ipcContract'
 import { LogBus } from './logs/logBus'
 import { ERROR_MESSAGES } from '../shared/models'
@@ -168,6 +171,13 @@ app.whenReady().then(() => {
   const tapProcessLines = logBus.tap('yt-dlp')
 
   const analyzeService = new AnalyzeService({
+    resolveYtDlp: () => binariesService.locate('yt-dlp'),
+    logger,
+    getCookiesPath: resolveCookiesPath,
+    onProcessLine: tapProcessLines,
+  })
+
+  const searchService = new SearchService({
     resolveYtDlp: () => binariesService.locate('yt-dlp'),
     logger,
     getCookiesPath: resolveCookiesPath,
@@ -426,6 +436,24 @@ app.whenReady().then(() => {
         const result = kind === 'ffmpeg' ? await ffmpegUpdater.apply() : await updater.apply()
         if (result.ok) binariesService.invalidate()
         return result
+      },
+      search: async (
+        platform: string,
+        query: string,
+        limit: number,
+        sort: SearchSort,
+      ): Promise<SearchResponse> => {
+        try {
+          const results = await searchService.search(platform, query, limit, sort)
+          return { kind: 'ok', results }
+        } catch (error) {
+          const code = error instanceof MfError ? error.code : 'MF_UNKNOWN'
+          return { kind: 'error', code, message: ERROR_MESSAGES[code] }
+        }
+      },
+      cancelSearch: () => {
+        searchService.cancel()
+        return { ok: true }
       },
     },
     logger,

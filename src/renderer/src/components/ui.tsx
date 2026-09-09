@@ -49,6 +49,7 @@ export function Segmented<T extends string | number>({
         return (
           <button
             key={String(opt.value)}
+            type="button"
             role="radio"
             aria-checked={active}
             disabled={disabled}
@@ -80,6 +81,7 @@ export function Chip({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
       aria-pressed={active}

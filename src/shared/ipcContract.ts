@@ -5,6 +5,8 @@ import type {
   JobEvent,
   MfErrorCode,
   PlaylistEntryPreview,
+  SearchResultItem,
+  SearchSort,
   UpdaterDriverKind,
   UpdaterPhase,
 } from './models'
@@ -40,6 +42,8 @@ export const MF_PARTIALS_OPEN = 'mf:partials:open' as const
 export const MF_PARTIALS_CLEAR = 'mf:partials:clear' as const
 export const MF_REVEAL_PATH = 'mf:reveal-path' as const
 export const MF_OPEN_FILE = 'mf:open-file' as const
+export const MF_SEARCH_START = 'mf:search:start' as const
+export const MF_SEARCH_CANCEL = 'mf:search:cancel' as const
 
 export interface PingResult {
   pong: string
@@ -141,6 +145,17 @@ export interface PartialsClearResult {
   failed?: number
 }
 
+export interface SearchRequest {
+  platform: string
+  query: string
+  limit: number
+  sort: SearchSort
+}
+
+export type SearchResponse =
+  | { kind: 'ok'; results: SearchResultItem[] }
+  | { kind: 'error'; code: MfErrorCode; message: string }
+
 export interface MfApi {
   ping(): Promise<PingResult>
   getBinariesInfo(): Promise<BinariesInfoResult>
@@ -180,6 +195,17 @@ export interface MfApi {
   updaterCheck(kind: UpdaterDriverKind): Promise<UpdaterCheckResult>
   updaterApply(kind: UpdaterDriverKind): Promise<UpdaterApplyResult>
   onUpdaterPhase(listener: (event: UpdaterPhaseEvent) => void): () => void
+  searchStart(req: SearchRequest): Promise<SearchResponse>
+  searchCancel(): Promise<{ ok: boolean }>
 }
 
-export type { Container, JobConfig, JobDonePayload, JobEvent, PlaylistEntryPreview } from './models'
+export type {
+  Container,
+  JobConfig,
+  JobDonePayload,
+  JobEvent,
+  PlaylistEntryPreview,
+  SearchPlatform,
+  SearchResultItem,
+  SearchSort,
+} from './models'
