@@ -71,8 +71,6 @@ import { estimateEntryBytes } from './utils/estimate'
 import { fmtSize } from './utils/format'
 import { POPULAR_SOURCES } from './utils/source'
 
-const APP_VERSION = 'v0.1.1'
-
 type EngineInfo = { version: string | null; source: string | null }
 
 function LogoMark() {
@@ -196,6 +194,15 @@ function NavRail({
 }
 
 function TitleBar() {
+  const [version, setVersion] = useState<string | null>(null)
+
+  useEffect(() => {
+    window.mf
+      .getAppVersion()
+      .then((r) => setVersion(r.version))
+      .catch(() => undefined)
+  }, [])
+
   return (
     <header class="app-drag relative z-20 flex h-[46px] shrink-0 items-center gap-3 border-b border-line bg-ink-950 pl-4 pr-40">
       <LogoMark />
@@ -206,7 +213,7 @@ function TitleBar() {
         </span>
       </div>
       <span class="mf-num app-no-drag rounded-full border border-sky-400/20 bg-sky-400/5 px-2 py-0.5 text-[10px] font-semibold text-sky-300/90">
-        {APP_VERSION}
+        {version ? `v${version}` : '…'}
       </span>
     </header>
   )

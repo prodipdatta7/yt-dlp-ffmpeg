@@ -1,5 +1,6 @@
 import type {
   AnalyzeResult,
+  AppUpdatePhase,
   JobConfig,
   JobDonePayload,
   JobEvent,
@@ -34,6 +35,11 @@ export const MF_LOG_LINE = 'mf:log:line' as const
 export const MF_UPDATER_CHECK = 'mf:updater:check' as const
 export const MF_UPDATER_APPLY = 'mf:updater:apply' as const
 export const MF_UPDATER_PHASE = 'mf:updater:phase' as const
+export const MF_APP_VERSION = 'mf:app:version' as const
+export const MF_APP_UPDATE_CHECK = 'mf:app:update-check' as const
+export const MF_APP_UPDATE_OPEN_RELEASE = 'mf:app:update-open-release' as const
+export const MF_APP_UPDATE_DOWNLOAD_INSTALL = 'mf:app:update-download-install' as const
+export const MF_APP_UPDATE_PHASE = 'mf:app:update-phase' as const
 export const MF_SETTINGS_GET = 'mf:settings:get' as const
 export const MF_SETTINGS_SET = 'mf:settings:set' as const
 export const MF_SETTINGS_MARK_FIRST_RUN = 'mf:settings:mark-first-run' as const
@@ -127,6 +133,23 @@ export interface UpdaterPhaseEvent {
   detail?: string
 }
 
+export interface AppUpdateCheckResult {
+  currentVersion: string
+  latestVersion: string | null
+  updateAvailable: boolean
+  error?: string
+}
+
+export interface AppUpdateInstallResult {
+  ok: boolean
+  error?: string
+}
+
+/** Streams the app-installer download's fine-grained progress to the UI. */
+export interface AppUpdatePhaseEvent {
+  phase: AppUpdatePhase
+}
+
 export interface PartialDirInfo {
   path: string
   bytes: number
@@ -197,6 +220,11 @@ export interface MfApi {
   onUpdaterPhase(listener: (event: UpdaterPhaseEvent) => void): () => void
   searchStart(req: SearchRequest): Promise<SearchResponse>
   searchCancel(): Promise<{ ok: boolean }>
+  getAppVersion(): Promise<{ version: string }>
+  checkAppUpdate(): Promise<AppUpdateCheckResult>
+  openAppReleasePage(): Promise<{ ok: boolean }>
+  downloadAndInstallAppUpdate(): Promise<AppUpdateInstallResult>
+  onAppUpdatePhase(listener: (event: AppUpdatePhaseEvent) => void): () => void
 }
 
 export type {

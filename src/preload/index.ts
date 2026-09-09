@@ -31,8 +31,16 @@ import {
   MF_UPDATER_APPLY,
   MF_UPDATER_CHECK,
   MF_UPDATER_PHASE,
+  MF_APP_VERSION,
+  MF_APP_UPDATE_CHECK,
+  MF_APP_UPDATE_OPEN_RELEASE,
+  MF_APP_UPDATE_DOWNLOAD_INSTALL,
+  MF_APP_UPDATE_PHASE,
   type AnalyzeResponse,
   type AnalyzeStreamEvent,
+  type AppUpdateCheckResult,
+  type AppUpdateInstallResult,
+  type AppUpdatePhaseEvent,
   type BinariesInfoResult,
   type DownloadStartResponse,
   type JobConfig,
@@ -121,6 +129,18 @@ const api: MfApi = {
   searchStart: (req: SearchRequest): Promise<SearchResponse> =>
     ipcRenderer.invoke(MF_SEARCH_START, req),
   searchCancel: (): Promise<{ ok: boolean }> => ipcRenderer.invoke(MF_SEARCH_CANCEL),
+  getAppVersion: (): Promise<{ version: string }> => ipcRenderer.invoke(MF_APP_VERSION),
+  checkAppUpdate: (): Promise<AppUpdateCheckResult> => ipcRenderer.invoke(MF_APP_UPDATE_CHECK),
+  openAppReleasePage: (): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke(MF_APP_UPDATE_OPEN_RELEASE),
+  downloadAndInstallAppUpdate: (): Promise<AppUpdateInstallResult> =>
+    ipcRenderer.invoke(MF_APP_UPDATE_DOWNLOAD_INSTALL),
+  onAppUpdatePhase: (listener: (event: AppUpdatePhaseEvent) => void): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: AppUpdatePhaseEvent): void =>
+      listener(payload)
+    ipcRenderer.on(MF_APP_UPDATE_PHASE, wrapped)
+    return () => ipcRenderer.removeListener(MF_APP_UPDATE_PHASE, wrapped)
+  },
 }
 
 contextBridge.exposeInMainWorld('mf', api)

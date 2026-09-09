@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks'
 import { Pill } from './ui'
+import { AboutSection } from './settings/AboutSection'
 import { AppearanceSection } from './settings/AppearanceSection'
 import { CookiesSection } from './settings/CookiesSection'
 import { DestinationSection } from './settings/DestinationSection'
@@ -32,6 +33,7 @@ function mapSettings(s: {
 
 export function SettingsScreen() {
   const [settings, setSettings] = useState<SharedSettings | null>(null)
+  const [appVersion, setAppVersion] = useState<string | null>(null)
   const [leftoverCount, setLeftoverCount] = useState(0)
   const [activeSection, setActiveSection] = useState<string>(SETTINGS_SECTIONS[0].id)
 
@@ -49,6 +51,10 @@ export function SettingsScreen() {
     void window.mf
       .listPartials()
       .then((res) => setLeftoverCount(res.items.length))
+      .catch(() => undefined)
+    void window.mf
+      .getAppVersion()
+      .then((r) => setAppVersion(r.version))
       .catch(() => undefined)
   }, [])
 
@@ -81,10 +87,10 @@ export function SettingsScreen() {
         <div>
           <h2 class="text-lg font-bold tracking-tight text-ink">Settings</h2>
           <p class="mt-0.5 text-[12.5px] text-slate-500">
-            App behavior, storage, and core engine updates.
+            App behavior, storage, and updates — for MediaForge itself and its core engines.
           </p>
         </div>
-        <Pill tone="sky">MediaForge v0.1.1</Pill>
+        <Pill tone="sky">MediaForge{appVersion ? ` v${appVersion}` : ''}</Pill>
       </header>
 
       <div class="flex items-start gap-6">
@@ -128,6 +134,8 @@ export function SettingsScreen() {
           {activeSection === 'drivers' && <DriversSection />}
 
           {activeSection === 'diagnostics' && <DiagnosticsSection />}
+
+          {activeSection === 'about' && <AboutSection />}
         </div>
       </div>
     </div>

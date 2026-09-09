@@ -168,6 +168,9 @@ export type UpdaterPhase =
 /** Which core driver an update targets. */
 export type UpdaterDriverKind = 'yt-dlp' | 'ffmpeg'
 
+/** Phases of the app's own download-and-install-installer flow (AM-15). */
+export type AppUpdatePhase = 'checking' | 'downloading' | 'verifying' | 'launching-installer'
+
 /**
  * Leftover partial-download folders (from cancelled/failed jobs) are kept as a
  * recovery safety net for this many days, then swept automatically on app

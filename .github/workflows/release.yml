@@ -39,12 +39,20 @@ jobs:
       - name: Package Windows installer
         run: npm run dist
 
+      - name: Compute installer checksum
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist -Filter *.exe | Select-Object -First 1
+          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $($exe.Name)" | Out-File -FilePath dist/SHA256SUMS -Encoding ascii
+
       - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/*.exe
             dist/*.blockmap
+            dist/SHA256SUMS
           draft: false
           prerelease: false
           generate_release_notes: true

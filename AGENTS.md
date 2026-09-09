@@ -43,6 +43,7 @@ These amend the PRD. Traceability: `AM-nn` may appear in commit messages and tes
 | AM-12 | 5.3 | Tailwind CSS v4 is sanctioned as a **build-time-only** styling layer (compiles to static CSS before packaging ⇒ zero runtime weight, honors §5.3's actual target of installer/runtime size). Plain CSS / CSS Modules remain allowed side-by-side where utility classes don't fit. React remains banned — renderer framework stays Preact (AM rationale: identical rendering, ~10× smaller runtime). No UI kits/icon libraries still applies; use inline SVG icons. |
 | AM-13 | 7.6 | FFmpeg self-updating is now in scope (was excluded for v1). Updates come from `BtbN/FFmpeg-Builds` **LGPL** `ffmpeg-master-latest-win64-lgpl.zip` + its `.sha256` sidecar (same source as `fetch-binaries.mjs`), checksum-verified before a `tar -xf` extraction, atomic swap into `<userData>/binaries/win32/`, and rollback on failure. Because the rolling build has no comparable version tag, "newer" is detected by comparing the installed build's zip hash (stored in `.ffmpeg-update.json`). The Settings updater is now split into per-driver **yt-dlp** and **FFmpeg** cards (`DriverUpdateCard`). |
 | AM-14 | — | In-app keyword search (M8, new — not in the original PRD) is scoped to the small set of platforms yt-dlp can natively *query*: it exposes a `PREFIXn:query` pseudo-URL syntax for a handful of extractors (verified against `supportedsites.md`: `ytsearch`/`ytsearchdate`, `scsearch`, `bilisearch`, plus niche ones we don't surface — `nicosearch`, `yvsearch`, `rkfnsearch`, `prxseries`/`prxstories`). It has **no such mechanism** for the majority of this app's existing paste-a-link platforms (TikTok, Instagram, Facebook, X, Vimeo, Twitch, Reddit, Rumble, Dailymotion, Internet Archive…) — yt-dlp can resolve a URL on those sites but cannot browse/query them, so they are not offered in the Search tab's platform picker and remain paste-a-link-only in the Downloader tab. Do not add a platform to `SEARCH_PLATFORMS` (`src/shared/models.ts`) without re-confirming its prefix still exists upstream. |
+| AM-15 | 6.3/AM-08 | AM-08's "check-for-updates" covered only the core drivers (yt-dlp/FFmpeg, §7.6) — the app itself had no version-check surface, leaving users with no in-app way to learn a new MediaForge release exists or install it. Closed with a Settings **About** section: resolves the latest tag from `github.com/<owner>/<repo>/releases/latest` (same no-REST-API redirect pattern as §7.6, reusing `resolveLatestTag`/`isNewerVersion`) and compares it against `app.getVersion()`. "View Release" opens that page via `shell.openExternal`. "Download & Install" goes further than the drivers do — it downloads the NSIS installer asset, checksum-verifies it against a `SHA256SUMS` sidecar `release.yml` now publishes (added there for this; same shape as yt-dlp's SHA2-256SUMS), writes it to `<userData>/updates/`, launches it detached, then quits the app so the installer isn't fighting file locks on its own running executable. Still no silent/background auto-update (no `electron-updater`, no differential patching) — this is a user-initiated foreground action, refused while `orchestrator.isBusy()` (an active download would otherwise be killed by the quit). The app never swaps its **own** installed files itself (AM-03's Program-Files rationale applies harder here) — the downloaded installer wizard does that. |
 
 ## 3. Locked Technology Decisions
 
@@ -280,6 +281,25 @@ successful apply. FFmpeg self-updating is now in scope (see the "Core drivers" u
    applied checksum is stored in `.ffmpeg-update.json`.
 5. Extraction uses `tar -xf` (spawn with array args, no shell) — Windows 10+ ships bsdtar.
 
+**The app itself (AM-15)** — `src/main/app/appUpdater.ts`. `checkAppUpdate` resolves the latest
+tag from `github.com/<owner>/<repo>/releases/latest` (same redirect trick, reusing
+`resolveLatestTag`/`isNewerVersion` from the yt-dlp updater), strips the `v` prefix, and compares
+it to `app.getVersion()`. The Settings **About** section's "View Release" button just
+`shell.openExternal`s the static releases URL.
+
+"Download & Install" calls `downloadAndInstallAppUpdate`, which re-resolves/re-compares (never
+trusts a stale prior check), then downloads `${productName}-Setup-${version}.exe` — the exact name
+`electron-builder.yml`'s `nsis.artifactName` produces (`installerAssetName`) — plus a `SHA256SUMS`
+sidecar that `.github/workflows/release.yml` now computes via `Get-FileHash` and uploads alongside
+the installer. It checksum-verifies (reusing `extractExpectedChecksum`/`sha256Hex` from the yt-dlp
+updater) before writing anything to disk, writes the verified installer to
+`<userData>/updates/`, spawns it detached (array args, `shell:false`, `windowsHide:false` so the
+NSIS wizard is visible), then the caller (`main/index.ts`) sets `forceClose = true` and
+`app.quit()`s ~800ms later so the installer isn't fighting file locks held by the running
+instance. Refuses to start while `orchestrator.isBusy()` — quitting mid-download would kill an
+active job. Releases cut before this amendment have no `SHA256SUMS` asset, so "Download & Install"
+only works against releases published after it landed; "View Release" always works.
+
 ### 7.7 In-app search (M8)
 
 ```text
@@ -327,6 +347,10 @@ All channel names + payload types live in `src/shared/ipcContract.ts`. Handlers 
 | R→M invoke | `settings:get` / `settings:set` | `Settings` / `Partial<Settings>` → `Settings` |
 | R→M invoke | `binaries:getInfo` | `{}` → `{ytdlp:{version,source:bundled\|override}, ffmpeg:{version}}` |
 | R→M invoke | `updater:check` / `updater:apply` | `{}` → `{current,latest}` / `{ok,newVersion}` |
+| R→M invoke | `app:version` (AM-15) | `{}` → `{version}` |
+| R→M invoke | `app:update-check` / `app:update-open-release` (AM-15) | `{}` → `{currentVersion,latestVersion,updateAvailable,error?}` / `{ok}` |
+| R→M invoke | `app:update-download-install` (AM-15) | `{}` → `{ok,error?}` |
+| M→R event | `app:update-phase` (AM-15) | `{phase: checking\|downloading\|verifying\|launching-installer}` |
 | R→M invoke | `search:start` (M8) | `SearchRequest{platform, query, limit, sort}` → `{kind:'ok', results: SearchResultItem[]}` or `{kind:'error', code, message}` |
 | R→M invoke | `search:cancel` (M8) | `{}` → `{ok}` |
 | M→R event | `job:event` | `JobEvent{jobId, phase, percent, speedBps, etaSec, message?}` |
@@ -368,9 +392,9 @@ AC: sanitizer tests incl. CON/PRN/trailing-dot/control-char/200-char cases · co
 Scope: EC-01…EC-07 behaviors, close-guard modal (EC-05), Resume button (EC-04/AM-05), live detection → recording workflow with explicit stop control (EC-06), cookies.txt import flow (EC-07/§6), orphaned-temp sweep.
 AC: one scripted/manual repro per EC documented in `specs/ec-verifications.md` and passing · close-guard blocks quit while job active · killed-mid-download job resumes to completion via Resume.
 
-### M6 — Settings & OTA updater (PRD §6.3, AM-03/AM-08)
-Scope: Settings screen (§9/M6 list), `UpdaterService` (§7.6) with checksum gate + atomic swap + rollback + "Update Core Drivers" surface wired to EC-02 prompt.
-AC: updater against mocked release API (vitest, no network) · tampered-binary test rejects swap and rolls back · swapped override visible in `binaries:getInfo` after relaunch.
+### M6 — Settings & OTA updater (PRD §6.3, AM-03/AM-08/AM-15)
+Scope: Settings screen (§9/M6 list), `UpdaterService` (§7.6) with checksum gate + atomic swap + rollback + "Update Core Drivers" surface wired to EC-02 prompt, About section app-version check + download-and-launch-installer flow (AM-15).
+AC: updater against mocked release API (vitest, no network) · tampered-binary test rejects swap and rolls back · swapped override visible in `binaries:getInfo` after relaunch · app-update check against mocked release feed reports `updateAvailable` correctly for older/equal/newer tags (vitest, no network) · app installer download+install rejects a tampered `SHA256SUMS` mismatch without writing or launching anything, and refuses to run when already up to date (vitest, no network).
 
 ### M7 — Package, measure, ship (PRD §5.2–5.3, §6)
 Scope: electron-builder NSIS config bundling binaries, icon/licensing page (§14), memory profiling harness (AM-10 methodology), installer size report, clean-VM smoke matrix.

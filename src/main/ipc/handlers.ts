@@ -29,8 +29,14 @@ import {
   MF_SEARCH_START,
   MF_UPDATER_APPLY,
   MF_UPDATER_CHECK,
+  MF_APP_VERSION,
+  MF_APP_UPDATE_CHECK,
+  MF_APP_UPDATE_OPEN_RELEASE,
+  MF_APP_UPDATE_DOWNLOAD_INSTALL,
   type AnalyzeResponse,
   type AnalyzeStreamEvent,
+  type AppUpdateCheckResult,
+  type AppUpdateInstallResult,
   type BinariesInfoResult,
   type Container,
   type DownloadStartResponse,
@@ -118,6 +124,10 @@ export interface IpcDeps {
     sort: SearchSort,
   ) => Promise<SearchResponse>
   cancelSearch: () => { ok: boolean }
+  getAppVersion: () => string
+  checkAppUpdate: () => Promise<AppUpdateCheckResult>
+  openAppReleasePage: () => Promise<{ ok: boolean }>
+  downloadAndInstallAppUpdate: () => Promise<AppUpdateInstallResult>
 }
 
 function invalidUrl(): AnalyzeResponse {
@@ -250,6 +260,11 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
   ipcMain.handle(MF_UPDATER_APPLY, (_event, payload: unknown) =>
     deps.updaterApply(readUpdaterKind(payload)),
   )
+
+  ipcMain.handle(MF_APP_VERSION, () => ({ version: deps.getAppVersion() }))
+  ipcMain.handle(MF_APP_UPDATE_CHECK, () => deps.checkAppUpdate())
+  ipcMain.handle(MF_APP_UPDATE_OPEN_RELEASE, () => deps.openAppReleasePage())
+  ipcMain.handle(MF_APP_UPDATE_DOWNLOAD_INSTALL, () => deps.downloadAndInstallAppUpdate())
 
   ipcMain.handle(MF_SEARCH_START, async (_event, payload: unknown): Promise<SearchResponse> => {
     const req = parseSearchRequest(payload)

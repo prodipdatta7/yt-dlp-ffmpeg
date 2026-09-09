@@ -4,6 +4,7 @@ import {
   DownloadIcon,
   FolderIcon,
   HardDriveIcon,
+  InfoIcon,
   PaletteIcon,
   RefreshIcon,
 } from '../icons'
@@ -16,6 +17,7 @@ export const SETTINGS_SECTIONS = [
   { id: 'cookies', label: 'Cookies', Icon: CookieIcon },
   { id: 'drivers', label: 'Drivers', Icon: RefreshIcon },
   { id: 'diagnostics', label: 'Diagnostics', Icon: DocIcon },
+  { id: 'about', label: 'About', Icon: InfoIcon },
 ] as const
 
 export function SideNav({

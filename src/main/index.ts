@@ -28,7 +28,7 @@ import type {
   SearchResponse,
 } from '../shared/ipcContract'
 import type { SearchSort } from '../shared/models'
-import { MF_LOG_LINE, MF_UPDATER_PHASE } from '../shared/ipcContract'
+import { MF_LOG_LINE, MF_UPDATER_PHASE, MF_APP_UPDATE_PHASE } from '../shared/ipcContract'
 import { LogBus } from './logs/logBus'
 import { ERROR_MESSAGES } from '../shared/models'
 import { createLogger, type Logger } from './store/logger'
@@ -38,7 +38,8 @@ import { sweepOrphanedTempDirs } from './fsops/tempSweep'
 import { platformDir as platformDirName } from './binaries/locator'
 import { YtDlpUpdater } from './binaries/updater'
 import { FfmpegUpdater } from './binaries/ffmpegUpdater'
-import type { UpdaterDriverKind, UpdaterPhase } from '../shared/models'
+import { appReleasesUrl, checkAppUpdate, downloadAndInstallAppUpdate } from './app/appUpdater'
+import type { AppUpdatePhase, UpdaterDriverKind, UpdaterPhase } from '../shared/models'
 import {
   clearAllPartialDirs,
   clearPartialDir,
@@ -216,6 +217,11 @@ app.whenReady().then(() => {
     logger,
     onPhase: (phase, detail) => sendUpdaterPhase('ffmpeg', phase, detail),
   })
+  const sendAppUpdatePhase = (phase: AppUpdatePhase): void => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send(MF_APP_UPDATE_PHASE, { phase })
+    }
+  }
 
   if (process.env.MF_MEMORY_PROBE === '1') {
     const probePath = join(logsDir, 'mem.jsonl')
@@ -435,6 +441,35 @@ app.whenReady().then(() => {
       updaterApply: async (kind: UpdaterDriverKind) => {
         const result = kind === 'ffmpeg' ? await ffmpegUpdater.apply() : await updater.apply()
         if (result.ok) binariesService.invalidate()
+        return result
+      },
+      getAppVersion: () => app.getVersion(),
+      checkAppUpdate: () => checkAppUpdate(app.getVersion()),
+      openAppReleasePage: async () => {
+        try {
+          await shell.openExternal(appReleasesUrl())
+          return { ok: true }
+        } catch {
+          return { ok: false }
+        }
+      },
+      downloadAndInstallAppUpdate: async () => {
+        if (orchestrator.isBusy()) {
+          return {
+            ok: false,
+            error: 'A download is in progress — cancel or wait for it to finish, then try again.',
+          }
+        }
+        const result = await downloadAndInstallAppUpdate({
+          currentVersion: app.getVersion(),
+          updatesDir: join(app.getPath('userData'), 'updates'),
+          logger,
+          onPhase: (phase: AppUpdatePhase) => sendAppUpdatePhase(phase),
+        })
+        if (result.ok) {
+          forceClose = true
+          setTimeout(() => app.quit(), 800)
+        }
         return result
       },
       search: async (
