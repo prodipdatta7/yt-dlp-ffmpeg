@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -37,6 +37,11 @@ async function waitForDone(box: DoneBox): Promise<JobDonePayload> {
 
 function jobDirName(url: string): string {
   return `job-${createHash('sha1').update(url).digest('hex').slice(0, 16)}`
+}
+
+function hasPartFile(dir: string): boolean {
+  if (!existsSync(dir)) return false
+  return readdirSync(dir).some((name) => name.endsWith('.part'))
 }
 
 describe('AM-05 retry ladder on network failures', () => {
@@ -127,9 +132,12 @@ describe('EC-06 live recording stop-to-save', () => {
       },
     )
 
-    for (let i = 0; i < 50 && !orch.cancel(jobId); i += 1) {
-      await new Promise((r) => setTimeout(r, 100))
+    const tempDir = join(root, jobDirName(url))
+    for (let i = 0; i < 100 && !hasPartFile(tempDir); i += 1) {
+      await new Promise((r) => setTimeout(r, 50))
     }
+    if (!hasPartFile(tempDir)) throw new Error('live recording never produced a .part file')
+    expect(orch.cancel(jobId)).toBe(true)
 
     const done = await waitForDone(box)
     expect(done.status).toBe('completed')
