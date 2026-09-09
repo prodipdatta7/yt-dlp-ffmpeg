@@ -38,7 +38,7 @@
 3. Run the installer.
 
 > **Note on Windows SmartScreen:**  
-> Since MediaForge is an open-source project without a costly enterprise code-signing certificate, Windows SmartScreen may show a warning on first launch (_"Windows protected your PC"_). Click **More info** $\rightarrow$ **Run anyway** to proceed.
+> MediaForge is an open-source project and doesn't (yet) carry a paid code-signing certificate, so Windows SmartScreen shows a warning on first launch (_"Windows protected your PC"_) — this is expected, not a sign the installer is broken or malicious. If you see a **More info** link, click it first to reveal the button below; either way, click **Run anyway** to proceed. Every release's installer hash is also published as [`SHA256SUMS`](https://github.com/prodipdatta7/yt-dlp-ffmpeg/releases/latest) if you'd like to verify it yourself.
 
 ---
 

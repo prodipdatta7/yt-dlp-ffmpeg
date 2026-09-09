@@ -25,7 +25,9 @@ win:
       arch:
         - x64
   icon: build/icon.ico
-  # Code signing placeholder — supply an OV certificate before public distribution.
+  # Deliberately unsigned (AGENTS.md §14): an OV cert costs money and still doesn't grant
+  # instant SmartScreen trust, only EV does. Mitigated with a documented workaround instead
+  # (README "Note on Windows SmartScreen") plus in-app SHA-256 checksum verification.
   # Without cert config, electron-builder skips signing but still embeds icon + metadata.
 
 nsis:
