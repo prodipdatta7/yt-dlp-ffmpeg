@@ -19,6 +19,7 @@
     "test": "vitest run",
     "fetch-binaries": "node scripts/fetch-binaries.mjs",
     "make-icon": "node scripts/make-icon.mjs",
+    "release-version": "node scripts/release-version.mjs",
     "dist": "npm run build && electron-builder --win nsis --publish never"
   },
   "dependencies": {
