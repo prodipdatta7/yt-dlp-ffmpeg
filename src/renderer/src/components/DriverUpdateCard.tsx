@@ -89,15 +89,15 @@ export function DriverUpdateCard({
     <section class="mf-card mf-card-hover p-5">
       <div class="mb-4 flex items-start justify-between gap-3">
         <div class="min-w-0">
-          <h3 class="text-sm font-semibold text-white">{title}</h3>
+          <h3 class="text-sm font-semibold text-ink">{title}</h3>
           <p class="mt-0.5 text-xs leading-relaxed text-slate-500">{description}</p>
         </div>
-        <span class="mf-num shrink-0 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[11px] font-medium text-slate-400">
+        <span class="mf-num shrink-0 rounded-full border border-line bg-wash-1 px-2.5 py-1 text-[11px] font-medium text-slate-400">
           {version ? `v${version}` : 'probing…'}
         </span>
       </div>
 
-      <div class="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-white/[0.05] bg-black/15 py-1.5 pl-1.5 pr-3 text-[11px] text-slate-500">
+      <div class="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-line bg-recess py-1.5 pl-1.5 pr-3 text-[11px] text-slate-500">
         <span class="inline-flex items-center gap-1.5">
           <span class={`size-1.5 rounded-full ${version ? 'bg-emerald-400' : 'bg-slate-600'}`} />
           {version ? `installed (${source ?? 'bundled'})` : 'not detected'}
@@ -124,7 +124,7 @@ export function DriverUpdateCard({
             className={
               check.updateAvailable
                 ? btnGo
-                : `${btn} cursor-not-allowed border border-white/[0.1] text-slate-500`
+                : `${btn} cursor-not-allowed border border-line-strong text-slate-500`
             }
           >
             {check.updateAvailable ? `Update → v${check.latest}` : 'Up to date'}
@@ -133,7 +133,7 @@ export function DriverUpdateCard({
       </div>
 
       {(phaseMsg || check || apply) && (
-        <div class="mt-3 space-y-1.5 rounded-xl border border-white/[0.06] bg-black/25 p-3.5 text-sm">
+        <div class="mt-3 space-y-1.5 rounded-xl border border-line bg-recess p-3.5 text-sm">
           {phaseMsg && (
             <p class="flex items-center gap-2 text-sky-300">
               <RefreshIcon class="size-3.5 animate-spin" />

@@ -48,6 +48,13 @@ export interface OrchestratorDeps {
   getCookiesPath?: () => string | null
   /** Raw CLI line tap (stdout/stderr of yt-dlp) for the live console. */
   onProcessLine?: (line: string, stream: 'out' | 'err') => void
+  /**
+   * Max concurrent downloads (D2a). Defaults to 1. Settings clamps 2–5 for
+   * playlist parallel mode; sequential UI still launches one at a time.
+   */
+  getMaxConcurrent?: () => number
+  /** Test seam: override free-disk probe. */
+  getFreeDiskBytes?: (destDir: string) => Promise<number | null>
 }
 
 export type SendEvent = (event: JobEvent) => void
@@ -117,27 +124,54 @@ function sleep(ms: number): Promise<void> {
 }
 
 export class DownloadOrchestrator {
-  private activeJob: ActiveJob | null = null
+  private readonly activeJobs = new Map<string, ActiveJob>()
 
   constructor(private readonly deps: OrchestratorDeps) {}
 
   isBusy(): boolean {
-    return this.activeJob !== null
+    return this.activeJobs.size > 0
+  }
+
+  activeCount(): number {
+    return this.activeJobs.size
+  }
+
+  private maxConcurrent(): number {
+    const n = this.deps.getMaxConcurrent?.() ?? 1
+    return Number.isFinite(n) && n >= 1 ? Math.min(5, Math.floor(n)) : 1
+  }
+
+  /** Bytes already reserved by in-flight jobs (sum of positive estimates). */
+  private reservedEstimateBytes(): number {
+    let sum = 0
+    for (const job of this.activeJobs.values()) {
+      const est = job.config.estimatedBytes
+      if (typeof est === 'number' && est > 0) sum += est
+    }
+    return sum
   }
 
   cancel(jobId?: string): boolean {
-    const job = this.activeJob
-    if (!job) return false
-    if (jobId && job.id !== jobId) return false
-    job.cancelRequested = true
-    this.deps.logger?.info('download cancel requested', { jobId: job.id })
-    void job.handle?.killTree()
+    if (jobId) {
+      const job = this.activeJobs.get(jobId)
+      if (!job) return false
+      job.cancelRequested = true
+      this.deps.logger?.info('download cancel requested', { jobId: job.id })
+      void job.handle?.killTree()
+      return true
+    }
+    if (this.activeJobs.size === 0) return false
+    for (const job of this.activeJobs.values()) {
+      job.cancelRequested = true
+      this.deps.logger?.info('download cancel requested', { jobId: job.id })
+      void job.handle?.killTree()
+    }
     return true
   }
 
   async launch(config: JobConfig, sendEvent: SendEvent, sendDone: SendDone): Promise<string> {
-    if (this.activeJob) {
-      throw new MfLaunchError(null, 'A download is already running.')
+    if (this.activeJobs.size >= this.maxConcurrent()) {
+      throw new MfLaunchError(null, 'Download concurrency limit reached.')
     }
 
     const ytDlp = await this.deps.resolveYtDlp()
@@ -150,11 +184,19 @@ export class DownloadOrchestrator {
       ? join(config.destDir, sanitizeFileName(config.playlistTitle))
       : config.destDir
 
-    const freeBytes = await freeDiskSpaceBytes(effectiveDestDir)
-    if (isDiskSpaceInsufficient(freeBytes, config.estimatedBytes)) {
+    const freeBytes = this.deps.getFreeDiskBytes
+      ? await this.deps.getFreeDiskBytes(effectiveDestDir)
+      : await freeDiskSpaceBytes(effectiveDestDir)
+    const batchEstimate =
+      (typeof config.estimatedBytes === 'number' && config.estimatedBytes > 0
+        ? config.estimatedBytes
+        : 0) + this.reservedEstimateBytes()
+    if (isDiskSpaceInsufficient(freeBytes, batchEstimate > 0 ? batchEstimate : undefined)) {
       this.deps.logger?.warn('preflight disk-space abort', {
         freeBytes,
         estimatedBytes: config.estimatedBytes,
+        reservedBytes: this.reservedEstimateBytes(),
+        batchEstimate,
       })
       throw new MfLaunchError('MF_DISK_FULL', ERROR_MESSAGES.MF_DISK_FULL)
     }
@@ -171,8 +213,13 @@ export class DownloadOrchestrator {
       tempDir,
       destDir: effectiveDestDir,
     }
-    this.activeJob = job
-    this.deps.logger?.info('job launched', { jobId, mode: config.mode, tier: config.tier })
+    this.activeJobs.set(jobId, job)
+    this.deps.logger?.info('job launched', {
+      jobId,
+      mode: config.mode,
+      tier: config.tier,
+      active: this.activeJobs.size,
+    })
     sendEvent({ jobId, phase: 'queued', percent: null, speedBps: null, etaSec: null })
 
     void this.run(job, ytDlp.path, ffmpeg.path, sendEvent, sendDone)
@@ -376,7 +423,14 @@ export class DownloadOrchestrator {
     sendDone: SendDone,
     payload: Omit<JobDonePayload, 'jobId'> & { jobId?: string },
   ): void {
-    sendDone({ ...payload, jobId: job.id } as JobDonePayload)
-    if (this.activeJob?.id === job.id) this.activeJob = null
+    const keepPartials = payload.status === 'cancelled' || payload.status === 'failed'
+    const partialDir =
+      keepPartials && existsSync(job.tempDir) ? job.tempDir : (payload.partialDir ?? undefined)
+    sendDone({
+      ...payload,
+      jobId: job.id,
+      ...(partialDir ? { partialDir } : {}),
+    } as JobDonePayload)
+    this.activeJobs.delete(job.id)
   }
 }

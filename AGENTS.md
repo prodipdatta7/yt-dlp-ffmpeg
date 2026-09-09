@@ -35,7 +35,7 @@ These amend the PRD. Traceability: `AM-nn` may appear in commit messages and tes
 | AM-04 | 3.3B | Bitrate tiers (320/192/128 kbps) apply only to lossy targets (MP3, M4A/AAC, Vorbis/OGG). When FLAC or WAV is selected, hide/disable the bitrate selector and transcode from best source audio. |
 | AM-05 | EC-04 | The app cannot reconnect the OS network. "Retry loop" means: detect failure, retry spawning `yt-dlp` (default resume via `.part` files) up to N=3 times with backoff (5s/15s/30s), then surface the **Resume Download** button. |
 | AM-06 | EC-03 + 3.5 | Cleanup rule: delete temp files **only after verifying** the final output exists and is > 0 bytes. On any failure, retain partials (enables resume). Pre-flight disk space check before starting a job; abort early with required-bytes message when estimable. |
-| AM-07 | 7 | Playlists ARE in scope as a *sequential queue*: if metadata reports `_type: playlist`, enumerate entries (`--flat-playlist`) and enqueue them one-at-a-time through the normal single-job pipeline, with per-entry status rows. Never more than one concurrent child job. |
+| AM-07 | 7 | Playlists ARE in scope as a queue: if metadata reports `_type: playlist`, enumerate entries (`--flat-playlist`) and enqueue them through the normal single-job pipeline, with per-entry status rows. Default run is sequential (one child at a time). Optional **parallel** mode (UI: "Download in Parallel") allows up to N=2–5 concurrent jobs via a Map-based orchestrator (D2a / `specs/UI_Design_Update_Plan.md`); disk preflight reserves the **sum** of in-flight estimates. |
 | AM-08 | EC-02/EC-07 | A Settings screen exists (referenced but unspecified in PRD): default output folder, cookie-file import, check-for-updates, open logs folder, version info. See §9/M6. |
 | AM-09 | 3.2 | Cancel semantics defined for ALL phases: cancel kills the child process **tree** (win32: `taskkill /PID <pid> /T /F`), keeps partial files, resets UI to idle. Applies mid-analysis and mid-download. |
 | AM-10 | 5.2 | Memory ceilings cover **Electron processes only** (measured via `app.getAppMetrics()` sum: main + renderer + gpu + utility). FFmpeg/yt-dlp are separate OS processes — excluded from the ceiling but RSS-logged during performance tests. Idle target ≤120MB, peak ≤450MB. |
@@ -60,6 +60,28 @@ Do not introduce alternatives without updating this section first.
 | Lint/format | ESLint (flat config, `typescript-eslint`) + Prettier | CI-equivalent local gate |
 | Runtime deps budget | Renderer: Preact + signals ONLY. Main: none beyond Electron itself unless justified in the PR. Build-time tooling (Tailwind, etc.) exempt — it must not ship in the bundle | Keeps installer small (PRD §5.3) |
 | Node.js | ≥ 20 LTS | |
+
+### 3.1 Design tokens (renderer)
+
+Themes live in `src/renderer/src/styles/global.css` (`:root` = Warm Studio light,
+`:root[data-theme='dark']` = Warm Ember). Prefer **intent-named** Tailwind colors over
+opacity washes of `white`/`black`:
+
+| Token | Utility examples | Intent |
+|-------|------------------|--------|
+| `--color-ink` | `text-ink` | Primary readable text on page/card surfaces |
+| `--color-wash-1/2` | `bg-wash-1`, `hover:bg-wash-2` | Subtle hover / chip fills |
+| `--color-recess` | `bg-recess` | Recessed wells (inputs, segmented controls, nav) |
+| `--color-line` / `--color-line-strong` | `border-line`, `border-line-strong` | Hairline / stronger borders |
+| `--color-ink-950` | `bg-ink-950` | Title bar + footer chrome |
+
+`white`/`black` stay **literal** (CTA on-accent text, badge dots). Accent ramps keep their
+Tailwind names (`sky-*` = vermillion, `indigo-*` = gold) for historical continuity — treat them
+as brand aliases, not literal hues.
+
+Native title-bar colors come from `src/shared/themeChrome.ts` (`THEME_CHROME`);
+`windowOptions.ts` imports that module. `tests/unit/themeChrome.test.ts` fails if
+`--color-ink-950` in CSS drifts from the manifest.
 
 ## 4. Architecture
 

@@ -1,4 +1,5 @@
 import type { BrowserWindowConstructorOptions } from 'electron'
+import { THEME_CHROME } from '../shared/themeChrome'
 
 export interface WindowSecurityFlags {
   contextIsolation: boolean
@@ -20,10 +21,8 @@ export function getWindowSecurityFlags(): WindowSecurityFlags {
 
 /**
  * Chrome palette for the native window chrome (title bar overlay + pre-paint
- * background). These MUST match the renderer's title bar background
- * (`bg-ink-950` = --color-ink-950 in `renderer/src/styles/global.css`) or the
- * OS-drawn window controls in the top-right sit on a different colour than the
- * rest of the title bar (visible colour seam). Keep in sync with that CSS token.
+ * background). Values come from `THEME_CHROME` so they cannot drift from the
+ * renderer's `--color-ink-950` without a test failure.
  */
 export interface ChromeThemeColors {
   backgroundColor: string
@@ -32,9 +31,12 @@ export interface ChromeThemeColors {
 }
 
 export function chromeThemeColors(theme: 'light' | 'dark'): ChromeThemeColors {
-  return theme === 'dark'
-    ? { backgroundColor: '#14100c', color: '#14100c', symbolColor: '#94a3b8' }
-    : { backgroundColor: '#f1e9db', color: '#f1e9db', symbolColor: '#475569' }
+  const c = THEME_CHROME[theme]
+  return {
+    backgroundColor: c.ink950,
+    color: c.ink950,
+    symbolColor: c.symbolColor,
+  }
 }
 
 export function createWindowOptions(

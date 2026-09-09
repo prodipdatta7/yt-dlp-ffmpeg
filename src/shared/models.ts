@@ -119,6 +119,8 @@ export interface JobDonePayload {
   status: 'completed' | 'cancelled' | 'failed'
   errorCode?: MfErrorCode
   outputPath?: string
+  /** Temp job folder retained on cancel/failure so the user can inspect or discard partials. */
+  partialDir?: string
 }
 
 export type UpdaterPhase =

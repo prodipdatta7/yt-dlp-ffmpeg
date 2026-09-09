@@ -55,7 +55,7 @@ function tierLabel(t: number): string {
 }
 
 const selectClass =
-  'w-full rounded-lg border border-white/[0.1] bg-black/30 px-2.5 py-1.5 text-xs text-slate-200 outline-none transition focus:border-sky-500/60 disabled:cursor-not-allowed disabled:opacity-50'
+  'w-full rounded-lg border border-line-strong bg-recess px-2.5 py-1.5 text-xs text-slate-200 outline-none transition focus:border-sky-500/60 disabled:cursor-not-allowed disabled:opacity-50'
 
 export function ModeSelector({
   formats,
@@ -171,7 +171,7 @@ export function ModeSelector({
 
   return (
     <div class="mf-card flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto p-4">
-      <div class="grid grid-cols-3 gap-1 rounded-xl border border-white/[0.07] bg-black/30 p-1">
+      <div class="grid grid-cols-3 gap-1 rounded-xl border border-line bg-recess p-1">
         {MODES.map(({ id, label, Icon }) => {
           const active = mode === id
           const streamlessAdvanced = id === 'advanced' && !hasStreams
@@ -187,7 +187,7 @@ export function ModeSelector({
               class={`mf-focus-ring flex flex-col items-center gap-1 rounded-lg px-1 py-1.5 text-[10px] font-semibold leading-none transition-all duration-150 ${
                 active
                   ? 'bg-gradient-to-br from-sky-500 to-indigo-500 text-white shadow shadow-sky-500/25'
-                  : 'text-slate-400 hover:bg-white/[0.05] hover:text-white'
+                  : 'text-slate-400 hover:bg-wash-2 hover:text-ink'
               } disabled:cursor-not-allowed disabled:opacity-40`}
             >
               <Icon class="size-4" />
@@ -241,7 +241,7 @@ export function ModeSelector({
                   className={`mf-focus-ring rounded-lg border px-2.5 py-1 text-left transition-all duration-150 ${
                     audioFormat === opt.id
                       ? 'border-sky-400/60 bg-sky-500/15 shadow-[0_0_10px_-4px_var(--mf-glow)]'
-                      : 'border-white/[0.08] bg-white/[0.03] hover:border-white/20'
+                      : 'border-line bg-wash-1 hover:border-line-strong'
                   } disabled:cursor-not-allowed disabled:opacity-50`}
                 >
                   <span
@@ -350,7 +350,7 @@ export function ModeSelector({
         </div>
       )}
 
-      <label class="flex flex-col gap-1.5 border-t border-white/[0.06] pt-3">
+      <label class="flex flex-col gap-1.5 border-t border-line pt-3">
         <SectionLabel title="Destination" />
         <div class="flex gap-1.5">
           <div class="relative min-w-0 flex-1">
@@ -370,7 +370,7 @@ export function ModeSelector({
             disabled={disabled}
             title="Browse…"
             aria-label="Browse for output folder"
-            class="mf-focus-ring shrink-0 rounded-lg border border-white/[0.1] px-2.5 text-slate-300 transition hover:border-sky-500/60 hover:text-white active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+            class="mf-focus-ring shrink-0 rounded-lg border border-line-strong px-2.5 text-slate-300 transition hover:border-sky-500/60 hover:text-ink active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <FolderIcon class="size-4" />
           </button>

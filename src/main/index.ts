@@ -10,6 +10,7 @@ import {
   nativeTheme,
   shell,
   nativeImage,
+  Notification,
 } from 'electron'
 import { BinariesService } from './binaries/service'
 import { platformDir, type BinaryCandidate } from './binaries/locator'
@@ -22,19 +23,34 @@ import type {
   JobConfig,
   JobDonePayload,
   JobEvent,
+  MfSettingsView,
 } from '../shared/ipcContract'
 import { MF_LOG_LINE, MF_UPDATER_PHASE } from '../shared/ipcContract'
 import { LogBus } from './logs/logBus'
 import { ERROR_MESSAGES } from '../shared/models'
 import { createLogger, type Logger } from './store/logger'
-import { SettingsStore } from './store/settingsStore'
+import { SettingsStore, clampPlaylistConcurrency } from './store/settingsStore'
 import { MfLaunchError } from './jobs/orchestrator'
 import { sweepOrphanedTempDirs } from './fsops/tempSweep'
 import { platformDir as platformDirName } from './binaries/locator'
 import { YtDlpUpdater } from './binaries/updater'
 import { FfmpegUpdater } from './binaries/ffmpegUpdater'
 import type { UpdaterDriverKind, UpdaterPhase } from '../shared/models'
+import { clearAllPartialDirs, clearPartialDir, listPartialDirs, isUnderTempRoot } from './fsops/partials'
+import { dirname } from 'node:path'
 import { chromeThemeColors, createWindowOptions, getWindowSecurityFlags } from './windowOptions'
+
+function toSettingsView(s: ReturnType<SettingsStore['load']>): MfSettingsView {
+  return {
+    lastOutputDir: s.lastOutputDir,
+    cookieFileSet: s.cookieFileSet === true,
+    firstRunNoticeSeen: s.firstRunNoticeSeen === true,
+    theme: s.theme ?? 'system',
+    playlistConcurrency: clampPlaylistConcurrency(s.playlistConcurrency),
+    notifyOnComplete: s.notifyOnComplete !== false,
+    queueSnapshot: s.queueSnapshot ?? null,
+  }
+}
 
 function binaryCandidates(logger: Logger): BinaryCandidate[] {
   const dirName = platformDir(process.platform, process.arch)
@@ -160,6 +176,7 @@ app.whenReady().then(() => {
     logger,
     getCookiesPath: resolveCookiesPath,
     onProcessLine: tapProcessLines,
+    getMaxConcurrent: () => clampPlaylistConcurrency(settings.load().playlistConcurrency),
   })
 
   const overrideDir = join(userDataDir, 'binaries', platformDirName(process.platform, process.arch))
@@ -242,7 +259,36 @@ app.whenReady().then(() => {
         sendDone: (done: JobDonePayload) => void,
       ): Promise<DownloadStartResponse> => {
         try {
-          const jobId = await orchestrator.launch(config, sendEvent, sendDone)
+          const notifyDone = (done: JobDonePayload): void => {
+            sendDone(done)
+            const s = settings.load()
+            if (s.notifyOnComplete === false) return
+            const focused = BrowserWindow.getAllWindows().some(
+              (w) => !w.isDestroyed() && w.isFocused(),
+            )
+            if (focused) return
+            if (!Notification.isSupported()) return
+            const title =
+              done.status === 'completed'
+                ? 'Download complete'
+                : done.status === 'failed'
+                  ? 'Download failed'
+                  : 'Download cancelled'
+            const body =
+              done.status === 'completed' && done.outputPath
+                ? done.outputPath
+                : done.status === 'failed'
+                  ? done.errorCode
+                    ? ERROR_MESSAGES[done.errorCode]
+                    : 'Something went wrong.'
+                  : 'Partial files were kept.'
+            try {
+              new Notification({ title, body }).show()
+            } catch {
+              /* best-effort */
+            }
+          }
+          const jobId = await orchestrator.launch(config, sendEvent, notifyDone)
           return { kind: 'ok', jobId }
         } catch (error) {
           if (error instanceof MfLaunchError && error.code) {
@@ -270,7 +316,7 @@ app.whenReady().then(() => {
         })
         if (result.canceled || result.filePaths.length === 0) return null
         const chosen = result.filePaths[0]
-        settings.save({ lastOutputDir: chosen })
+        settings.save({ ...settings.load(), lastOutputDir: chosen })
         logger.info('destination folder chosen', { dirSet: true })
         return chosen
       },
@@ -310,33 +356,59 @@ app.whenReady().then(() => {
         logger.info('live console cleared by user')
         return { ok: true }
       },
-      getSettings: () => {
-        const s = settings.load()
-        return {
-          lastOutputDir: s.lastOutputDir,
-          cookieFileSet: s.cookieFileSet === true,
-          firstRunNoticeSeen: s.firstRunNoticeSeen === true,
-          theme: s.theme ?? 'system',
-        }
-      },
+      getSettings: () => toSettingsView(settings.load()),
       setSettings: (patch) => {
         const current = settings.load()
         const next = { ...current }
         if (patch.theme) next.theme = patch.theme
         if (typeof patch.lastOutputDir === 'string') next.lastOutputDir = patch.lastOutputDir
+        if (typeof patch.playlistConcurrency === 'number') {
+          next.playlistConcurrency = clampPlaylistConcurrency(patch.playlistConcurrency)
+        }
+        if (typeof patch.notifyOnComplete === 'boolean') {
+          next.notifyOnComplete = patch.notifyOnComplete
+        }
+        if (patch.queueSnapshot !== undefined) {
+          next.queueSnapshot = patch.queueSnapshot
+        }
         settings.save(next)
         applyChromeTheme(resolvedTheme(next.theme))
         logger.info('settings updated', { keys: Object.keys(patch) })
-        return {
-          lastOutputDir: next.lastOutputDir,
-          cookieFileSet: next.cookieFileSet === true,
-          firstRunNoticeSeen: next.firstRunNoticeSeen === true,
-          theme: next.theme ?? 'system',
-        }
+        return toSettingsView(next)
       },
       markFirstRunSeen: () => {
         settings.save({ ...settings.load(), firstRunNoticeSeen: true })
         return true
+      },
+      listPartials: () => ({
+        tempRoot,
+        items: listPartialDirs(tempRoot),
+      }),
+      openPartialDir: async (dirPath: string) => {
+        if (!isUnderTempRoot(tempRoot, dirPath) || !existsSync(dirPath)) return { ok: false }
+        const result = await shell.openPath(dirPath)
+        return { ok: result.length === 0 }
+      },
+      clearPartials: (dirPath?: string) => {
+        if (dirPath) {
+          const ok = clearPartialDir(tempRoot, dirPath)
+          if (ok) logger.info('partial dir cleared', { pathSet: true })
+          return { ok, cleared: ok ? 1 : 0, failed: ok ? 0 : 1 }
+        }
+        const result = clearAllPartialDirs(tempRoot)
+        logger.info('all partial dirs cleared', result)
+        return { ok: result.failed === 0, ...result }
+      },
+      revealPath: async (targetPath: string) => {
+        if (!existsSync(targetPath)) return { ok: false }
+        try {
+          shell.showItemInFolder(targetPath)
+          return { ok: true }
+        } catch {
+          const folder = dirname(targetPath)
+          const result = await shell.openPath(folder)
+          return { ok: result.length === 0 }
+        }
       },
       updaterCheck: (kind: UpdaterDriverKind) =>
         kind === 'ffmpeg' ? ffmpegUpdater.check() : updater.check(),

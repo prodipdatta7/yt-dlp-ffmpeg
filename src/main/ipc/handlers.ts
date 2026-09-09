@@ -20,6 +20,10 @@ import {
   MF_SETTINGS_IMPORT_COOKIES,
   MF_SETTINGS_MARK_FIRST_RUN,
   MF_SETTINGS_SET,
+  MF_PARTIALS_LIST,
+  MF_PARTIALS_OPEN,
+  MF_PARTIALS_CLEAR,
+  MF_REVEAL_PATH,
   MF_UPDATER_APPLY,
   MF_UPDATER_CHECK,
   type AnalyzeResponse,
@@ -31,6 +35,9 @@ import {
   type JobDonePayload,
   type JobEvent,
   type LogEntryPayload,
+  type MfSettingsView,
+  type PartialsClearResult,
+  type PartialsListResult,
   type PingResult,
 } from '../../shared/ipcContract'
 import type { UpdaterDriverKind } from '../../shared/models'
@@ -70,19 +77,20 @@ export interface IpcDeps {
   openLogsFolder: () => Promise<boolean>
   logHistory: () => Promise<{ lines: LogEntryPayload[] }> | { lines: LogEntryPayload[] }
   logClear: () => { ok: boolean }
-  getSettings: () => {
-    lastOutputDir: string
-    cookieFileSet: boolean
-    firstRunNoticeSeen: boolean
-    theme: 'system' | 'light' | 'dark'
-  }
-  setSettings: (patch: { theme?: 'system' | 'light' | 'dark'; lastOutputDir?: string }) => {
-    lastOutputDir: string
-    cookieFileSet: boolean
-    firstRunNoticeSeen: boolean
-    theme: 'system' | 'light' | 'dark'
-  }
+  getSettings: () => MfSettingsView
+  setSettings: (
+    patch: Partial<
+      Pick<
+        MfSettingsView,
+        'theme' | 'lastOutputDir' | 'playlistConcurrency' | 'notifyOnComplete' | 'queueSnapshot'
+      >
+    >,
+  ) => MfSettingsView
   markFirstRunSeen: () => boolean
+  listPartials: () => PartialsListResult
+  openPartialDir: (path: string) => Promise<{ ok: boolean }>
+  clearPartials: (path?: string) => PartialsClearResult
+  revealPath: (path: string) => Promise<{ ok: boolean }>
   updaterCheck: (kind: UpdaterDriverKind) => Promise<{
     current: string | null
     latest: string | null
@@ -169,17 +177,53 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
   ipcMain.handle(MF_SETTINGS_GET, () => deps.getSettings())
 
   ipcMain.handle(MF_SETTINGS_SET, (_event, payload: unknown) => {
-    const patch: { theme?: 'system' | 'light' | 'dark'; lastOutputDir?: string } = {}
+    const patch: Partial<
+      Pick<
+        MfSettingsView,
+        'theme' | 'lastOutputDir' | 'playlistConcurrency' | 'notifyOnComplete' | 'queueSnapshot'
+      >
+    > = {}
     if (payload && typeof payload === 'object') {
       const raw = payload as Record<string, unknown>
       if (raw.theme === 'system' || raw.theme === 'light' || raw.theme === 'dark') {
         patch.theme = raw.theme
       }
       if (typeof raw.lastOutputDir === 'string') patch.lastOutputDir = raw.lastOutputDir
+      if (typeof raw.playlistConcurrency === 'number') {
+        patch.playlistConcurrency = raw.playlistConcurrency
+      }
+      if (typeof raw.notifyOnComplete === 'boolean') {
+        patch.notifyOnComplete = raw.notifyOnComplete
+      }
+      if (raw.queueSnapshot === null) {
+        patch.queueSnapshot = null
+      } else if (raw.queueSnapshot && typeof raw.queueSnapshot === 'object') {
+        patch.queueSnapshot = raw.queueSnapshot as MfSettingsView['queueSnapshot']
+      }
     }
     return deps.setSettings(patch)
   })
   ipcMain.handle(MF_SETTINGS_MARK_FIRST_RUN, () => deps.markFirstRunSeen())
+
+  ipcMain.handle(MF_PARTIALS_LIST, () => deps.listPartials())
+  ipcMain.handle(MF_PARTIALS_OPEN, async (_event, payload: unknown) => {
+    const path = typeof payload === 'string' ? payload : null
+    if (!path) return { ok: false }
+    return deps.openPartialDir(path)
+  })
+  ipcMain.handle(MF_PARTIALS_CLEAR, (_event, payload: unknown) => {
+    if (payload === undefined || payload === null || payload === '') {
+      return deps.clearPartials()
+    }
+    if (typeof payload !== 'string') return { ok: false, cleared: 0, failed: 1 }
+    return deps.clearPartials(payload)
+  })
+  ipcMain.handle(MF_REVEAL_PATH, async (_event, payload: unknown) => {
+    const path = typeof payload === 'string' ? payload : null
+    if (!path) return { ok: false }
+    return deps.revealPath(path)
+  })
+
   ipcMain.handle(MF_UPDATER_CHECK, (_event, payload: unknown) =>
     deps.updaterCheck(readUpdaterKind(payload)),
   )

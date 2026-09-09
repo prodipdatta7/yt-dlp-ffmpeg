@@ -6,10 +6,20 @@
     ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono:
     'Cascadia Code', 'Cascadia Mono', 'JetBrains Mono', Consolas, ui-monospace, monospace;
+  /* Keep in sync with THEME_CHROME.light.ink950 in src/shared/themeChrome.ts */
   --color-ink-950: #f1e9db;
   --color-ink-900: #f4eddf;
   --color-ink-850: #f7f1e5;
   --color-ink-800: #faf5eb;
+
+  /* Semantic surface tokens — MUST live in @theme so utilities like
+     border-line / bg-wash-1 / text-ink are generated. :root overrides values. */
+  --color-ink: #1c1917;
+  --color-wash-1: rgb(120 80 30 / 0.04);
+  --color-wash-2: rgb(120 80 30 / 0.07);
+  --color-recess: rgb(120 80 30 / 0.06);
+  --color-line: rgb(120 80 30 / 0.09);
+  --color-line-strong: rgb(120 80 30 / 0.16);
 
   /* fixed tokens — never remapped by theme */
   --color-scrim: rgb(15 12 9);
@@ -22,29 +32,39 @@
 
 /* ------------------------------------------------------------------ */
 /* Warm Studio (light) — the base palette.                             */
-/* Component classes resolve through Tailwind v4 custom properties,    */
-/* so flipping them below re-skins every utility without touching      */
-/* component markup.                                                   */
+/* Semantic surface/line/ink tokens are the preferred styling surface; */
+/* white/black stay literal so CTA text and future utilities don't     */
+/* silently invert.                                                    */
 /* ------------------------------------------------------------------ */
 :root {
   color-scheme: light;
 
-  /* neutral ramp — warm stone */
+  /* neutral ramp — warm stone (contrast-tuned for cream body ≈ #faf6f0) */
   --color-slate-100: #1c1917;
   --color-slate-200: #292524;
   --color-slate-300: #44403c;
-  --color-slate-400: #6b6156;
-  --color-slate-500: #7d7264;
-  --color-slate-600: #98897a;
-  --color-slate-700: #b9ac9b;
+  --color-slate-400: #57534e;
+  --color-slate-500: #6b6156;
+  --color-slate-600: #7a6f63; /* ≥4.5:1 on cream body for small text */
+  --color-slate-700: #8f8274; /* ≥3:1 large / decorative */
   --color-slate-800: #ddd2c2;
   --color-slate-900: #ede5d8;
   --color-slate-950: #f7f1e7;
 
-  /* surface tint roles (inverted on purpose): bg-white/x → ink washes,
-     bg-black/x → paper washes. Fixed scrims use --color-scrim/--color-paper. */
-  --color-white: #2a2118;
-  --color-black: #fffdf9;
+  /* literal white/black — do NOT invert; use wash/recess/ink tokens instead */
+  --color-white: #ffffff;
+  --color-black: #0d0a07;
+
+  /* primary readable ink (was dark-mode-authored text-white on surfaces) */
+  --color-ink: #1c1917;
+
+  /* semantic washes — art-directed per theme, not opacity-over-inverted-base */
+  --color-wash-1: rgb(120 80 30 / 0.04);
+  --color-wash-2: rgb(120 80 30 / 0.07);
+  --color-recess: rgb(120 80 30 / 0.06);
+  /* Warm amber hairlines — not near-black ink (that boxed every panel). */
+  --color-line: rgb(120 80 30 / 0.09);
+  --color-line-strong: rgb(120 80 30 / 0.16);
 
   /* accent duo — vermillion × gold */
   --color-sky-200: #9a3412;
@@ -89,13 +109,15 @@
   --color-red-400: #dc2626;
   --color-red-500: #b91c1c;
 
-  --mf-line: rgb(120 80 30 / 0.13);
-  --mf-line-strong: rgb(120 80 30 / 0.24);
+  --mf-line: var(--color-line);
+  --mf-line-strong: var(--color-line-strong);
   --mf-accent: #e2551f;
   --mf-accent-warm: #f59e0b;
   --mf-accent-deep: #b45309;
   --mf-go: #16a34a;
   --mf-glow: rgb(226 85 31 / 0.5);
+  --mf-thumb-shadow: 0 10px 24px -12px rgb(67 45 20 / 0.28);
+  --mf-console-chip: rgb(250 246 240 / 0.95);
 
   /* component surfaces — full immersion cream stack */
   --surface-card-hi: #fffdf9;
@@ -119,15 +141,22 @@
   --color-slate-200: #ded4c5;
   --color-slate-300: #b8ae9f;
   --color-slate-400: #8a7e70;
-  --color-slate-500: #6e6357;
-  --color-slate-600: #55493e;
-  --color-slate-700: #46392e;
+  --color-slate-500: #7d7264; /* ≥4.5:1 on charcoal body for small muted text */
+  --color-slate-600: #6e6357; /* was too dark; lifted for AA */
+  --color-slate-700: #5c5248;
   --color-slate-800: #33281f;
   --color-slate-900: #241b14;
   --color-slate-950: #171310;
 
-  --color-white: #f5efe6;
+  --color-white: #ffffff;
   --color-black: #0d0a07;
+  --color-ink: #f3ece1;
+
+  --color-wash-1: rgb(245 239 230 / 0.04);
+  --color-wash-2: rgb(245 239 230 / 0.07);
+  --color-recess: rgb(0 0 0 / 0.22);
+  --color-line: rgb(138 126 112 / 0.12);
+  --color-line-strong: rgb(138 126 112 / 0.2);
 
   --color-sky-200: #fed7aa;
   --color-sky-300: #fdba74;
@@ -170,18 +199,21 @@
   --color-go-400: #fbbf24;
   --color-go-500: #fb923c;
 
+  /* Keep in sync with THEME_CHROME.dark.ink950 in src/shared/themeChrome.ts */
   --color-ink-950: #14100c;
   --color-ink-900: #191410;
   --color-ink-850: #1e1813;
   --color-ink-800: #241d16;
 
-  --mf-line: rgb(138 126 112 / 0.14);
-  --mf-line-strong: rgb(251 146 60 / 0.26);
+  --mf-line: var(--color-line);
+  --mf-line-strong: rgb(251 146 60 / 0.22);
   --mf-accent: #fb923c;
   --mf-accent-warm: #f59e0b;
   --mf-accent-deep: #d97706;
   --mf-go: #34d399;
   --mf-glow: rgb(251 146 60 / 0.55);
+  --mf-thumb-shadow: 0 10px 24px -12px rgb(0 0 0 / 0.65);
+  --mf-console-chip: rgb(36 29 22 / 0.95);
 
   --surface-card-hi: #251d15;
   --surface-card-lo: #1c1611;
@@ -273,6 +305,12 @@ textarea {
   user-select: text;
 }
 
+/* Read-only informational text — selectable/copyable (D1) */
+.mf-select-text {
+  user-select: text;
+  cursor: text;
+}
+
 .app-drag {
   -webkit-app-region: drag;
 }
@@ -288,7 +326,7 @@ textarea {
   border-radius: 16px;
   box-shadow:
     inset 0 1px 0 0 var(--mf-card-lift, rgb(255 255 255 / 0.75)),
-    var(--mf-card-shadow, 0 1px 2px rgb(120 80 30 / 0.05), 0 12px 32px -18px rgb(120 53 15 / 0.28));
+    var(--mf-card-shadow, 0 1px 2px rgb(120 80 30 / 0.04), 0 10px 28px -20px rgb(120 53 15 / 0.18));
 }
 
 :root[data-theme='dark'] .mf-card {
@@ -373,13 +411,8 @@ textarea {
   padding: 1px 5px;
   font-size: 10px;
   font-weight: 600;
-  color: #6b6156;
-  background: #fffdf9;
-}
-:root[data-theme='dark'] .mf-kbd {
-  color: #8a7e70;
-  background: #241d16;
-  border-color: rgb(138 126 112 / 0.3);
+  color: var(--color-slate-500);
+  background: var(--surface-input);
 }
 
 /* Typography helpers */
@@ -478,6 +511,20 @@ textarea {
 
 .mf-breathe {
   animation: mf-breathe 1800ms ease-in-out infinite;
+}
+
+/* Min-window layout (960×620) — keep aside readable and log dock from eating the canvas */
+.mf-main-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 34vw);
+}
+@media (min-width: 1100px) {
+  .mf-main-grid {
+    grid-template-columns: minmax(0, 1fr) 380px;
+  }
+}
+
+.mf-log-dock {
+  height: min(280px, 36vh);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,8 +1,14 @@
+import { useState } from 'preact/hooks'
 import type { AnalyzeResult } from '../../../shared/models'
 import { fmtCount, fmtDuration, fmtEta, fmtSize, fmtSpeed } from '../utils/format'
 import { sourceLabel } from '../utils/source'
 import { activeJob, lastJobEvent } from '../signals/jobState'
-import { queueRows } from '../signals/queueState'
+import {
+  clearAllQueueLeftovers,
+  patchQueueRow,
+  queueLeftoverCount,
+  queueRows,
+} from '../signals/queueState'
 import {
   AlertIcon,
   CalendarIcon,
@@ -66,10 +72,10 @@ function ThumbFrame({
 }) {
   return (
     <div
-      className={`group relative shrink-0 overflow-hidden rounded-xl border border-white/10 shadow-[0_10px_24px_-12px_rgb(67_45_20/0.45)] ${className}`}
+      className={`group relative shrink-0 overflow-hidden rounded-xl border border-line-strong shadow-[var(--mf-thumb-shadow)] ${className}`}
     >
       {children}
-      <div class="pointer-events-none absolute inset-0 rounded-xl ring-1 ring-inset ring-white/10" />
+      <div class="pointer-events-none absolute inset-0 rounded-xl ring-1 ring-inset ring-line" />
     </div>
   )
 }
@@ -131,7 +137,7 @@ export function VideoBanner({ result }: { result: AnalyzeResult }) {
 
       <div class="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
         <h2
-          class="line-clamp-2 text-lg font-bold leading-snug tracking-tight text-white"
+          class="mf-select-text line-clamp-2 text-lg font-bold leading-snug tracking-tight text-ink"
           title={metadata.title}
         >
           {metadata.title}
@@ -183,12 +189,12 @@ export function PlaylistBanner({
         <img
           src={metadata.thumbnailUrl}
           alt=""
-          class="size-14 shrink-0 rounded-xl border border-white/10 object-cover shadow-[0_10px_24px_-12px_rgb(67_45_20/0.45)]"
+          class="size-14 shrink-0 rounded-xl border border-line-strong object-cover shadow-[var(--mf-thumb-shadow)]"
         />
       ) : (
         <span class="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-sky-400/25 bg-gradient-to-br from-sky-500/30 via-indigo-500/25 to-violet-500/20 shadow-inner">
-          <LayersIcon class="size-6 text-white/85" />
-          <span class="pointer-events-none absolute inset-0 rounded-xl ring-1 ring-inset ring-white/15" />
+          <LayersIcon class="size-6 text-ink/85" />
+          <span class="pointer-events-none absolute inset-0 rounded-xl ring-1 ring-inset ring-line" />
         </span>
       )}
       <div class="min-w-0 flex-1">
@@ -212,7 +218,7 @@ export function PlaylistBanner({
           )}
         </div>
         <h2
-          class="line-clamp-1 text-base font-semibold leading-snug tracking-tight text-white"
+          class="mf-select-text line-clamp-1 text-base font-semibold leading-snug tracking-tight text-ink"
           title={metadata.title}
         >
           {metadata.title}
@@ -233,7 +239,7 @@ export function EntryThumb({
   durationSec: number | null
 }) {
   return (
-    <span class="relative block h-9 w-16 shrink-0 overflow-hidden rounded-md border border-white/10 bg-black/40">
+    <span class="relative block h-9 w-16 shrink-0 overflow-hidden rounded-md border border-line-strong bg-recess">
       {url ? (
         <img src={url} alt="" loading="lazy" class="size-full object-cover" />
       ) : (
@@ -269,12 +275,34 @@ export function PlaylistEntries({
   const someSelected = selectedCount > 0 && !allSelected
 
   const statusByUrl = new Map(queueRows.value.map((r) => [r.url, r.status] as const))
+  const partialDirByUrl = new Map(queueRows.value.map((r) => [r.url, r.partialDir] as const))
   const liveUrl = activeJob.value?.config.url ?? null
   const liveEvent = liveUrl !== null ? lastJobEvent.value : null
   const livePercent =
     liveEvent?.percent !== null && liveEvent?.percent !== undefined
       ? Math.max(2, Math.min(100, liveEvent.percent))
       : null
+  const [clearingUrl, setClearingUrl] = useState<string | null>(null)
+  const [clearingAll, setClearingAll] = useState(false)
+
+  async function clearEntryPartial(url: string, partialDir: string) {
+    setClearingUrl(url)
+    try {
+      const res = await window.mf.clearPartials(partialDir)
+      if (res.ok) patchQueueRow(url, { partialDir: undefined })
+    } finally {
+      setClearingUrl((prev) => (prev === url ? null : prev))
+    }
+  }
+
+  async function clearAllLeftovers() {
+    setClearingAll(true)
+    try {
+      await clearAllQueueLeftovers()
+    } finally {
+      setClearingAll(false)
+    }
+  }
 
   function statusGlyph(status: string) {
     if (status === 'done') return <CheckIcon class="size-4 shrink-0 text-emerald-400" />
@@ -291,16 +319,30 @@ export function PlaylistEntries({
         <button
           onClick={() => onToggleAll?.(!allSelected)}
           disabled={!onToggleAll || total === 0}
-          class="group mf-focus-ring -ml-1 flex items-center gap-2 rounded-md px-1 py-0.5 text-xs font-medium text-slate-400 transition hover:text-white"
+          class="group mf-focus-ring -ml-1 flex items-center gap-2 rounded-md px-1 py-0.5 text-xs font-medium text-slate-400 transition hover:text-ink"
         >
           <CheckSquare checked={allSelected} partial={someSelected} />
           {allSelected ? 'Deselect all' : 'Select all'}
         </button>
-        <span class="mf-num text-[11px] font-medium text-slate-500">
-          {selectedCount}/{total}
+        <span class="flex items-center gap-2">
+          {queueLeftoverCount.value > 0 && (
+            <button
+              type="button"
+              disabled={clearingAll}
+              onClick={() => void clearAllLeftovers()}
+              title="Delete every leftover partial-download folder from disk"
+              class="mf-focus-ring flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-300 transition hover:bg-amber-500/20 disabled:opacity-50"
+            >
+              <HardDriveIcon class="size-3.5" />
+              {clearingAll ? 'Clearing…' : `Clear leftovers · ${queueLeftoverCount.value}`}
+            </button>
+          )}
+          <span class="mf-num text-[11px] font-medium text-slate-500">
+            {selectedCount}/{total}
+          </span>
         </span>
       </div>
-      <div class="mx-3 mt-1.5 h-0.5 overflow-hidden rounded-full bg-white/[0.06]">
+      <div class="mx-3 mt-1.5 h-0.5 overflow-hidden rounded-full bg-wash-2">
         <div
           class="h-full rounded-full bg-gradient-to-r from-violet-500 to-sky-400 transition-[width] duration-300"
           style={`width: ${total === 0 ? 0 : (selectedCount / total) * 100}%`}
@@ -312,6 +354,7 @@ export function PlaylistEntries({
           {entries.map((entry) => {
             const checked = selectedUrls?.has(entry.url) ?? true
             const rowStatus = statusByUrl.get(entry.url)
+            const partialDir = partialDirByUrl.get(entry.url)
             const isLive = entry.url === liveUrl
             const glyph = rowStatus ? statusGlyph(rowStatus) : null
             const row = (
@@ -423,7 +466,7 @@ export function PlaylistEntries({
                 <button
                   onClick={() => onToggleEntry(entry.url)}
                   title={checked ? 'Exclude from download' : 'Include in download'}
-                  class={`group flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left transition hover:bg-white/[0.05] ${
+                  class={`group flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left transition hover:bg-wash-2 ${
                     checked ? '' : 'opacity-60'
                   }`}
                 >
@@ -431,8 +474,36 @@ export function PlaylistEntries({
                 </button>
               </li>
             ) : (
-              <li key={entry.url} class="flex items-center gap-3 rounded-lg px-2 py-1.5">
-                {row}
+              <li key={entry.url} class="rounded-lg px-2 py-1.5">
+                <div class="flex items-center gap-3">{row}</div>
+                {partialDir && (
+                  <div class="mt-1.5 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-2.5 py-1 pl-[52px] text-[10.5px] text-amber-200/90">
+                    <span class="inline-flex min-w-0 items-center gap-1.5">
+                      <HardDriveIcon class="size-3 shrink-0" />
+                      <span class="truncate" title={partialDir}>
+                        Leftover partial download on disk
+                      </span>
+                    </span>
+                    <span class="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => void window.mf.openPartialDir(partialDir)}
+                        class="mf-focus-ring flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sky-300 transition hover:text-sky-200"
+                      >
+                        <FolderIcon class="size-3" />
+                        open
+                      </button>
+                      <button
+                        type="button"
+                        disabled={clearingUrl === entry.url}
+                        onClick={() => void clearEntryPartial(entry.url, partialDir)}
+                        class="mf-focus-ring rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-rose-300 transition hover:text-rose-200 disabled:opacity-50"
+                      >
+                        {clearingUrl === entry.url ? 'clearing…' : 'clear'}
+                      </button>
+                    </span>
+                  </div>
+                )}
               </li>
             )
           })}
@@ -443,7 +514,7 @@ export function PlaylistEntries({
         </p>
       )}
 
-      <div class="mt-2 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-white/[0.06] bg-white/[0.015] px-3 py-2 text-[10px] text-slate-500">
+      <div class="mt-2 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-line bg-wash-1 px-3 py-2 text-[10px] text-slate-500">
         <span class="inline-flex items-center gap-1.5">
           <QueueIcon class="size-3" />
           Sequential — one entry at a time
@@ -539,7 +610,7 @@ export function DetailsGrid({
           return (
             <>
               {source && (
-                <div class="flex items-baseline justify-between gap-4 border-b border-white/[0.05] pb-1.5">
+                <div class="flex items-baseline justify-between gap-4 border-b border-line pb-1.5">
                   <dt class="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                     Source
                   </dt>
@@ -547,7 +618,7 @@ export function DetailsGrid({
                 </div>
               )}
               {metadata.webpageUrl && (
-                <div class="flex items-baseline justify-between gap-4 border-b border-white/[0.05] pb-1.5">
+                <div class="flex items-baseline justify-between gap-4 border-b border-line pb-1.5">
                   <dt class="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                     Webpage URL
                   </dt>
