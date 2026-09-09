@@ -2,12 +2,14 @@ import { useState } from 'preact/hooks'
 import type { AnalyzeResult } from '../../../shared/models'
 import { fmtCount, fmtDuration, fmtEta, fmtSize, fmtSpeed } from '../utils/format'
 import { sourceLabel } from '../utils/source'
-import { activeJob, lastJobEvent } from '../signals/jobState'
+import { jobEventsById, lastJobEvent } from '../signals/jobState'
 import {
   clearAllQueueLeftovers,
   patchQueueRow,
   queueLeftoverCount,
   queueRows,
+  queueRunMode,
+  queueRunning,
 } from '../signals/queueState'
 import {
   AlertIcon,
@@ -20,6 +22,7 @@ import {
   FolderIcon,
   GaugeIcon,
   HardDriveIcon,
+  InfoIcon,
   LayersIcon,
   PauseIcon,
   PlayIcon,
@@ -276,12 +279,13 @@ export function PlaylistEntries({
 
   const statusByUrl = new Map(queueRows.value.map((r) => [r.url, r.status] as const))
   const partialDirByUrl = new Map(queueRows.value.map((r) => [r.url, r.partialDir] as const))
-  const liveUrl = activeJob.value?.config.url ?? null
-  const liveEvent = liveUrl !== null ? lastJobEvent.value : null
-  const livePercent =
-    liveEvent?.percent !== null && liveEvent?.percent !== undefined
-      ? Math.max(2, Math.min(100, liveEvent.percent))
-      : null
+  const outputPathByUrl = new Map(queueRows.value.map((r) => [r.url, r.outputPath] as const))
+  const skippedByUrl = new Map(queueRows.value.map((r) => [r.url, r.skipped] as const))
+  const jobIdByUrl = new Map(queueRows.value.map((r) => [r.url, r.jobId] as const))
+  const running = queueRunning.value
+  const parallel = queueRunMode.value === 'parallel'
+  const events = jobEventsById.value
+  const legacyEvent = running && !parallel ? lastJobEvent.value : null
   const [clearingUrl, setClearingUrl] = useState<string | null>(null)
   const [clearingAll, setClearingAll] = useState(false)
 
@@ -305,6 +309,7 @@ export function PlaylistEntries({
   }
 
   function statusGlyph(status: string) {
+    if (status === 'skipped') return <InfoIcon class="size-4 shrink-0 text-sky-400" />
     if (status === 'done') return <CheckIcon class="size-4 shrink-0 text-emerald-400" />
     if (status === 'failed') return <AlertIcon class="size-4 shrink-0 text-rose-400" />
     if (status === 'cancelled') return <CloseIcon class="size-4 shrink-0 text-amber-400" />
@@ -355,8 +360,17 @@ export function PlaylistEntries({
             const checked = selectedUrls?.has(entry.url) ?? true
             const rowStatus = statusByUrl.get(entry.url)
             const partialDir = partialDirByUrl.get(entry.url)
-            const isLive = entry.url === liveUrl
-            const glyph = rowStatus ? statusGlyph(rowStatus) : null
+            const outputPath = outputPathByUrl.get(entry.url)
+            const skipped = skippedByUrl.get(entry.url)
+            const displayStatus = rowStatus === 'done' && skipped ? 'skipped' : rowStatus
+            const isLive = rowStatus === 'downloading'
+            const jobId = jobIdByUrl.get(entry.url)
+            const liveEvent = isLive ? ((jobId ? events[jobId] : undefined) ?? legacyEvent) : null
+            const livePercent =
+              liveEvent?.percent !== null && liveEvent?.percent !== undefined
+                ? Math.max(2, Math.min(100, liveEvent.percent))
+                : null
+            const glyph = displayStatus ? statusGlyph(displayStatus) : null
             const row = (
               <>
                 {glyph ?? <CheckSquare checked={checked} />}
@@ -404,17 +418,29 @@ export function PlaylistEntries({
                     )}
                   </span>
                 </span>
-                {rowStatus && rowStatus !== 'downloading' && (
+                {rowStatus === 'done' && skipped && (
+                  <span class="hidden shrink-0 text-[10px] text-sky-400/80 sm:inline">
+                    already exists
+                  </span>
+                )}
+                {displayStatus && displayStatus !== 'downloading' && (
                   <span
                     className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
-                      rowStatus === 'done'
-                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                        : rowStatus === 'failed'
-                          ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
-                          : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                      displayStatus === 'skipped'
+                        ? 'border-sky-500/30 bg-sky-500/10 text-sky-300'
+                        : displayStatus === 'done'
+                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                          : displayStatus === 'failed'
+                            ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+                            : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
                     }`}
+                    title={
+                      rowStatus === 'done' && skipped
+                        ? 'A file for this video already exists at this quality'
+                        : undefined
+                    }
                   >
-                    {rowStatus}
+                    {displayStatus}
                   </span>
                 )}
               </>
@@ -423,7 +449,7 @@ export function PlaylistEntries({
               return (
                 <li
                   key={entry.url}
-                  class="rounded-lg border border-sky-500/25 bg-sky-500/[0.07] px-2 py-1.5"
+                  class="mf-row-hover rounded-lg border border-sky-500/25 bg-sky-500/[0.07] px-2 py-1.5"
                 >
                   <div class="flex items-center gap-3">{row}</div>
                   <div class="mt-1.5 flex items-center gap-2.5 pl-[52px]">
@@ -466,7 +492,7 @@ export function PlaylistEntries({
                 <button
                   onClick={() => onToggleEntry(entry.url)}
                   title={checked ? 'Exclude from download' : 'Include in download'}
-                  class={`group flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left transition hover:bg-wash-2 ${
+                  class={`mf-row-hover group flex w-full items-center gap-3 rounded-lg border border-transparent px-2 py-1.5 text-left transition hover:bg-wash-2 ${
                     checked ? '' : 'opacity-60'
                   }`}
                 >
@@ -474,8 +500,35 @@ export function PlaylistEntries({
                 </button>
               </li>
             ) : (
-              <li key={entry.url} class="rounded-lg px-2 py-1.5">
+              <li
+                key={entry.url}
+                class="mf-row-hover rounded-lg border border-transparent px-2 py-1.5"
+              >
                 <div class="flex items-center gap-3">{row}</div>
+                {rowStatus === 'done' && outputPath && (
+                  <div class="mt-1.5 flex items-center justify-end gap-1 pl-[52px]">
+                    <button
+                      type="button"
+                      onClick={() => void window.mf.openFile(outputPath)}
+                      title="Play video"
+                      aria-label={`Play ${entry.title}`}
+                      class="mf-focus-ring flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 transition hover:text-emerald-300"
+                    >
+                      <PlayIcon class="size-3" />
+                      play
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void window.mf.revealPath(outputPath)}
+                      title="Open file location"
+                      aria-label={`Open file location for ${entry.title}`}
+                      class="mf-focus-ring flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 transition hover:text-sky-300"
+                    >
+                      <FolderIcon class="size-3" />
+                      open
+                    </button>
+                  </div>
+                )}
                 {partialDir && (
                   <div class="mt-1.5 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-2.5 py-1 pl-[52px] text-[10.5px] text-amber-200/90">
                     <span class="inline-flex min-w-0 items-center gap-1.5">

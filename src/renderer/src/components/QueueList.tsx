@@ -21,7 +21,9 @@ import {
   FolderIcon,
   GaugeIcon,
   HardDriveIcon,
+  InfoIcon,
   PauseIcon,
+  PlayIcon,
   Spinner,
 } from './icons'
 
@@ -30,6 +32,7 @@ const STATUS_PILL: Record<string, string> = {
   downloading: 'border-sky-500/40 bg-sky-500/10 text-sky-300',
   paused: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
   done: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
+  skipped: 'border-sky-500/30 bg-sky-500/10 text-sky-300',
   failed: 'border-rose-500/30 bg-rose-500/10 text-rose-300',
   cancelled: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
 }
@@ -37,6 +40,7 @@ const STATUS_PILL: Record<string, string> = {
 function StatusGlyph({ status }: { status: string }) {
   if (status === 'downloading') return <Spinner class="size-3.5 shrink-0 text-sky-400" />
   if (status === 'paused') return <PauseIcon class="size-3.5 shrink-0 text-amber-400" />
+  if (status === 'skipped') return <InfoIcon class="size-3.5 shrink-0 text-sky-400" />
   if (status === 'done') return <CheckIcon class="size-3.5 shrink-0 text-emerald-400" />
   if (status === 'failed') return <AlertIcon class="size-3.5 shrink-0 text-rose-400" />
   if (status === 'cancelled') return <CloseIcon class="size-3.5 shrink-0 text-amber-400" />
@@ -210,6 +214,7 @@ export function QueueList({
               ? Math.max(2, Math.min(100, event.percent))
               : null
           const canDrag = !running && row.status === 'pending'
+          const displayStatus = row.status === 'done' && row.skipped ? 'skipped' : row.status
           return (
             <li
               key={row.url}
@@ -230,7 +235,7 @@ export function QueueList({
                 dragFrom.current = null
                 if (from !== null) reorderQueueRows(from, i)
               }}
-              class={`group rounded-xl border px-3 py-2.5 text-sm transition-colors ${
+              class={`group mf-row-hover rounded-xl border px-3 py-2.5 text-sm ${
                 isLive
                   ? 'border-sky-500/25 bg-sky-500/[0.07]'
                   : dragOver === i
@@ -243,7 +248,7 @@ export function QueueList({
                   <span class="mf-num w-6 shrink-0 text-right text-[10px] font-semibold text-slate-600">
                     {String(i + 1).padStart(2, '0')}
                   </span>
-                  <StatusGlyph status={row.status} />
+                  <StatusGlyph status={displayStatus} />
                   <span
                     className={`mf-select-text truncate ${
                       isLive
@@ -257,13 +262,45 @@ export function QueueList({
                   </span>
                 </span>
                 <span class="flex shrink-0 items-center gap-1.5">
+                  {row.status === 'done' && row.skipped && (
+                    <span class="hidden text-[10.5px] text-sky-400/80 sm:inline">
+                      already exists
+                    </span>
+                  )}
                   <span
-                    className={`rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${STATUS_PILL[row.status]}`}
+                    className={`rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${STATUS_PILL[displayStatus]}`}
+                    title={
+                      row.status === 'done' && row.skipped
+                        ? 'A file for this video already exists at this quality'
+                        : undefined
+                    }
                     aria-live="polite"
                     aria-atomic="true"
                   >
-                    {row.status}
+                    {displayStatus}
                   </span>
+                  {row.status === 'done' && row.outputPath && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => void window.mf.openFile(row.outputPath!)}
+                        title="Play video"
+                        aria-label={`Play ${row.title}`}
+                        class="mf-focus-ring flex size-6 items-center justify-center rounded-lg text-slate-500 transition hover:bg-wash-2 hover:text-emerald-300"
+                      >
+                        <PlayIcon class="size-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void window.mf.revealPath(row.outputPath!)}
+                        title="Open file location"
+                        aria-label={`Open file location for ${row.title}`}
+                        class="mf-focus-ring flex size-6 items-center justify-center rounded-lg text-slate-500 transition hover:bg-wash-2 hover:text-sky-300"
+                      >
+                        <FolderIcon class="size-3" />
+                      </button>
+                    </>
+                  )}
                   {isLive && onCancelRow && (
                     <button
                       onClick={() => onCancelRow(row.url)}

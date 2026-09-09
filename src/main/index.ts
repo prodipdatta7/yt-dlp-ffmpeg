@@ -36,7 +36,12 @@ import { platformDir as platformDirName } from './binaries/locator'
 import { YtDlpUpdater } from './binaries/updater'
 import { FfmpegUpdater } from './binaries/ffmpegUpdater'
 import type { UpdaterDriverKind, UpdaterPhase } from '../shared/models'
-import { clearAllPartialDirs, clearPartialDir, listPartialDirs, isUnderTempRoot } from './fsops/partials'
+import {
+  clearAllPartialDirs,
+  clearPartialDir,
+  listPartialDirs,
+  isUnderTempRoot,
+} from './fsops/partials'
 import { dirname } from 'node:path'
 import { chromeThemeColors, createWindowOptions, getWindowSecurityFlags } from './windowOptions'
 
@@ -409,6 +414,11 @@ app.whenReady().then(() => {
           const result = await shell.openPath(folder)
           return { ok: result.length === 0 }
         }
+      },
+      openFile: async (targetPath: string) => {
+        if (!existsSync(targetPath)) return { ok: false }
+        const result = await shell.openPath(targetPath)
+        return { ok: result.length === 0 }
       },
       updaterCheck: (kind: UpdaterDriverKind) =>
         kind === 'ffmpeg' ? ffmpegUpdater.check() : updater.check(),

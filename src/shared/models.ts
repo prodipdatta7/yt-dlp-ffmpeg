@@ -121,6 +121,8 @@ export interface JobDonePayload {
   outputPath?: string
   /** Temp job folder retained on cancel/failure so the user can inspect or discard partials. */
   partialDir?: string
+  /** True when no download ran because this exact URL + quality already exists at outputPath. */
+  skipped?: boolean
 }
 
 export type UpdaterPhase =

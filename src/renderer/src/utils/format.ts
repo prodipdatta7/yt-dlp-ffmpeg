@@ -16,7 +16,9 @@ export function fmtCount(n: number | null): string {
 
 export function fmtSize(bytes: number | null): string {
   if (bytes === null || !Number.isFinite(bytes)) return '—'
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  const mb = bytes / 1024 / 1024
+  if (mb >= 1024) return `${(mb / 1024).toFixed(2)} GB`
+  return `${mb.toFixed(1)} MB`
 }
 
 export function fmtSpeed(bps: number | null): string {

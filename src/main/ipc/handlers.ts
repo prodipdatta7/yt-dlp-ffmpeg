@@ -24,6 +24,7 @@ import {
   MF_PARTIALS_OPEN,
   MF_PARTIALS_CLEAR,
   MF_REVEAL_PATH,
+  MF_OPEN_FILE,
   MF_UPDATER_APPLY,
   MF_UPDATER_CHECK,
   type AnalyzeResponse,
@@ -91,6 +92,7 @@ export interface IpcDeps {
   openPartialDir: (path: string) => Promise<{ ok: boolean }>
   clearPartials: (path?: string) => PartialsClearResult
   revealPath: (path: string) => Promise<{ ok: boolean }>
+  openFile: (path: string) => Promise<{ ok: boolean }>
   updaterCheck: (kind: UpdaterDriverKind) => Promise<{
     current: string | null
     latest: string | null
@@ -222,6 +224,11 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
     const path = typeof payload === 'string' ? payload : null
     if (!path) return { ok: false }
     return deps.revealPath(path)
+  })
+  ipcMain.handle(MF_OPEN_FILE, async (_event, payload: unknown) => {
+    const path = typeof payload === 'string' ? payload : null
+    if (!path) return { ok: false }
+    return deps.openFile(path)
   })
 
   ipcMain.handle(MF_UPDATER_CHECK, (_event, payload: unknown) =>

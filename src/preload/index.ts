@@ -20,6 +20,7 @@ import {
   MF_PARTIALS_LIST,
   MF_PARTIALS_OPEN,
   MF_REVEAL_PATH,
+  MF_OPEN_FILE,
   MF_SETTINGS_CLEAR_COOKIES,
   MF_SETTINGS_GET,
   MF_SETTINGS_IMPORT_COOKIES,
@@ -101,8 +102,8 @@ const api: MfApi = {
     ipcRenderer.invoke(MF_PARTIALS_OPEN, path),
   clearPartials: (path?: string): Promise<PartialsClearResult> =>
     ipcRenderer.invoke(MF_PARTIALS_CLEAR, path),
-  revealPath: (path: string): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke(MF_REVEAL_PATH, path),
+  revealPath: (path: string): Promise<{ ok: boolean }> => ipcRenderer.invoke(MF_REVEAL_PATH, path),
+  openFile: (path: string): Promise<{ ok: boolean }> => ipcRenderer.invoke(MF_OPEN_FILE, path),
   updaterCheck: (kind: UpdaterDriverKind): Promise<UpdaterCheckResult> =>
     ipcRenderer.invoke(MF_UPDATER_CHECK, kind),
   updaterApply: (kind: UpdaterDriverKind): Promise<UpdaterApplyResult> =>

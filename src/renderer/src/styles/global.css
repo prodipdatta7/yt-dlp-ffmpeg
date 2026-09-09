@@ -356,6 +356,22 @@ textarea {
   --mf-card-shadow-hover: 0 30px 60px -30px rgb(0 0 0 / 0.95);
 }
 
+/** Lightweight lift for list rows (playlist entries, queue rows) — separates a row
+    from its neighbors on hover without the full card treatment of .mf-card-hover. */
+.mf-row-hover {
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    background-color 150ms ease;
+}
+.mf-row-hover:hover {
+  border-color: var(--mf-line-strong);
+  box-shadow: 0 6px 16px -10px rgb(120 53 15 / 0.22);
+}
+:root[data-theme='dark'] .mf-row-hover:hover {
+  box-shadow: 0 8px 20px -8px rgb(0 0 0 / 0.55);
+}
+
 .mf-hairline {
   position: relative;
 }

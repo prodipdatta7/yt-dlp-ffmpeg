@@ -83,7 +83,7 @@ export function PipelineStatus({
   function statusLabel(): string {
     if (paused) return 'Paused'
     if (done) {
-      if (done.status === 'completed') return 'Complete'
+      if (done.status === 'completed') return done.skipped ? 'Skipped' : 'Complete'
       if (done.status === 'cancelled') return 'Cancelled'
       return failed && done.errorCode === 'MF_NETWORK' ? 'Network lost' : 'Failed'
     }
@@ -142,7 +142,13 @@ export function PipelineStatus({
         )}
         <span
           class="mf-select-text w-28 min-w-0 shrink-0 truncate text-xs font-semibold text-slate-200"
-          title={event ? PHASE_LABELS[event.phase] : undefined}
+          title={
+            done?.status === 'completed' && done.skipped
+              ? 'A file for this video already exists at this quality'
+              : event
+                ? PHASE_LABELS[event.phase]
+                : undefined
+          }
           aria-live={failed ? 'assertive' : 'polite'}
           aria-atomic="true"
         >
@@ -311,11 +317,12 @@ export function PipelineStatus({
           <div class="flex items-center justify-between gap-3">
             <span class="mf-select-text min-w-0 truncate">
               {done.status === 'completed' && (
-                <span title={done.outputPath}>✓ Saved to {done.outputPath}</span>
+                <span title={done.outputPath}>
+                  ✓ Saved to {done.outputPath}
+                  {done.skipped && <span class="text-sky-400/80"> — already exists</span>}
+                </span>
               )}
-              {done.status === 'cancelled' && (
-                <span>Download cancelled — partial files kept.</span>
-              )}
+              {done.status === 'cancelled' && <span>Download cancelled — partial files kept.</span>}
               {done.status === 'failed' && (
                 <span>
                   {done.errorCode === 'MF_NETWORK'
@@ -337,6 +344,13 @@ export function PipelineStatus({
                 >
                   <ClipboardIcon class="size-3" />
                   copy
+                </button>
+                <button
+                  onClick={() => void window.mf.openFile(done.outputPath!)}
+                  class="mf-focus-ring inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 transition hover:text-slate-200"
+                >
+                  <PlayIcon class="size-3" />
+                  play
                 </button>
                 <button
                   onClick={() => void window.mf.revealPath(done.outputPath!)}

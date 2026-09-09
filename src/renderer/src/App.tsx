@@ -60,6 +60,7 @@ import {
   resolveJob,
   stopRequested,
   waitForJob,
+  type JobResult,
   type QueueRunMode,
 } from './signals/queueState'
 import type { DownloadStartResponse } from '../../shared/ipcContract'
@@ -391,7 +392,11 @@ export function App() {
       endJob(done)
       const row = queueRows.value.find((r) => r.jobId === done.jobId)
       if (row) patchQueueRow(row.url, { partialDir: done.partialDir })
-      resolveJob(done.jobId, done.status)
+      resolveJob(done.jobId, {
+        status: done.status,
+        outputPath: done.outputPath,
+        skipped: done.skipped,
+      })
     })
     const offEntry = window.mf.onAnalyzeEntry((event) => {
       applyAnalyzeStream(event)
@@ -510,7 +515,7 @@ export function App() {
     setSelectedEntries(select ? new Set(result.playlistEntries!.map((e) => e.url)) : new Set())
   }
 
-  async function runSingleJob(config: JobConfig): Promise<'completed' | 'cancelled' | 'failed'> {
+  async function runSingleJob(config: JobConfig): Promise<JobResult> {
     launchError.value = null
     let response: DownloadStartResponse
     try {
@@ -522,12 +527,12 @@ export function App() {
       lastFailedConfig.value = config
       jobDone.value = { jobId: 'launch', status: 'failed', errorCode: response.code }
       launchError.value = response.message
-      return 'failed'
+      return { status: 'failed' }
     }
     beginJob(config, response.jobId)
-    const status = await waitForJob(response.jobId)
-    if (status === 'failed') lastFailedConfig.value = config
-    return status
+    const result = await waitForJob(response.jobId)
+    if (result.status === 'failed') lastFailedConfig.value = config
+    return result
   }
 
   async function runQueue(
@@ -548,13 +553,14 @@ export function App() {
         const config = configFor(entries[i].url, sel, false, playlistTitle)
         lastJobEvent.value = null
         patchQueueRow(entries[i].url, { status: 'downloading' })
-        let status: 'completed' | 'cancelled' | 'failed'
+        let result: JobResult
         try {
-          status = await runSingleJob(config)
+          result = await runSingleJob(config)
         } catch {
           lastFailedConfig.value = config
-          status = 'failed'
+          result = { status: 'failed' }
         }
+        const { status } = result
         if (status === 'cancelled' && pausedRef.current !== null) {
           patchQueueRow(entries[i].url, { status: 'paused', jobId: undefined })
           break
@@ -562,6 +568,8 @@ export function App() {
         patchQueueRow(entries[i].url, {
           status: status === 'completed' ? 'done' : status,
           jobId: undefined,
+          outputPath: result.outputPath,
+          skipped: result.skipped,
         })
       }
       if (stopRequested.value && pausedRef.current === null) {
@@ -612,11 +620,13 @@ export function App() {
             } else {
               beginJob(config, response.jobId)
               patchQueueRow(entry.url, { jobId: response.jobId })
-              const status = await waitForJob(response.jobId)
-              if (status === 'failed') lastFailedConfig.value = config
+              const result = await waitForJob(response.jobId)
+              if (result.status === 'failed') lastFailedConfig.value = config
               patchQueueRow(entry.url, {
-                status: status === 'completed' ? 'done' : status,
+                status: result.status === 'completed' ? 'done' : result.status,
                 jobId: undefined,
+                outputPath: result.outputPath,
+                skipped: result.skipped,
               })
             }
           } catch {
@@ -690,10 +700,12 @@ export function App() {
     patchQueueRow(url, { status: 'downloading', partialDir: undefined })
     queueRunning.value = true
     try {
-      const status = await runSingleJob(config)
+      const result = await runSingleJob(config)
       patchQueueRow(url, {
-        status: status === 'completed' ? 'done' : status,
+        status: result.status === 'completed' ? 'done' : result.status,
         jobId: undefined,
+        outputPath: result.outputPath,
+        skipped: result.skipped,
       })
     } finally {
       queueRunning.value = false

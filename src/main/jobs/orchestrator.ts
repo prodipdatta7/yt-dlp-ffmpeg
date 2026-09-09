@@ -21,6 +21,7 @@ import { ERROR_MESSAGES } from '../../shared/models'
 import type { LocatedBinary } from '../binaries/locator'
 import { spawnProcess, type RunResult, type SpawnHandle } from '../binaries/runner'
 import { freeDiskSpaceBytes, isDiskSpaceInsufficient } from '../fsops/diskSpace'
+import { findExistingDownload, recordDownload } from '../fsops/downloadManifest'
 import { collisionFreeTarget, sanitizeFileName } from '../fsops/sanitizer'
 import { classifyStderr } from '../media/classifyStderr'
 import type { Logger } from '../store/logger'
@@ -183,6 +184,23 @@ export class DownloadOrchestrator {
     const effectiveDestDir = config.playlistTitle
       ? join(config.destDir, sanitizeFileName(config.playlistTitle))
       : config.destDir
+
+    if (!config.isLive) {
+      const existingPath = findExistingDownload(effectiveDestDir, config)
+      if (existingPath) {
+        const jobId = randomUUID()
+        this.deps.logger?.info('download skipped — already exists at this quality', {
+          jobId,
+          url: config.url,
+        })
+        // Deferred so the MF_JOB_DONE event reaches the renderer only after it has
+        // received this jobId back from the downloadStart IPC call that's still in flight.
+        setTimeout(() => {
+          sendDone({ jobId, status: 'completed', outputPath: existingPath, skipped: true })
+        }, 0)
+        return jobId
+      }
+    }
 
     const freeBytes = this.deps.getFreeDiskBytes
       ? await this.deps.getFreeDiskBytes(effectiveDestDir)
@@ -394,6 +412,7 @@ export class DownloadOrchestrator {
 
       rmSync(job.tempDir, { recursive: true, force: true })
       this.deps.logger?.info('download completed', { jobId, target })
+      recordDownload(job.destDir, job.config, target)
       this.finish(job, sendDone, { status: 'completed', outputPath: target })
     } catch (error) {
       this.deps.logger?.error('orchestrator error', { jobId, error: String(error) })

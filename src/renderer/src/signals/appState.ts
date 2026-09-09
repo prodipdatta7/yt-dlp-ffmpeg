@@ -2,6 +2,7 @@ import { signal } from '@preact/signals'
 import type { AnalyzeResult, MfErrorCode } from '../../../shared/models'
 import type { AnalyzeStreamEvent } from '../../../shared/ipcContract'
 import { resetJobStatus } from './jobState'
+import { resetQueueForNewAnalysis } from './queueState'
 
 export const analyzing = signal(false)
 export const analysis = signal<AnalyzeResult | null>(null)
@@ -16,6 +17,7 @@ export function resetAnalysis(): void {
   analyzeError.value = null
   playlistHydration.value = null
   resetJobStatus()
+  resetQueueForNewAnalysis()
 }
 
 export function applyAnalyzeStream(event: AnalyzeStreamEvent): void {

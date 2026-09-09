@@ -39,6 +39,7 @@ export const MF_PARTIALS_LIST = 'mf:partials:list' as const
 export const MF_PARTIALS_OPEN = 'mf:partials:open' as const
 export const MF_PARTIALS_CLEAR = 'mf:partials:clear' as const
 export const MF_REVEAL_PATH = 'mf:reveal-path' as const
+export const MF_OPEN_FILE = 'mf:open-file' as const
 
 export interface PingResult {
   pong: string
@@ -174,6 +175,8 @@ export interface MfApi {
   clearPartials(path?: string): Promise<PartialsClearResult>
   /** Reveal a file or folder in the OS file manager (Explorer). */
   revealPath(path: string): Promise<{ ok: boolean }>
+  /** Open a file with the OS-registered default application (e.g. play a video). */
+  openFile(path: string): Promise<{ ok: boolean }>
   updaterCheck(kind: UpdaterDriverKind): Promise<UpdaterCheckResult>
   updaterApply(kind: UpdaterDriverKind): Promise<UpdaterApplyResult>
   onUpdaterPhase(listener: (event: UpdaterPhaseEvent) => void): () => void
