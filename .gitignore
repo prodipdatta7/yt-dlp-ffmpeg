@@ -7,6 +7,9 @@ node_modules/
 .DS_Store
 Thumbs.db
 
+# License signing private key — never commit. See scripts/generate-license.mjs.
+/keys/
+
 .opencode/
 
 # brainstorm visual-companion session files

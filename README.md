@@ -29,6 +29,22 @@
 
 ---
 
+## 💳 Pricing
+
+MediaForge's core downloading is **free forever** — no account, no nagging, no crippled trial.
+
+|                              | Free             | Pro               |
+| ---------------------------- | ---------------- | ----------------- |
+| Single video/audio downloads | ✅ Unlimited     | ✅ Unlimited      |
+| Resolution ceiling           | Up to 1080p      | Up to 8K          |
+| Playlist batch size          | Up to 10 per run | Unlimited         |
+| Driver auto-updates          | ✅               | ✅                |
+| Price                        | $0               | One-time purchase |
+
+Pro is unlocked with a license key entered in **Settings → License** — see that screen in the app for the current purchase link. License activation is verified entirely offline; no account or internet connection is required after purchase.
+
+---
+
 ## 📥 Installation
 
 ### Windows (x64)
@@ -113,6 +129,6 @@ The packaged installer will be generated in the `dist/` directory.
 
 ## 📄 License & Attribution
 
-- **MediaForge Desktop** is licensed under the [MIT License](LICENSE).
+- **MediaForge Desktop** is licensed under the [MIT License](LICENSE). See also [Terms of Use](TERMS.md) and [Privacy Policy](PRIVACY.md).
 - **yt-dlp**: Released under The Unlicense ([yt-dlp license](resources/LICENSES/yt-dlp-Unlicense.txt)).
 - **FFmpeg**: Licensed under the GNU LGPL v2.1+ ([FFmpeg notice](resources/LICENSES/ffmpeg-LGPL-notice.txt)).

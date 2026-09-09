@@ -11,6 +11,9 @@ import {
   MF_DIALOG_CHOOSE_DIR,
   MF_JOB_DONE,
   MF_JOB_EVENT,
+  MF_LICENSE_ACTIVATE,
+  MF_LICENSE_DEACTIVATE,
+  MF_LICENSE_GET,
   MF_LOGS_OPEN,
   MF_LOG_CLEAR,
   MF_LOG_HISTORY,
@@ -30,6 +33,8 @@ import {
   type JobConfig,
   type JobDonePayload,
   type JobEvent,
+  type LicenseActivateResult,
+  type LicenseState,
   type LogEntryPayload,
   type PingResult,
 } from '../../shared/ipcContract'
@@ -83,6 +88,9 @@ export interface IpcDeps {
     theme: 'system' | 'light' | 'dark'
   }
   markFirstRunSeen: () => boolean
+  getLicense: () => LicenseState
+  activateLicense: (key: string) => LicenseActivateResult
+  deactivateLicense: () => LicenseState
   updaterCheck: (kind: UpdaterDriverKind) => Promise<{
     current: string | null
     latest: string | null
@@ -180,6 +188,11 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
     return deps.setSettings(patch)
   })
   ipcMain.handle(MF_SETTINGS_MARK_FIRST_RUN, () => deps.markFirstRunSeen())
+  ipcMain.handle(MF_LICENSE_GET, () => deps.getLicense())
+  ipcMain.handle(MF_LICENSE_ACTIVATE, (_event, payload: unknown) =>
+    deps.activateLicense(typeof payload === 'string' ? payload : ''),
+  )
+  ipcMain.handle(MF_LICENSE_DEACTIVATE, () => deps.deactivateLicense())
   ipcMain.handle(MF_UPDATER_CHECK, (_event, payload: unknown) =>
     deps.updaterCheck(readUpdaterKind(payload)),
   )

@@ -35,6 +35,9 @@ export const MF_UPDATER_PHASE = 'mf:updater:phase' as const
 export const MF_SETTINGS_GET = 'mf:settings:get' as const
 export const MF_SETTINGS_SET = 'mf:settings:set' as const
 export const MF_SETTINGS_MARK_FIRST_RUN = 'mf:settings:mark-first-run' as const
+export const MF_LICENSE_GET = 'mf:license:get' as const
+export const MF_LICENSE_ACTIVATE = 'mf:license:activate' as const
+export const MF_LICENSE_DEACTIVATE = 'mf:license:deactivate' as const
 
 export interface PingResult {
   pong: string
@@ -76,6 +79,17 @@ export interface MfSettingsView {
   cookieFileSet: boolean
   firstRunNoticeSeen: boolean
   theme: 'system' | 'light' | 'dark'
+}
+
+export interface LicenseState {
+  tier: 'free' | 'pro'
+  email: string | null
+}
+
+export interface LicenseActivateResult {
+  ok: boolean
+  error?: string
+  state: LicenseState
 }
 
 export interface LogEntryPayload {
@@ -130,6 +144,9 @@ export interface MfApi {
     patch: Partial<Pick<MfSettingsView, 'theme' | 'lastOutputDir'>>,
   ): Promise<MfSettingsView>
   markFirstRunSeen(): Promise<boolean>
+  getLicense(): Promise<LicenseState>
+  activateLicense(key: string): Promise<LicenseActivateResult>
+  deactivateLicense(): Promise<LicenseState>
   updaterCheck(kind: UpdaterDriverKind): Promise<UpdaterCheckResult>
   updaterApply(kind: UpdaterDriverKind): Promise<UpdaterApplyResult>
   onUpdaterPhase(listener: (event: UpdaterPhaseEvent) => void): () => void

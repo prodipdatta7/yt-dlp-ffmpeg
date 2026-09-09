@@ -8,6 +8,7 @@ export interface AppSettings {
   cookieFileSet?: boolean
   firstRunNoticeSeen?: boolean
   theme?: ThemePreference
+  licenseKey?: string
 }
 
 export function defaultSettings(): AppSettings {
@@ -30,6 +31,7 @@ function isAppSettings(value: unknown): value is AppSettings {
   ) {
     return false
   }
+  if (raw.licenseKey !== undefined && typeof raw.licenseKey !== 'string') return false
   return true
 }
 

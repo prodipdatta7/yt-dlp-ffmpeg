@@ -22,7 +22,10 @@ import type {
   JobConfig,
   JobDonePayload,
   JobEvent,
+  LicenseActivateResult,
+  LicenseState,
 } from '../shared/ipcContract'
+import { verifyLicenseKey } from './licensing/license'
 import { MF_LOG_LINE, MF_UPDATER_PHASE } from '../shared/ipcContract'
 import { LogBus } from './logs/logBus'
 import { ERROR_MESSAGES } from '../shared/models'
@@ -337,6 +340,28 @@ app.whenReady().then(() => {
       markFirstRunSeen: () => {
         settings.save({ ...settings.load(), firstRunNoticeSeen: true })
         return true
+      },
+      getLicense: (): LicenseState => {
+        const payload = settings.load().licenseKey
+          ? verifyLicenseKey(settings.load().licenseKey!)
+          : null
+        return payload ? { tier: 'pro', email: payload.email } : { tier: 'free', email: null }
+      },
+      activateLicense: (key: string): LicenseActivateResult => {
+        const payload = verifyLicenseKey(key)
+        if (!payload) {
+          return {
+            ok: false,
+            error: 'That license key is not valid.',
+            state: { tier: 'free', email: null },
+          }
+        }
+        settings.save({ ...settings.load(), licenseKey: key.trim() })
+        return { ok: true, state: { tier: 'pro', email: payload.email } }
+      },
+      deactivateLicense: (): LicenseState => {
+        settings.save({ ...settings.load(), licenseKey: undefined })
+        return { tier: 'free', email: null }
       },
       updaterCheck: (kind: UpdaterDriverKind) =>
         kind === 'ffmpeg' ? ffmpegUpdater.check() : updater.check(),

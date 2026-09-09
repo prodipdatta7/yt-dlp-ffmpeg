@@ -24,9 +24,13 @@ win:
     - target: nsis
       arch:
         - x64
+    - target: appx
+      arch:
+        - x64
   icon: build/icon.ico
   # Code signing placeholder — supply an OV certificate before public distribution.
   # Without cert config, electron-builder skips signing but still embeds icon + metadata.
+  # (Not required for the appx/Store path below — Microsoft signs Store submissions itself.)
 
 nsis:
   oneClick: false
@@ -35,3 +39,17 @@ nsis:
   createDesktopShortcut: always
   createStartMenuShortcut: true
   artifactName: ${productName}-Setup-${version}.${ext}
+
+# Microsoft Store (MSIX) packaging scaffold.
+# The three fields below are PLACEHOLDERS — the appx target will not build until you:
+#   1. Reserve an app name in Microsoft Partner Center (partner.microsoft.com).
+#   2. Copy the "Package/Identity" Name and Publisher values it assigns you into
+#      identityName / publisher below (they look like "12345Publisher.MediaForgeDesktop"
+#      and "CN=XXXXXXXX-XXXX-...").
+# See STORE_NOTES.md before you submit — it covers a real policy risk for this app.
+appx:
+  applicationId: MediaForgeDesktop
+  identityName: PLACEHOLDER-reserve-in-partner-center
+  publisher: PLACEHOLDER-CN-from-partner-center
+  publisherDisplayName: MediaForge contributors
+  displayName: MediaForge Desktop

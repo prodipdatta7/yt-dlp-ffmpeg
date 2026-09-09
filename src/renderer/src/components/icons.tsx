@@ -310,6 +310,49 @@ export function PaletteIcon({ class: cls }: IconProps) {
   )
 }
 
+export function SunIcon({ class: cls }: IconProps) {
+  return (
+    <Svg class={cls}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2.5v2.4M12 19.1v2.4M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7" />
+    </Svg>
+  )
+}
+
+export function MoonIcon({ class: cls }: IconProps) {
+  return (
+    <Svg class={cls}>
+      <path d="M21 12.8A9 9 0 1 1 11.2 3a7.2 7.2 0 0 0 9.8 9.8Z" />
+    </Svg>
+  )
+}
+
+export function MonitorIcon({ class: cls }: IconProps) {
+  return (
+    <Svg class={cls}>
+      <rect x="2.5" y="4" width="19" height="12.5" rx="2" />
+      <path d="M8 20.5h8M12 16.5v4" />
+    </Svg>
+  )
+}
+
+export function LockIcon({ class: cls }: IconProps) {
+  return (
+    <Svg class={cls}>
+      <rect x="4.5" y="10.5" width="15" height="10" rx="2.5" />
+      <path d="M7.5 10.5V7a4.5 4.5 0 0 1 9 0v3.5" />
+    </Svg>
+  )
+}
+
+export function SparkleIcon({ class: cls }: IconProps) {
+  return (
+    <Svg class={cls} filled>
+      <path d="M11.2 2.6c.28-.9 1.32-.9 1.6 0l1.36 4.4a2.2 2.2 0 0 0 1.46 1.46l4.4 1.36c.9.28.9 1.32 0 1.6l-4.4 1.36a2.2 2.2 0 0 0-1.46 1.46l-1.36 4.4c-.28.9-1.32.9-1.6 0l-1.36-4.4a2.2 2.2 0 0 0-1.46-1.46l-4.4-1.36c-.9-.28-.9-1.32 0-1.6l4.4-1.36a2.2 2.2 0 0 0 1.46-1.46Z" />
+    </Svg>
+  )
+}
+
 export function HardDriveIcon({ class: cls }: IconProps) {
   return (
     <Svg class={cls}>

@@ -39,6 +39,8 @@ import {
   type ViewId,
 } from './signals/uiState'
 import { appendLogEntry, setLogHistory } from './signals/logState'
+import { licenseState, refreshLicenseState } from './signals/licenseState'
+import { FREE_MAX_PLAYLIST_BATCH } from '../../shared/entitlements'
 import {
   activeJob,
   beginJob,
@@ -332,6 +334,7 @@ export function App() {
       .ping()
       .then(() => setBridgeNote('ipc ready'))
       .catch(() => setBridgeNote('ipc error'))
+    refreshLicenseState()
 
     const offEvent = window.mf.onJobEvent((event) => {
       lastJobEvent.value = event
@@ -374,7 +377,10 @@ export function App() {
     setAdvancedPick(null)
     playlistHydration.value = null
     if (r?.kind === 'playlist') {
-      setSelectedEntries(new Set((r.playlistEntries ?? []).map((e) => e.url)))
+      const urls = (r.playlistEntries ?? []).map((e) => e.url)
+      const capped =
+        licenseState.value.tier === 'free' ? urls.slice(0, FREE_MAX_PLAYLIST_BATCH) : urls
+      setSelectedEntries(new Set(capped))
       setStreamTab('entries')
       scrollRef.current?.scrollTo({ top: 0 })
     } else {
@@ -386,8 +392,12 @@ export function App() {
     if (busy) return
     setSelectedEntries((prev) => {
       const next = new Set(prev)
-      if (next.has(url)) next.delete(url)
-      else next.add(url)
+      if (next.has(url)) {
+        next.delete(url)
+      } else {
+        if (licenseState.value.tier === 'free' && next.size >= FREE_MAX_PLAYLIST_BATCH) return prev
+        next.add(url)
+      }
       return next
     })
   }
@@ -413,7 +423,14 @@ export function App() {
 
   function toggleAll(select: boolean): void {
     if (busy || result?.kind !== 'playlist') return
-    setSelectedEntries(select ? new Set(result.playlistEntries!.map((e) => e.url)) : new Set())
+    if (!select) {
+      setSelectedEntries(new Set())
+      return
+    }
+    const urls = result.playlistEntries!.map((e) => e.url)
+    const capped =
+      licenseState.value.tier === 'free' ? urls.slice(0, FREE_MAX_PLAYLIST_BATCH) : urls
+    setSelectedEntries(new Set(capped))
   }
 
   async function runSingleJob(config: JobConfig): Promise<'completed' | 'cancelled' | 'failed'> {

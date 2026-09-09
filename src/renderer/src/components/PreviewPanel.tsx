@@ -3,6 +3,8 @@ import { fmtCount, fmtDuration, fmtEta, fmtSize, fmtSpeed } from '../utils/forma
 import { sourceLabel } from '../utils/source'
 import { activeJob, lastJobEvent } from '../signals/jobState'
 import { queueRows } from '../signals/queueState'
+import { licenseState } from '../signals/licenseState'
+import { FREE_MAX_PLAYLIST_BATCH } from '../../../shared/entitlements'
 import {
   AlertIcon,
   CalendarIcon,
@@ -306,6 +308,13 @@ export function PlaylistEntries({
           style={`width: ${total === 0 ? 0 : (selectedCount / total) * 100}%`}
         />
       </div>
+
+      {licenseState.value.tier === 'free' && total > FREE_MAX_PLAYLIST_BATCH && (
+        <p class="mx-3 mt-1.5 rounded-lg border border-amber-500/20 bg-amber-500/[0.07] px-2.5 py-1.5 text-[10.5px] font-medium text-amber-300/90">
+          Free plan: {FREE_MAX_PLAYLIST_BATCH} per run · Upgrade to MediaForge Pro for unlimited
+          batches
+        </p>
+      )}
 
       {total > 0 ? (
         <ol class="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-1.5 text-[13px]">

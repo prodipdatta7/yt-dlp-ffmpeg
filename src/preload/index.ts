@@ -11,6 +11,9 @@ import {
   MF_DIALOG_CHOOSE_DIR,
   MF_JOB_DONE,
   MF_JOB_EVENT,
+  MF_LICENSE_ACTIVATE,
+  MF_LICENSE_DEACTIVATE,
+  MF_LICENSE_GET,
   MF_LOGS_OPEN,
   MF_LOG_CLEAR,
   MF_LOG_HISTORY,
@@ -31,6 +34,8 @@ import {
   type JobConfig,
   type JobDonePayload,
   type JobEvent,
+  type LicenseActivateResult,
+  type LicenseState,
   type LogEntryPayload,
   type MfApi,
   type MfSettingsView,
@@ -85,6 +90,10 @@ const api: MfApi = {
     patch: Partial<Pick<MfSettingsView, 'theme' | 'lastOutputDir'>>,
   ): Promise<MfSettingsView> => ipcRenderer.invoke(MF_SETTINGS_SET, patch),
   markFirstRunSeen: (): Promise<boolean> => ipcRenderer.invoke(MF_SETTINGS_MARK_FIRST_RUN),
+  getLicense: (): Promise<LicenseState> => ipcRenderer.invoke(MF_LICENSE_GET),
+  activateLicense: (key: string): Promise<LicenseActivateResult> =>
+    ipcRenderer.invoke(MF_LICENSE_ACTIVATE, key),
+  deactivateLicense: (): Promise<LicenseState> => ipcRenderer.invoke(MF_LICENSE_DEACTIVATE),
   updaterCheck: (kind: UpdaterDriverKind): Promise<UpdaterCheckResult> =>
     ipcRenderer.invoke(MF_UPDATER_CHECK, kind),
   updaterApply: (kind: UpdaterDriverKind): Promise<UpdaterApplyResult> =>

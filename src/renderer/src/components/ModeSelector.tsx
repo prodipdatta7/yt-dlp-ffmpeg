@@ -10,8 +10,10 @@ import {
   type FormatRow,
 } from '../../../shared/models'
 import { estimateJobBytes } from '../utils/estimate'
-import { FilmIcon, FolderIcon, HardDriveIcon, MusicIcon, SlidersIcon } from './icons'
+import { FilmIcon, FolderIcon, HardDriveIcon, LockIcon, MusicIcon, SlidersIcon } from './icons'
 import { Chip, SectionLabel } from './ui'
+import { licenseState } from '../signals/licenseState'
+import { FREE_MAX_RESOLUTION_TIER } from '../../../shared/entitlements'
 
 export interface JobSelection {
   mode: DownloadMode
@@ -158,6 +160,12 @@ export function ModeSelector({
   }, [hasStreams, mode])
 
   useEffect(() => {
+    if (licenseState.value.tier === 'free' && tier > FREE_MAX_RESOLUTION_TIER) {
+      setTier(FREE_MAX_RESOLUTION_TIER)
+    }
+  }, [licenseState.value.tier, tier])
+
+  useEffect(() => {
     if (!advancedPick || !hasStreams) return
     setMode('advanced')
     setVideoFormatId(advancedPick.videoId)
@@ -202,11 +210,26 @@ export function ModeSelector({
           <div class="flex flex-col gap-1.5">
             <SectionLabel title="Resolution ceiling" />
             <div class="flex flex-wrap gap-1">
-              {RESOLUTION_TIERS.map((t) => (
-                <Chip key={t} active={tier === t} onClick={() => setTier(t)} disabled={disabled}>
-                  {tierLabel(t)}
-                </Chip>
-              ))}
+              {RESOLUTION_TIERS.map((t) => {
+                const locked = licenseState.value.tier === 'free' && t > FREE_MAX_RESOLUTION_TIER
+                return (
+                  <span
+                    key={t}
+                    title={
+                      locked ? `Upgrade to MediaForge Pro to unlock ${tierLabel(t)}` : undefined
+                    }
+                  >
+                    <Chip
+                      active={tier === t}
+                      onClick={() => !locked && setTier(t)}
+                      disabled={disabled || locked}
+                    >
+                      {locked && <LockIcon class="mr-1 inline size-2.5 align-[-1px]" />}
+                      {tierLabel(t)}
+                    </Chip>
+                  </span>
+                )
+              })}
             </div>
           </div>
           <div class="flex flex-col gap-1.5">
