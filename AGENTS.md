@@ -495,8 +495,14 @@ Gate before any commit: `npm run typecheck && npm run lint && npm run test`.
 - Bundle FFmpeg **LGPL-based** builds where possible (no `--enable-gpl` components) to minimize
   obligations; ship `resources/LICENSES/` with yt-dlp (Unlicense), FFmpeg license, Electron.
 - yt-dlp.exe is a PyInstaller onefile (~17MB) — acceptable size cost; do not substitute pip installs.
-- Windows code signing (OV at minimum) strongly recommended before public distribution — unsigned
-  installers trigger SmartScreen. Placeholder config now, cert decision before M7 exit.
+- Windows code signing (OV at minimum) removes SmartScreen's "Unknown publisher" warning, but an
+  OV cert alone doesn't grant instant trust — only a pricier EV cert does; unsigned installers keep
+  triggering "Windows protected your PC." **Decision (no-cert path):** given the cost, we're not
+  signing for now — `electron-builder.yml`'s signing block stays a placeholder. Mitigated instead
+  with a documented workaround (README "Note on Windows SmartScreen": click **Run anyway**) plus
+  the in-app SHA-256 checksum verification already covering both the core-driver updaters (§7.6)
+  and the app's own installer download (AM-15) — the warning is real but the file underneath is
+  still verified. Revisit if/when distribution scale justifies the cert cost.
 - Respect robots/ToS realities: app is a passive client; add first-run notice that users are
   responsible for complying with source-site terms (legal hygiene, no nagging).
 
