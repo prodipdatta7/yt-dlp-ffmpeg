@@ -18,9 +18,12 @@ import { pipeline } from 'node:stream/promises'
 const OUT_DIR = join(process.cwd(), 'binaries', 'win32')
 const YT_DLP_URL = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe'
 const FFMPEG_RELEASE_API_URL = 'https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest'
-// BtbN's master builds are named after the commit (e.g. ffmpeg-N-126482-g903325e279-win64-lgpl.zip),
-// so the asset name changes on every build; resolve it from the release API instead of hardcoding it.
-const FFMPEG_ASSET_RE = /^ffmpeg-N-.*-win64-lgpl\.zip$/
+// BtbN has switched their master-build asset name between a stable alias
+// (ffmpeg-master-latest-win64-lgpl.zip) and a commit-based one
+// (ffmpeg-N-126482-g903325e279-win64-lgpl.zip) more than once, so match either
+// scheme instead of hardcoding one. Excludes the "-shared" build and the
+// version-pinned "ffmpeg-n<digit>..." release builds (e.g. ffmpeg-n9.0-...).
+const FFMPEG_ASSET_RE = /^ffmpeg-(?!n\d).*-win64-lgpl\.zip$/
 const MIN_BYTES = 1_000_000
 
 const force = process.argv.includes('--force')
