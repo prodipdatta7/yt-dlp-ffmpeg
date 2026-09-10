@@ -215,6 +215,15 @@ export function RefreshIcon({ class: cls }: IconProps) {
   )
 }
 
+export function RotateCcwIcon({ class: cls }: IconProps) {
+  return (
+    <Svg class={cls}>
+      <path d="M3 12a9 9 0 1 0 2.64-6.36" />
+      <path d="M3 3v6h6" />
+    </Svg>
+  )
+}
+
 export function ShieldIcon({ class: cls }: IconProps) {
   return (
     <Svg class={cls}>
@@ -325,6 +334,83 @@ export function Spinner({ class: cls = 'size-4' }: { class?: string }) {
     <svg class={`animate-spin ${cls}`} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3.5" />
       <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z" />
+    </svg>
+  )
+}
+
+export function MoreVerticalIcon({ class: cls }: IconProps) {
+  return (
+    <Svg class={cls} filled>
+      <circle cx="12" cy="5" r="1.75" />
+      <circle cx="12" cy="12" r="1.75" />
+      <circle cx="12" cy="19" r="1.75" />
+    </Svg>
+  )
+}
+
+export function ThumbsUpIcon({ class: cls }: IconProps) {
+  return (
+    <Svg class={cls}>
+      <path d="M7 10v12" />
+      <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h3l3.54-5.89A2 2 0 0 1 12.26 3a2 2 0 0 1 2.74 2.88Z" />
+    </Svg>
+  )
+}
+
+export function CheckCircleFilledIcon({ class: cls = 'size-3.5' }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" class={cls} fill="currentColor" aria-hidden="true">
+      <path
+        fill-rule="evenodd"
+        d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm13.36-1.814a.75.75 0 1 0-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z"
+        clip-rule="evenodd"
+      />
+    </svg>
+  )
+}
+
+export function MaximizeIcon({ class: cls }: IconProps) {
+  return (
+    <Svg class={cls}>
+      <path d="M15 3h6v6" />
+      <path d="M9 21H3v-6" />
+      <path d="M21 3l-7 7" />
+      <path d="M3 21l7-7" />
+    </Svg>
+  )
+}
+
+export function HeartFilledIcon({ class: cls = 'size-3.5' }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" class={cls} fill="currentColor" aria-hidden="true">
+      <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35Z" />
+    </svg>
+  )
+}
+
+export function RepeatIcon({ class: cls }: IconProps) {
+  return (
+    <Svg class={cls}>
+      <path d="m17 2 4 4-4 4" />
+      <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+      <path d="m7 22-4-4 4-4" />
+      <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+    </Svg>
+  )
+}
+
+export function SoundcloudIcon({ class: cls }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" class={cls} fill="currentColor" aria-hidden="true">
+      <path d="M11.56 16.5h6.38c2.24 0 4.06-1.82 4.06-4.06 0-2.07-1.55-3.78-3.56-4.02-.45-2.58-2.69-4.42-5.32-4.42-2.12 0-3.99 1.19-4.94 2.94-.37-.11-.76-.17-1.18-.17-2.21 0-4 1.79-4 4 0 .34.05.67.13.98C1.3 12.35.03 14.15.03 16.27.03 18.88 2.15 21 4.76 21h6.8v-4.5Z" />
+    </svg>
+  )
+}
+
+export function BilibiliTvIcon({ class: cls = 'size-3.5' }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" class={cls} fill="currentColor" aria-hidden="true">
+      <path d="M7.15 3.2a.75.75 0 0 1 1.05-.15L11.5 5.5h1l3.3-2.45a.75.75 0 0 1 .9 1.2l-2.15 1.6H19a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3v-8a3 3 0 0 1 3-3h4.45L7.3 4.25a.75.75 0 0 1-.15-1.05ZM5 7.35a1.5 1.5 0 0 0-1.5 1.5v8A1.5 1.5 0 0 0 5 18.35h14a1.5 1.5 0 0 0 1.5-1.5v-8a1.5 1.5 0 0 0-1.5-1.5H5Zm4 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0Zm8 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z" />
     </svg>
   )
 }

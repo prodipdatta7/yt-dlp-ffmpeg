@@ -45,3 +45,46 @@ export function fmtEta(sec: number | null): string {
   const s = Math.round(sec % 60)
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
+
+export function fmtUploadedAgo(
+  timestamp?: number | null,
+  uploadDate?: string | null,
+): string | null {
+  let ms: number | null = null
+  if (typeof timestamp === 'number' && timestamp > 0) {
+    ms = timestamp < 100_000_000_000 ? timestamp * 1000 : timestamp
+  } else if (uploadDate && /^\d{4}-\d{2}-\d{2}$/.test(uploadDate)) {
+    const parsed = Date.parse(uploadDate)
+    if (!Number.isNaN(parsed)) ms = parsed
+  }
+
+  if (ms === null) return null
+
+  const now = Date.now()
+  const diffSec = Math.max(0, Math.round((now - ms) / 1000))
+  if (diffSec < 3600) return 'Uploaded just now'
+  const diffHr = Math.round(diffSec / 3600)
+  if (diffHr < 24) return `Uploaded ${diffHr}h ago`
+  const diffDays = Math.round(diffHr / 24)
+  if (diffDays === 1) return 'Uploaded 1 day ago'
+  if (diffDays < 7) return `Uploaded ${diffDays} days ago`
+  const diffWeeks = Math.round(diffDays / 7)
+  if (diffWeeks === 1) return 'Uploaded 1 week ago'
+  if (diffWeeks < 4) return `Uploaded ${diffWeeks} weeks ago`
+  const diffMonths = Math.round(diffDays / 30.4)
+  if (diffMonths <= 1) return 'Uploaded 1 month ago'
+  if (diffMonths < 12) return `Uploaded ${diffMonths} months ago`
+  const diffYears = Math.round(diffDays / 365)
+  return diffYears <= 1 ? 'Uploaded 1 year ago' : `Uploaded ${diffYears} years ago`
+}
+
+export function fmtLikes(viewCount: number | null, likeCount?: number | null): string | null {
+  if (likeCount != null && Number.isFinite(likeCount) && likeCount > 0) {
+    if (viewCount != null && Number.isFinite(viewCount) && viewCount > 0) {
+      const pct = Math.min(100, Math.max(0, (likeCount / viewCount) * 100)).toFixed(1)
+      return `${pct}% (${fmtCount(likeCount)})`
+    }
+    return fmtCount(likeCount)
+  }
+  return null
+}

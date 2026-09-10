@@ -1,24 +1,28 @@
 import { SEARCH_PLATFORMS, type SearchResultItem } from '../../../shared/models'
-import { CheckSquare, EntryThumb } from './PreviewPanel'
-import { EyeIcon, FilmIcon, LayersIcon, LinkIcon, QueueIcon } from './icons'
+import { CheckSquare } from './PreviewPanel'
+import { FilmIcon, LayersIcon, LinkIcon, QueueIcon, RotateCcwIcon } from './icons'
 import { Pill } from './ui'
-import { fmtCount } from '../utils/format'
 import {
   filteredResults,
   lastSearchedQuery,
+  resetSearch,
   searchResults,
   selectedResultUrls,
   setAllResultsSelected,
   toggleResultSelection,
 } from '../signals/searchState'
+import { SearchResultCard } from './SearchResultCard'
+import type { FormatPresetOption } from '../utils/estimate'
 
 export function SearchResults({
   onOpenInDownloader,
   onAddToQueue,
+  onQuickDownload,
   busy,
 }: {
   onOpenInDownloader: (item: SearchResultItem) => void
-  onAddToQueue: (items: SearchResultItem[]) => void
+  onAddToQueue: (items: SearchResultItem[], preset?: FormatPresetOption) => void
+  onQuickDownload?: (item: SearchResultItem, preset: FormatPresetOption) => void
   busy: boolean
 }) {
   const results = filteredResults.value
@@ -38,13 +42,13 @@ export function SearchResults({
         <button
           onClick={() => setAllResultsSelected(!allSelected)}
           disabled={results.length === 0}
-          class="group mf-focus-ring -ml-1 flex items-center gap-2 rounded-md px-1 py-0.5 text-xs font-medium text-slate-400 transition hover:text-ink"
+          class="group mf-focus-ring -ml-1 flex items-center gap-2 rounded-md px-1 py-0.5 text-xs font-medium text-neutral-600 dark:text-slate-400 transition hover:text-ink"
         >
           <CheckSquare checked={allSelected} partial={someSelected} />
           {allSelected ? 'Deselect all' : 'Select all'}
         </button>
         <span class="flex items-center gap-2">
-          <span class="mf-num text-[11px] font-medium text-slate-500">
+          <span class="mf-num text-[11px] font-medium text-neutral-500 dark:text-slate-400">
             {selectedCount}/{results.length} selected
             {results.length !== total ? ` · ${total} fetched` : ''}
           </span>
@@ -53,7 +57,7 @@ export function SearchResults({
             disabled={selectedCount !== 1 || busy}
             onClick={() => onOpenInDownloader(selectedItems[0])}
             title="Analyze this single result in the Downloader tab"
-            class="mf-focus-ring flex items-center gap-1.5 rounded-lg border border-line-strong px-2.5 py-1 text-[11px] font-semibold text-slate-200 transition hover:border-sky-400/50 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+            class="mf-focus-ring flex items-center gap-1.5 rounded-lg border border-neutral-300 dark:border-line-strong px-2.5 py-1 text-[11px] font-semibold text-neutral-700 dark:text-slate-200 transition hover:border-sky-400/50 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
           >
             <LinkIcon class="size-3.5" />
             Open in Downloader
@@ -71,63 +75,61 @@ export function SearchResults({
         </span>
       </div>
 
-      {lastSearchedQuery.value && (
-        <p class="px-3 pt-1.5 text-[11px] text-slate-500">
-          Results for{' '}
-          <span class="font-medium text-slate-300">“{lastSearchedQuery.value.query}”</span>
-        </p>
-      )}
+      <div class="flex items-center justify-between px-3 pt-1.5">
+        {lastSearchedQuery.value ? (
+          <p class="text-[11px] text-neutral-500 dark:text-slate-400">
+            Results for{' '}
+            <span class="font-medium text-neutral-800 dark:text-slate-200">
+              “{lastSearchedQuery.value.query}”
+            </span>
+          </p>
+        ) : (
+          <div />
+        )}
+        <button
+          type="button"
+          onClick={() => resetSearch()}
+          class="mf-focus-ring flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-neutral-500 hover:text-neutral-900 dark:text-slate-400 dark:hover:text-slate-200 transition"
+          title="Reset search and clear results"
+        >
+          <RotateCcwIcon class="size-3" />
+          <span>Reset search</span>
+        </button>
+      </div>
 
       {results.length > 0 ? (
-        <ol class="mt-1.5 grid min-h-0 flex-1 auto-rows-max grid-cols-1 gap-1 overflow-y-auto p-1.5 text-[13px] sm:grid-cols-2 xl:grid-cols-3">
-          {results.map((entry) => {
-            const checked = selected.has(entry.url)
-            return (
-              <li key={entry.url}>
-                <button
-                  type="button"
-                  onClick={() => toggleResultSelection(entry.url)}
-                  title={checked ? 'Deselect' : 'Select'}
-                  class={`mf-row-hover group flex w-full items-start gap-2.5 rounded-lg border border-transparent px-2 py-1.5 text-left transition hover:bg-wash-2 ${
-                    checked ? 'bg-sky-500/[0.06]' : ''
-                  }`}
-                >
-                  <CheckSquare checked={checked} />
-                  <EntryThumb
-                    url={entry.thumbnailUrl ?? null}
-                    durationSec={entry.durationSec ?? null}
-                  />
-                  <span class="min-w-0 flex-1">
-                    <span
-                      className={`block truncate leading-tight ${checked ? 'text-slate-100' : 'text-slate-300'}`}
-                      title={entry.title}
-                    >
-                      {entry.title}
-                    </span>
-                    <span class="mt-0.5 flex items-center gap-1.5 text-[10.5px] leading-tight text-slate-500">
-                      {entry.uploader ? (
-                        <span class="truncate">{entry.uploader}</span>
-                      ) : (
-                        <span class="italic text-slate-700">unknown channel</span>
-                      )}
-                      {entry.viewCount != null && (
-                        <>
-                          <span class="text-slate-700">·</span>
-                          <EyeIcon class="size-2.5 shrink-0" />
-                          <span class="mf-num shrink-0">{fmtCount(entry.viewCount)}</span>
-                        </>
-                      )}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            )
-          })}
+        <ol class="mt-2 flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto p-2.5">
+          {results.map((entry) => (
+            <SearchResultCard
+              key={entry.url}
+              entry={entry}
+              selected={selected.has(entry.url)}
+              onToggleSelect={toggleResultSelection}
+              onOpenInDownloader={onOpenInDownloader}
+              onQuickDownload={(item, preset) => {
+                if (onQuickDownload) {
+                  onQuickDownload(item, preset)
+                } else {
+                  onAddToQueue([item], preset)
+                }
+              }}
+              onAddToQueue={(item, preset) => onAddToQueue([item], preset)}
+              disabled={busy}
+            />
+          ))}
         </ol>
       ) : (
-        <p class="flex min-h-0 flex-1 items-center justify-center px-4 py-6 text-center text-xs text-slate-600">
-          No results match the current filters. Try loosening the duration/views range.
-        </p>
+        <div class="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-4 py-6 text-center text-xs text-slate-500">
+          <p>No results match the current filters. Try loosening the duration/views range.</p>
+          <button
+            type="button"
+            onClick={() => resetSearch()}
+            class="mf-focus-ring inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 text-xs font-semibold text-slate-300 hover:border-line-strong hover:text-ink transition"
+          >
+            <RotateCcwIcon class="size-3.5" />
+            <span>Reset Search</span>
+          </button>
+        </div>
       )}
 
       <div class="mt-2 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-line bg-wash-1 px-3 py-2 text-[10px] text-slate-500">

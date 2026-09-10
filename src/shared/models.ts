@@ -50,6 +50,7 @@ export interface MediaMetadata {
   uploader: string | null
   durationSec: number | null
   viewCount: number | null
+  likeCount?: number | null
   uploadDate: string | null
   thumbnailUrl: string | null
   isLive: boolean
@@ -60,10 +61,17 @@ export interface PlaylistEntryPreview {
   index: number
   title: string
   url: string
+  id?: string | null
   durationSec?: number | null
   uploader?: string | null
   viewCount?: number | null
+  likeCount?: number | null
+  commentCount?: number | null
   thumbnailUrl?: string | null
+  uploadDate?: string | null
+  timestamp?: number | null
+  isVerified?: boolean
+  description?: string | null
 }
 
 export interface AnalyzeResult {

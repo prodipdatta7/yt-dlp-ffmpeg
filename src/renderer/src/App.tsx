@@ -34,6 +34,7 @@ import {
   applyAnalyzeStream,
   playlistHydration,
   resetAnalysis,
+  triggerAnalyze,
 } from './signals/appState'
 import {
   activeView,
@@ -67,7 +68,7 @@ import {
 } from './signals/queueState'
 import type { DownloadStartResponse } from '../../shared/ipcContract'
 import type { FormatRow, JobConfig, SearchResultItem } from '../../shared/models'
-import { estimateEntryBytes } from './utils/estimate'
+import { estimateEntryBytes, estimatePresetBytes, type FormatPresetOption } from './utils/estimate'
 import { fmtSize } from './utils/format'
 import { POPULAR_SOURCES } from './utils/source'
 
@@ -715,7 +716,7 @@ export function App() {
 
   function openSearchResultInDownloader(item: SearchResultItem) {
     activeView.value = 'download'
-    window.dispatchEvent(new CustomEvent('mf:analyze-url', { detail: { url: item.url } }))
+    void triggerAnalyze(item.url)
   }
 
   async function launchQueueFromSearch(items: SearchResultItem[], sel: JobSelection) {
@@ -726,6 +727,23 @@ export function App() {
     runCtxRef.current = { entries, selection: sel, playlistTitle: undefined, runMode: 'sequential' }
     activeView.value = 'queue'
     await runQueue(entries, sel, undefined, 0)
+  }
+
+  async function handleQuickDownloadFromSearch(item: SearchResultItem, preset: FormatPresetOption) {
+    if (busy) return
+    const defaultDir = (await window.mf.getDefaultDestDir().catch(() => '')) || ''
+    const sel: JobSelection = {
+      mode: preset.mode,
+      tier: preset.tier ?? 1080,
+      container: preset.container ?? 'mp4',
+      audioFormat: preset.audioFormat ?? 'mp3',
+      bitrate: preset.bitrate ?? null,
+      videoFormatId: '',
+      audioFormatId: '',
+      destDir: defaultDir,
+      estimatedBytes: estimatePresetBytes(preset, item.durationSec ?? null),
+    }
+    await launchQueueFromSearch([item], sel)
   }
 
   async function startDownload(mode: QueueRunMode = 'sequential') {
@@ -912,6 +930,7 @@ export function App() {
             <SearchScreen
               onOpenInDownloader={openSearchResultInDownloader}
               onAddToQueue={(items) => setQueueDraft(items)}
+              onQuickDownload={(item, preset) => void handleQuickDownloadFromSearch(item, preset)}
               busy={busy}
             />
           </main>

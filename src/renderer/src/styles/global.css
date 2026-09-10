@@ -1,5 +1,7 @@
 @import 'tailwindcss';
 
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
 @theme {
   --font-sans:
     'Segoe UI Variable Display', 'Segoe UI Variable Text', 'Inter var', 'Inter', 'Segoe UI',

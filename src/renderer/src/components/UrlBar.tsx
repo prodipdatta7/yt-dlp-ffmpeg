@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
-import { analyzing, analysis, analyzeError, resetAnalysis, urlInput } from '../signals/appState'
+import {
+  analyzing,
+  analysis,
+  analyzeError,
+  resetAnalysis,
+  triggerAnalyze,
+  urlInput,
+} from '../signals/appState'
 import { openSettings } from '../signals/uiState'
 import {
   AlertIcon,
@@ -24,24 +31,10 @@ export function UrlBar() {
   const inputRef = useRef<HTMLInputElement>(null)
   const invalid = value.length > 0 && !URL_PATTERN.test(value.trim())
 
-  async function runAnalyze(url: string) {
-    resetAnalysis()
-    analyzing.value = true
-    try {
-      const response = await window.mf.analyzeStart(url)
-      if (response.kind === 'ok') analysis.value = response.result
-      else analyzeError.value = { code: response.code, message: response.message }
-    } catch {
-      analyzeError.value = { code: 'MF_UNKNOWN', message: 'Unexpected IPC failure.' }
-    } finally {
-      analyzing.value = false
-    }
-  }
-
   async function submit() {
     const url = value.trim()
     if (!url || analyzing.value) return
-    await runAnalyze(url)
+    await triggerAnalyze(url)
   }
 
   function cancel() {
@@ -58,7 +51,7 @@ export function UrlBar() {
     const url = (raw ?? '').trim().split('\n')[0]?.trim() ?? ''
     if (!URL_PATTERN.test(url)) return
     setValue(url)
-    void runAnalyze(url)
+    void triggerAnalyze(url)
   }
 
   useEffect(() => {
@@ -98,8 +91,7 @@ export function UrlBar() {
     const onAnalyzeUrlRequest = (event: Event): void => {
       const url = (event as CustomEvent<{ url: string }>).detail?.url
       if (!url || analyzing.value) return
-      setValue(url)
-      void runAnalyze(url)
+      void triggerAnalyze(url)
     }
     window.addEventListener('mf:analyze-url', onAnalyzeUrlRequest)
 

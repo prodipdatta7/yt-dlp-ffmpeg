@@ -5,9 +5,9 @@ import { defineConfig } from 'electron-vite'
 import type { Plugin } from 'vite'
 
 const STRICT_CSP =
-  "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data:; connect-src 'none'"
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; frame-src 'self' https://www.youtube-nocookie.com https://www.youtube.com https://player.bilibili.com https://w.soundcloud.com https://*.soundcloud.com https://soundcloud.com https://player.vimeo.com; child-src 'self' https://www.youtube-nocookie.com https://www.youtube.com https://player.bilibili.com https://w.soundcloud.com https://*.soundcloud.com https://soundcloud.com https://player.vimeo.com; media-src 'self' https: data: blob:; connect-src 'none'"
 const DEV_CSP =
-  "default-src 'self'; script-src 'self' 'unsafe-inline' http://localhost:*; style-src 'self' 'unsafe-inline' http://localhost:*; img-src 'self' https: data:; connect-src 'self' ws://localhost:* http://localhost:*"
+  "default-src 'self'; script-src 'self' 'unsafe-inline' http://localhost:*; style-src 'self' 'unsafe-inline' http://localhost:*; img-src 'self' https: data:; frame-src 'self' https://www.youtube-nocookie.com https://www.youtube.com https://player.bilibili.com https://w.soundcloud.com https://*.soundcloud.com https://soundcloud.com https://player.vimeo.com; child-src 'self' https://www.youtube-nocookie.com https://www.youtube.com https://player.bilibili.com https://w.soundcloud.com https://*.soundcloud.com https://soundcloud.com https://player.vimeo.com; media-src 'self' https: data: blob:; connect-src 'self' ws://localhost:* http://localhost:*"
 
 function cspPlugin(): Plugin {
   return {

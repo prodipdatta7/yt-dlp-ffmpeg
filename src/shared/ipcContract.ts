@@ -50,6 +50,14 @@ export const MF_REVEAL_PATH = 'mf:reveal-path' as const
 export const MF_OPEN_FILE = 'mf:open-file' as const
 export const MF_SEARCH_START = 'mf:search:start' as const
 export const MF_SEARCH_CANCEL = 'mf:search:cancel' as const
+export const MF_SEARCH_ENTRY = 'mf:search:entry' as const
+
+export interface SearchHydratePayload {
+  url: string
+  uploadDate: string | null
+  timestamp: number | null
+  likeCount: number | null
+}
 
 export interface PingResult {
   pong: string
@@ -220,6 +228,7 @@ export interface MfApi {
   onUpdaterPhase(listener: (event: UpdaterPhaseEvent) => void): () => void
   searchStart(req: SearchRequest): Promise<SearchResponse>
   searchCancel(): Promise<{ ok: boolean }>
+  onSearchEntry(listener: (event: SearchHydratePayload) => void): () => void
   getAppVersion(): Promise<{ version: string }>
   checkAppUpdate(): Promise<AppUpdateCheckResult>
   openAppReleasePage(): Promise<{ ok: boolean }>

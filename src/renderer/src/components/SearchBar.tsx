@@ -4,14 +4,26 @@ import {
   filterMaxDurationSec,
   filterMinDurationSec,
   filterMinViews,
+  lastSearchedQuery,
+  resetSearch,
+  searchError,
   searchLimit,
   searchPlatform,
   searchQuery,
+  searchResults,
   searchSort,
   searching,
 } from '../signals/searchState'
 import { Segmented } from './ui'
-import { AlertIcon, CheckIcon, CloseIcon, SearchIcon, SlidersIcon, Spinner } from './icons'
+import {
+  AlertIcon,
+  CheckIcon,
+  CloseIcon,
+  RotateCcwIcon,
+  SearchIcon,
+  SlidersIcon,
+  Spinner,
+} from './icons'
 
 const PLATFORM_ACCENTS: Record<string, string> = {
   youtube: 'bg-rose-500',
@@ -66,6 +78,13 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
     (filterMinDurationSec.value !== null ? 1 : 0) +
     (filterMaxDurationSec.value !== null ? 1 : 0) +
     (filterMinViews.value !== null ? 1 : 0)
+
+  const hasStateToReset =
+    query.length > 0 ||
+    searchResults.value.length > 0 ||
+    lastSearchedQuery.value !== null ||
+    searchError.value !== null ||
+    activeFilterCount > 0
 
   useDismiss(filtersOpen, filtersRef, () => setFiltersOpen(false))
   useDismiss(platformOpen, platformRef, () => setPlatformOpen(false))
@@ -180,7 +199,7 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
           </button>
         )}
 
-        {/* right: run search */}
+        {/* right: run search and reset */}
         {busy ? (
           <button
             type="button"
@@ -191,17 +210,34 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
             Cancel
           </button>
         ) : (
-          <button
-            type="submit"
-            disabled={query.trim().length === 0}
-            className={`mf-focus-ring m-1.5 inline-flex shrink-0 items-center gap-2 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-500 px-5 text-sm font-bold text-white shadow-lg shadow-sky-500/25 transition-all duration-150 hover:brightness-110 active:scale-[0.98] ${
-              query.trim().length === 0 ? 'cursor-not-allowed opacity-35 shadow-none' : ''
-            }`}
-            title="Search (Enter)"
-          >
-            <SearchIcon class="size-4" />
-            Search
-          </button>
+          <div class="flex shrink-0 items-center gap-1.5 p-1.5">
+            {hasStateToReset && (
+              <button
+                type="button"
+                onClick={() => {
+                  resetSearch()
+                  inputRef.current?.focus()
+                }}
+                title="Reset search, filters and clear results"
+                aria-label="Reset search"
+                class="mf-focus-ring inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-line-strong px-3 py-2 text-xs font-semibold text-neutral-600 dark:text-slate-300 transition hover:border-neutral-400 hover:text-ink active:scale-[0.98] dark:hover:border-slate-500"
+              >
+                <RotateCcwIcon class="size-3.5" />
+                <span>Reset</span>
+              </button>
+            )}
+            <button
+              type="submit"
+              disabled={query.trim().length === 0}
+              className={`mf-focus-ring inline-flex shrink-0 items-center gap-2 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-500 px-5 py-2 text-sm font-bold text-white shadow-lg shadow-sky-500/25 transition-all duration-150 hover:brightness-110 active:scale-[0.98] ${
+                query.trim().length === 0 ? 'cursor-not-allowed opacity-35 shadow-none' : ''
+              }`}
+              title="Search (Enter)"
+            >
+              <SearchIcon class="size-4" />
+              Search
+            </button>
+          </div>
         )}
 
         {/* far right: advanced filters popover */}

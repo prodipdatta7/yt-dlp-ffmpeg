@@ -41,6 +41,17 @@ export function resetSearchResults(): void {
   lastSearchedQuery.value = null
 }
 
+export function resetSearch(): void {
+  searchQuery.value = ''
+  searchResults.value = []
+  searchError.value = null
+  selectedResultUrls.value = new Set()
+  lastSearchedQuery.value = null
+  filterMinDurationSec.value = null
+  filterMaxDurationSec.value = null
+  filterMinViews.value = null
+}
+
 export function toggleResultSelection(url: string): void {
   const next = new Set(selectedResultUrls.value)
   if (next.has(url)) next.delete(url)
@@ -50,4 +61,22 @@ export function toggleResultSelection(url: string): void {
 
 export function setAllResultsSelected(select: boolean): void {
   selectedResultUrls.value = select ? new Set(filteredResults.value.map((r) => r.url)) : new Set()
+}
+
+if (typeof window !== 'undefined' && window.mf?.onSearchEntry) {
+  window.mf.onSearchEntry((item) => {
+    searchResults.value = searchResults.value.map((r) => {
+      const match =
+        r.url === item.url ||
+        (Boolean(item.url) && r.url.includes(item.url)) ||
+        (Boolean(item.url) && item.url.includes(r.url))
+      if (!match) return r
+      return {
+        ...r,
+        uploadDate: item.uploadDate ?? r.uploadDate,
+        timestamp: item.timestamp ?? r.timestamp,
+        likeCount: item.likeCount ?? r.likeCount,
+      }
+    })
+  })
 }

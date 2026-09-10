@@ -31,6 +31,7 @@ import {
   Spinner,
 } from './icons'
 import { Pill, StatTile } from './ui'
+import { InlineVideoPreview, InlineVideoPreviewModal } from './InlineVideoPreview'
 
 function LiveBadge() {
   return (
@@ -55,8 +56,8 @@ export function CheckSquare({ checked, partial = false }: { checked: boolean; pa
     <span
       class={`flex size-4 shrink-0 items-center justify-center rounded border transition-colors duration-150 ${
         checked || partial
-          ? 'border-sky-400 bg-sky-500 text-white'
-          : 'border-slate-600 bg-transparent group-hover:border-slate-500'
+          ? 'border-sky-500 bg-sky-500 text-white'
+          : 'border-neutral-300 dark:border-neutral-700 bg-white dark:bg-transparent group-hover:border-neutral-400 dark:group-hover:border-neutral-600'
       }`}
       aria-hidden="true"
     >
@@ -108,6 +109,9 @@ export function LoadingSkeleton() {
 /** Horizontal banner for a single video — pairs with the tabbed panel below it. */
 export function VideoBanner({ result }: { result: AnalyzeResult }) {
   const { metadata } = result
+  const [previewActive, setPreviewActive] = useState(false)
+  const [modalOpen, setModalOpen] = useState(false)
+
   const source = sourceLabel(metadata.webpageUrl)
   const chips: Array<{ Icon: typeof ClockIcon; text: string }> = []
   if (metadata.durationSec !== null)
@@ -119,21 +123,53 @@ export function VideoBanner({ result }: { result: AnalyzeResult }) {
 
   return (
     <div class="mf-card mf-card-hover flex shrink-0 items-stretch gap-4 p-3.5">
-      {metadata.thumbnailUrl ? (
-        <ThumbFrame className="w-44 sm:w-52">
+      {previewActive ? (
+        <ThumbFrame className="w-52 sm:w-60 aspect-video">
+          <InlineVideoPreview
+            url={metadata.webpageUrl}
+            title={metadata.title}
+            onClose={() => setPreviewActive(false)}
+            onExpand={() => setModalOpen(true)}
+            className="size-full"
+          />
+        </ThumbFrame>
+      ) : metadata.thumbnailUrl ? (
+        <ThumbFrame className="group relative w-44 sm:w-52 aspect-video cursor-pointer">
           <img
             src={metadata.thumbnailUrl}
             alt=""
             class="aspect-video size-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
           />
           <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-scrim/45 via-transparent to-transparent" />
+          <button
+            type="button"
+            onClick={() => setPreviewActive(true)}
+            title="Play inline video preview"
+            class="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity duration-200 group-hover:opacity-100 hover:bg-black/45"
+          >
+            <span class="flex items-center gap-1.5 rounded-full bg-sky-600 px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-md transition-transform duration-150 hover:scale-105 active:scale-95">
+              <PlayIcon class="size-3.5 fill-white" />
+              <span>Preview</span>
+            </span>
+          </button>
           {metadata.isLive ? <LiveBadge /> : <DurationBadge seconds={metadata.durationSec} />}
         </ThumbFrame>
       ) : (
-        <ThumbFrame className="flex w-44 items-center justify-center sm:w-52">
+        <ThumbFrame className="group relative flex w-44 items-center justify-center sm:w-52 aspect-video cursor-pointer">
           <span class="flex aspect-video size-full items-center justify-center bg-gradient-to-br from-sky-500/20 to-indigo-500/15">
             <PlayIcon class="size-6 text-slate-400" />
           </span>
+          <button
+            type="button"
+            onClick={() => setPreviewActive(true)}
+            title="Play inline video preview"
+            class="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity duration-200 group-hover:opacity-100 hover:bg-black/45"
+          >
+            <span class="flex items-center gap-1.5 rounded-full bg-sky-600 px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-md transition-transform duration-150 hover:scale-105 active:scale-95">
+              <PlayIcon class="size-3.5 fill-white" />
+              <span>Preview</span>
+            </span>
+          </button>
           {metadata.isLive ? <LiveBadge /> : <DurationBadge seconds={metadata.durationSec} />}
         </ThumbFrame>
       )}
@@ -161,6 +197,19 @@ export function VideoBanner({ result }: { result: AnalyzeResult }) {
               <span class="mf-num">{text}</span>
             </span>
           ))}
+          <button
+            type="button"
+            onClick={() => setPreviewActive(!previewActive)}
+            title={previewActive ? 'Close inline preview' : 'Preview video'}
+            class={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-semibold transition ${
+              previewActive
+                ? 'border-sky-500 bg-sky-500/15 text-sky-400'
+                : 'border-line-strong bg-recess/60 text-ink hover:bg-wash-1 hover:text-sky-400'
+            }`}
+          >
+            <EyeIcon class="size-3" />
+            <span>{previewActive ? 'Close Preview' : 'Preview Video'}</span>
+          </button>
           {metadata.isLive && (
             <Pill tone="rose">
               <span class="mf-breathe size-1.5 rounded-full bg-current" />
@@ -169,6 +218,15 @@ export function VideoBanner({ result }: { result: AnalyzeResult }) {
           )}
         </div>
       </div>
+
+      {modalOpen && (
+        <InlineVideoPreviewModal
+          url={metadata.webpageUrl}
+          title={metadata.title}
+          uploader={metadata.uploader}
+          onClose={() => setModalOpen(false)}
+        />
+      )}
     </div>
   )
 }

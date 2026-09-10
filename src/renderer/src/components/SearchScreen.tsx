@@ -62,13 +62,17 @@ function SearchSkeleton() {
   )
 }
 
+import type { FormatPresetOption } from '../utils/estimate'
+
 export function SearchScreen({
   onOpenInDownloader,
   onAddToQueue,
+  onQuickDownload,
   busy,
 }: {
   onOpenInDownloader: (item: SearchResultItem) => void
-  onAddToQueue: (items: SearchResultItem[]) => void
+  onAddToQueue: (items: SearchResultItem[], preset?: FormatPresetOption) => void
+  onQuickDownload?: (item: SearchResultItem, preset: FormatPresetOption) => void
   busy: boolean
 }) {
   async function runSearch() {
@@ -146,6 +150,7 @@ export function SearchScreen({
         <SearchResults
           onOpenInDownloader={onOpenInDownloader}
           onAddToQueue={onAddToQueue}
+          onQuickDownload={onQuickDownload}
           busy={busy}
         />
       )}

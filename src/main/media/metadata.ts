@@ -47,6 +47,8 @@ export interface RawInfo {
   duration?: number | null
   view_count?: number | null
   concurrent_view_count?: number | null
+  like_count?: number | null
+  comment_count?: number | null
   upload_date?: string
   thumbnail?: string | null
   thumbnails?: RawThumbnail[] | null
@@ -58,12 +60,21 @@ export interface RawInfo {
     id?: string
     title?: string
     url?: string
+    webpage_url?: string | null
     duration?: number | null
     view_count?: number | null
+    like_count?: number | null
+    comment_count?: number | null
     uploader?: string | null
     channel?: string | null
     thumbnail?: string | null
     thumbnails?: RawThumbnail[] | null
+    upload_date?: string | null
+    timestamp?: number | null
+    release_timestamp?: number | null
+    channel_is_verified?: boolean
+    uploader_is_verified?: boolean
+    description?: string | null
   }>
 }
 
@@ -84,7 +95,7 @@ function normalizeCodec(value: string | undefined): string | null {
   return value
 }
 
-function mapUploadDate(raw: string | undefined): string | null {
+function mapUploadDate(raw: string | undefined | null): string | null {
   if (!raw || !/^\d{8}$/.test(raw)) return null
   return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`
 }
@@ -99,15 +110,31 @@ export function mapRawInfo(raw: RawInfo, sourceUrl: string): AnalyzeResult {
   if (raw._type === 'playlist') {
     const entries: PlaylistEntryPreview[] = (raw.entries ?? [])
       .slice(0, 1000)
-      .map((e, i) => ({
-        index: i + 1,
-        title: e.title ?? e.id ?? `Entry ${i + 1}`,
-        url: e.url ?? e.id ?? '',
-        durationSec: typeof e.duration === 'number' ? e.duration : null,
-        uploader: e.uploader ?? e.channel ?? null,
-        viewCount: typeof e.view_count === 'number' ? e.view_count : null,
-        thumbnailUrl: firstThumbnailUrl(e),
-      }))
+      .map((e, i) => {
+        const rawTs =
+          typeof e.timestamp === 'number'
+            ? e.timestamp
+            : typeof e.release_timestamp === 'number'
+              ? e.release_timestamp
+              : null
+        return {
+          index: i + 1,
+          title: e.title ?? e.id ?? `Entry ${i + 1}`,
+          url: e.webpage_url ?? e.url ?? e.id ?? '',
+          id: e.id ?? null,
+          durationSec: typeof e.duration === 'number' ? e.duration : null,
+          uploader: e.uploader ?? e.channel ?? null,
+          viewCount: typeof e.view_count === 'number' ? e.view_count : null,
+          likeCount: typeof e.like_count === 'number' ? e.like_count : null,
+          commentCount: typeof e.comment_count === 'number' ? e.comment_count : null,
+          thumbnailUrl: firstThumbnailUrl(e),
+          uploadDate: mapUploadDate(e.upload_date),
+          timestamp:
+            rawTs !== null && rawTs > 0 ? (rawTs < 100_000_000_000 ? rawTs * 1000 : rawTs) : null,
+          isVerified: e.channel_is_verified === true || e.uploader_is_verified === true,
+          description: e.description ?? null,
+        }
+      })
       .filter((e) => e.url.length > 0)
     const metadata: MediaMetadata = {
       id: raw.id ?? null,
@@ -115,6 +142,7 @@ export function mapRawInfo(raw: RawInfo, sourceUrl: string): AnalyzeResult {
       uploader: raw.uploader ?? raw.channel ?? null,
       durationSec: null,
       viewCount: null,
+      likeCount: null,
       uploadDate: null,
       thumbnailUrl: firstThumbnailUrl(raw),
       isLive: false,
@@ -149,6 +177,7 @@ export function mapRawInfo(raw: RawInfo, sourceUrl: string): AnalyzeResult {
     uploader: raw.uploader ?? raw.channel ?? null,
     durationSec: typeof raw.duration === 'number' ? raw.duration : null,
     viewCount: raw.view_count ?? raw.concurrent_view_count ?? null,
+    likeCount: typeof raw.like_count === 'number' ? raw.like_count : null,
     uploadDate: mapUploadDate(raw.upload_date),
     thumbnailUrl: firstThumbnailUrl(raw),
     isLive: raw.is_live === true || raw.live_status === 'is_live',

@@ -22,6 +22,7 @@ import {
   MF_REVEAL_PATH,
   MF_OPEN_FILE,
   MF_SEARCH_CANCEL,
+  MF_SEARCH_ENTRY,
   MF_SEARCH_START,
   MF_SETTINGS_CLEAR_COOKIES,
   MF_SETTINGS_GET,
@@ -52,6 +53,7 @@ import {
   type PartialsClearResult,
   type PartialsListResult,
   type PingResult,
+  type SearchHydratePayload,
   type SearchRequest,
   type SearchResponse,
   type UpdaterApplyResult,
@@ -129,6 +131,12 @@ const api: MfApi = {
   searchStart: (req: SearchRequest): Promise<SearchResponse> =>
     ipcRenderer.invoke(MF_SEARCH_START, req),
   searchCancel: (): Promise<{ ok: boolean }> => ipcRenderer.invoke(MF_SEARCH_CANCEL),
+  onSearchEntry: (listener: (event: SearchHydratePayload) => void): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: SearchHydratePayload): void =>
+      listener(payload)
+    ipcRenderer.on(MF_SEARCH_ENTRY, wrapped)
+    return () => ipcRenderer.removeListener(MF_SEARCH_ENTRY, wrapped)
+  },
   getAppVersion: (): Promise<{ version: string }> => ipcRenderer.invoke(MF_APP_VERSION),
   checkAppUpdate: (): Promise<AppUpdateCheckResult> => ipcRenderer.invoke(MF_APP_UPDATE_CHECK),
   openAppReleasePage: (): Promise<{ ok: boolean }> =>

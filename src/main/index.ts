@@ -28,7 +28,13 @@ import type {
   SearchResponse,
 } from '../shared/ipcContract'
 import type { SearchSort } from '../shared/models'
-import { MF_LOG_LINE, MF_UPDATER_PHASE, MF_APP_UPDATE_PHASE } from '../shared/ipcContract'
+import {
+  MF_LOG_LINE,
+  MF_UPDATER_PHASE,
+  MF_APP_UPDATE_PHASE,
+  MF_SEARCH_ENTRY,
+  type SearchHydratePayload,
+} from '../shared/ipcContract'
 import { LogBus } from './logs/logBus'
 import { ERROR_MESSAGES } from '../shared/models'
 import { createLogger, type Logger } from './store/logger'
@@ -178,11 +184,18 @@ app.whenReady().then(() => {
     onProcessLine: tapProcessLines,
   })
 
+  const sendSearchEntry = (payload: SearchHydratePayload): void => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send(MF_SEARCH_ENTRY, payload)
+    }
+  }
+
   const searchService = new SearchService({
     resolveYtDlp: () => binariesService.locate('yt-dlp'),
     logger,
     getCookiesPath: resolveCookiesPath,
     onProcessLine: tapProcessLines,
+    onEntryHydrated: sendSearchEntry,
   })
 
   const orchestrator = new DownloadOrchestrator({

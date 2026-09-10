@@ -20,6 +20,37 @@ export function resetAnalysis(): void {
   resetQueueForNewAnalysis()
 }
 
+/**
+ * Automates pasting a URL into the link bar and triggering metadata analysis.
+ * Safely cancels any in-flight analyze before launching the new request.
+ */
+export async function triggerAnalyze(url: string): Promise<void> {
+  const cleanUrl = url.trim()
+  if (!cleanUrl) return
+  if (analyzing.value) {
+    try {
+      await window.mf?.analyzeCancel?.()
+    } catch {
+      /* ignore cancel err */
+    }
+  }
+  urlInput.value = cleanUrl
+  resetAnalysis()
+  analyzing.value = true
+  try {
+    const response = await window.mf.analyzeStart(cleanUrl)
+    if (response.kind === 'ok') {
+      analysis.value = response.result
+    } else {
+      analyzeError.value = { code: response.code, message: response.message }
+    }
+  } catch {
+    analyzeError.value = { code: 'MF_UNKNOWN', message: 'Unexpected IPC failure.' }
+  } finally {
+    analyzing.value = false
+  }
+}
+
 export function applyAnalyzeStream(event: AnalyzeStreamEvent): void {
   if (event.kind === 'outline') {
     analysis.value = event.result

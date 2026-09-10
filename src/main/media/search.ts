@@ -1,4 +1,5 @@
 import { SEARCH_PLATFORMS, type SearchResultItem, type SearchSort } from '../../shared/models'
+import type { SearchHydratePayload } from '../../shared/ipcContract'
 import type { LocatedBinary } from '../binaries/locator'
 import { spawnProcess, type SpawnHandle } from '../binaries/runner'
 import type { Logger } from '../store/logger'
@@ -12,11 +13,26 @@ export interface SearchServiceOptions {
   getCookiesPath?: () => string | null
   /** Raw CLI line tap (stdout/stderr of yt-dlp) for the live console. */
   onProcessLine?: (line: string, stream: 'out' | 'err') => void
+  onEntryHydrated?: (item: SearchHydratePayload) => void
 }
 
-/** Search results are one flat `-J` call — no per-entry hydration (that would spawn one
- * yt-dlp process per result, which is exactly the "heavy" cost this feature avoids). A
- * single result card only gets full details once the user opens it in the Downloader tab. */
+/** Parses a formatted print line "%(webpage_url)s|%(upload_date)s|%(timestamp)s|%(like_count)s" */
+export function parseHydrateLine(line: string): SearchHydratePayload | null {
+  const parts = line.trim().split('|')
+  if (parts.length < 4) return null
+  const [url, rawDate, rawTs, rawLikes] = parts
+  if (!url || !url.startsWith('http')) return null
+  const uploadDate = /^\d{8}$/.test(rawDate)
+    ? `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`
+    : null
+  const tsNum = Number(rawTs)
+  const timestamp =
+    Number.isFinite(tsNum) && tsNum > 0 ? (tsNum < 100_000_000_000 ? tsNum * 1000 : tsNum) : null
+  const likesNum = Number(rawLikes)
+  const likeCount = Number.isFinite(likesNum) && likesNum > 0 ? likesNum : null
+  return { url, uploadDate, timestamp, likeCount }
+}
+
 const SEARCH_TIMEOUT_MS = 45_000
 
 export class SearchService {
@@ -91,7 +107,64 @@ export class SearchService {
     }
 
     const mapped = mapRawInfo(raw, pseudoUrl)
-    const entries = mapped.kind === 'playlist' ? (mapped.playlistEntries ?? []) : []
-    return entries.map((entry) => ({ ...entry, platform: platformId }))
+    const entries: SearchResultItem[] = (
+      mapped.kind === 'playlist' ? (mapped.playlistEntries ?? []) : []
+    ).map((entry) => ({ ...entry, platform: platformId }))
+
+    // Kick off progressive background hydration of real upload date and likes
+    if (this.opts.onEntryHydrated && entries.length > 0) {
+      void this.hydrateEntries(binary.path, entries)
+    }
+
+    return entries
+  }
+
+  private async hydrateEntries(binaryPath: string, entries: SearchResultItem[]): Promise<void> {
+    if (!this.opts.onEntryHydrated || entries.length === 0 || this.cancelRequested) return
+
+    const chunkSize = 4
+    const chunks: SearchResultItem[][] = []
+    for (let i = 0; i < entries.length; i += chunkSize) {
+      chunks.push(entries.slice(i, i + chunkSize))
+    }
+
+    let nextChunk = 0
+    const worker = async (): Promise<void> => {
+      while (nextChunk < chunks.length && !this.cancelRequested) {
+        const chunk = chunks[nextChunk++]
+        const urls = chunk.map((e) => e.url).filter((u) => u.startsWith('http'))
+        if (urls.length === 0) continue
+
+        const args = [
+          '--no-warnings',
+          '--print',
+          '%(webpage_url)s|%(upload_date)s|%(timestamp)s|%(like_count)s',
+        ]
+        const cookies = this.opts.getCookiesPath?.()
+        if (cookies) args.push('--cookies', cookies)
+        args.push(...urls)
+
+        const handle = spawnProcess(binaryPath, args, {
+          onStdoutLine: (line) => {
+            const parsed = parseHydrateLine(line)
+            if (parsed) {
+              this.opts.onEntryHydrated?.(parsed)
+            }
+          },
+          timeoutMs: 30_000,
+        })
+        this.activeHandles.add(handle)
+        try {
+          await handle.result
+        } catch {
+          /* best effort */
+        } finally {
+          this.activeHandles.delete(handle)
+        }
+      }
+    }
+
+    const concurrency = Math.min(2, chunks.length)
+    await Promise.all(Array.from({ length: concurrency }, () => worker()))
   }
 }
