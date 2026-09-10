@@ -1,4 +1,4 @@
-import type { SearchFilterCriteria } from '../../shared/models'
+import type { SearchFilterCriteria, SearchPlatform } from '../../shared/models'
 
 export function buildAnalyzeArgs(
   url: string,
@@ -93,6 +93,28 @@ export interface ResolvedSearchTarget {
 }
 
 /**
+ * Builds the fixed, allowlisted query text for federated public-web discovery. It deliberately
+ * returns no yt-dlp flags: this lookup is performed by the main process without cookies, then
+ * each admitted URL is validated and hydrated through yt-dlp separately.
+ */
+export function buildFederatedDiscoveryQuery(
+  platform: SearchPlatform,
+  query: string,
+  limit: number,
+): ResolvedSearchTarget {
+  if (platform.discovery.kind !== 'public-web') {
+    throw new Error('Federated discovery requires a public-web platform')
+  }
+  const safeLimit = Number.isFinite(limit) ? Math.trunc(limit) : SEARCH_LIMIT_DEFAULT
+  const userLimit = Math.min(SEARCH_LIMIT_MAX, Math.max(SEARCH_LIMIT_MIN, safeLimit))
+  return {
+    urlOrQuery: `${platform.discovery.queryScope} ${query}`,
+    extraFlags: [],
+    candidateLimit: Math.min(SEARCH_LIMIT_MAX, Math.max(userLimit * 3, userLimit)),
+  }
+}
+
+/**
  * Resolves the primary URL/pseudo-URL and CLI flags for a search operation.
  * For YouTube:
  * - Native search operator `after:YYYY-MM-DD` is injected directly into the query for upload recency
@@ -104,8 +126,7 @@ export interface ResolvedSearchTarget {
  * match-filters and sorting retain a full page of results up to the requested limit.
  */
 export function buildSearchTarget(
-  platformId: string,
-  prefix: string,
+  platform: SearchPlatform,
   query: string,
   limit: number,
   sort: string,
@@ -114,6 +135,12 @@ export function buildSearchTarget(
   const safeLimit = Number.isFinite(limit) ? Math.trunc(limit) : SEARCH_LIMIT_DEFAULT
   const userLimit = Math.min(SEARCH_LIMIT_MAX, Math.max(SEARCH_LIMIT_MIN, safeLimit))
 
+  if (platform.discovery.kind === 'public-web') {
+    return buildFederatedDiscoveryQuery(platform, query, userLimit)
+  }
+
+  const platformId = platform.id
+  const prefix = platform.discovery.prefix
   const hasCriteria =
     sort !== 'relevance' ||
     Boolean(
@@ -219,7 +246,7 @@ export function buildSearchTarget(
     }
   }
 
-  // Default prefix extractor query (SoundCloud, Bilibili)
+  // Default native prefix extractor query (SoundCloud, Bilibili)
   let fallbackQuery = query
   if (platformId === 'bilibili' && filters?.contentType === 'music') {
     if (!/\b(mv|music video|音乐)\b/i.test(fallbackQuery)) {

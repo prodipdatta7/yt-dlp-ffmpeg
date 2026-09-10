@@ -23,6 +23,7 @@ import {
   filterVerifiedOnly,
   lastSearchedQuery,
   parseViewCountInput,
+  resetFilters,
   resetSearch,
   saveDefaultSearchFilters,
   searchError,
@@ -48,6 +49,11 @@ const PLATFORM_ACCENTS: Record<string, string> = {
   youtube: 'bg-rose-500',
   soundcloud: 'bg-orange-500',
   bilibili: 'bg-sky-400',
+  facebook: 'bg-blue-600',
+  instagram: 'bg-fuchsia-500',
+  twitter: 'bg-slate-400',
+  tiktok: 'bg-cyan-400',
+  reddit: 'bg-orange-600',
 }
 
 type DurationPreset = 'all' | 'short' | 'medium' | 'long'
@@ -87,6 +93,7 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
   const infoRef = useRef<HTMLDivElement>(null)
   const platform =
     SEARCH_PLATFORMS.find((p) => p.id === searchPlatform.value) ?? SEARCH_PLATFORMS[0]
+  const federated = platform.discovery.kind === 'public-web'
   const query = searchQuery.value
   const busy = searching.value
 
@@ -97,9 +104,15 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
 
   function selectPlatform(id: string) {
     searchPlatform.value = id
-    if (searchSort.value === 'newest') {
-      const next = SEARCH_PLATFORMS.find((p) => p.id === id)
-      if (!next?.dateSortPrefix) searchSort.value = 'relevance'
+    const next = SEARCH_PLATFORMS.find((p) => p.id === id)
+    if (next && !next.supportsAdvancedFilters) {
+      resetFilters()
+      saveDefaultSearchFilters()
+    } else if (
+      searchSort.value === 'newest' &&
+      (next?.discovery.kind !== 'native-ytdlp' || !next.discovery.dateSortPrefix)
+    ) {
+      searchSort.value = 'relevance'
     }
     setPlatformOpen(false)
   }
@@ -279,11 +292,11 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
             }}
             aria-expanded={filtersOpen}
             aria-haspopup="true"
-            title="Advanced filters & criteria"
+            title={federated ? 'Public-web search options' : 'Advanced filters & criteria'}
             className={`mf-focus-ring inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] font-semibold transition ${
               filtersOpen || totalActiveFilters > 0
                 ? 'border-orange-500/60 bg-orange-500/10 text-orange-500 dark:text-orange-400'
-                : 'border-line-strong text-slate-300 hover:border-orange-500/40 hover:text-ink'
+                : 'border-line-strong text-slate-300 hover:border-orange-500/40 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40'
             }`}
           >
             <SlidersIcon class="size-3.5" />
@@ -295,18 +308,29 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
             )}
           </button>
 
-          {filtersOpen && (
-            <AdvancedFilters
-              dateSortSupported={platform.id === 'youtube' || !!platform.dateSortPrefix}
-              onClose={() => setFiltersOpen(false)}
-              onApply={() => {
-                const q = searchQuery.value.trim()
-                if (q.length > 0) {
-                  onSubmit()
+          {filtersOpen &&
+            (federated ? (
+              <FederatedSearchOptions
+                onClose={() => setFiltersOpen(false)}
+                onApply={() => {
+                  if (searchQuery.value.trim().length > 0) onSubmit()
+                }}
+              />
+            ) : (
+              <AdvancedFilters
+                dateSortSupported={
+                  platform.discovery.kind === 'native-ytdlp' &&
+                  (platform.id === 'youtube' || Boolean(platform.discovery.dateSortPrefix))
                 }
-              }}
-            />
-          )}
+                onClose={() => setFiltersOpen(false)}
+                onApply={() => {
+                  const q = searchQuery.value.trim()
+                  if (q.length > 0) {
+                    onSubmit()
+                  }
+                }}
+              />
+            ))}
         </div>
 
         {/* info popover right after Filters */}
@@ -358,11 +382,13 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
                 </div>
                 <div class="space-y-1.5 text-xs text-neutral-600 dark:text-slate-300 leading-relaxed">
                   <p>
-                    In-app search only works for platforms yt-dlp can query directly (YouTube,
-                    SoundCloud, Bilibili).
+                    YouTube, SoundCloud, and Bilibili use native yt-dlp search. Facebook, Instagram,
+                    X, TikTok, and Reddit use best-effort public-web discovery. Each discovered link
+                    is checked before it is shown.
                   </p>
                   <p class="text-[11px] text-neutral-500 dark:text-slate-400 border-t border-neutral-100 dark:border-line pt-2">
-                    Every other supported site still works by pasting a link in the Downloader tab.
+                    Web-indexed results may be incomplete. Every supported site still works by
+                    pasting a direct link in the Downloader tab.
                   </p>
                 </div>
               </div>
@@ -371,7 +397,17 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
         </div>
       </form>
 
-      {searchResults.value.length > 0 && (
+      {federated && (
+        <div class="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-1.5 text-[10.5px] text-amber-700 dark:text-amber-300">
+          <InfoIcon class="size-3.5 shrink-0" />
+          <span>
+            Public-web results via DuckDuckGo with a Brave fallback. Results may be incomplete; each
+            link is validated by yt-dlp before Quick Download is enabled.
+          </span>
+        </div>
+      )}
+
+      {searchResults.value.length > 0 && !federated && (
         <div class="mf-search-filter-rail app-no-drag mt-2 flex items-center overflow-x-auto bg-recess px-2 py-1.5">
           <FilterGroup label="Duration">
             {DURATION_PRESETS.map((preset) => (
@@ -444,6 +480,81 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
           </FilterGroup>
         </div>
       )}
+    </div>
+  )
+}
+
+function FederatedSearchOptions({
+  onClose,
+  onApply,
+}: {
+  onClose: () => void
+  onApply: () => void
+}) {
+  const [draftLimit, setDraftLimit] = useState(searchLimit.value)
+
+  return (
+    <div class="absolute right-0 top-full z-40 mt-2 w-72 max-w-[calc(100vw-2rem)]">
+      <div class="mf-card mf-rise rounded-xl border border-neutral-200/90 bg-white p-3.5 text-neutral-800 shadow-2xl dark:border-line-strong dark:bg-[#131722] dark:text-slate-100">
+        <div class="flex items-start justify-between gap-3 border-b border-neutral-100 pb-2 dark:border-line">
+          <div>
+            <p class="text-xs font-bold">Public-web search options</p>
+            <p class="mt-1 text-[10.5px] leading-relaxed text-neutral-500 dark:text-slate-400">
+              Public-web discovery supports relevance and result count only. Structured filters
+              become available after opening a result in Downloader.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            class="rounded-md p-0.5 text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700 dark:text-slate-400 dark:hover:bg-wash-2 dark:hover:text-slate-200"
+          >
+            <CloseIcon class="size-3.5" />
+          </button>
+        </div>
+
+        <div class="pt-3">
+          <span class="text-[11px] font-semibold">Results limit</span>
+          <div class="mt-1.5 grid grid-cols-4 gap-1.5">
+            {SEARCH_RESULT_LIMITS.map((limit) => (
+              <button
+                key={limit}
+                type="button"
+                onClick={() => setDraftLimit(limit)}
+                class={`rounded-lg border py-1 text-xs transition ${
+                  draftLimit === limit
+                    ? 'border-orange-500 bg-orange-500/10 font-bold text-orange-600 dark:text-orange-400'
+                    : 'border-neutral-200 text-neutral-600 hover:border-neutral-300 dark:border-line dark:text-slate-300 dark:hover:border-line-strong'
+                }`}
+              >
+                {limit}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div class="mt-3 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            class="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:bg-neutral-100 dark:border-line-strong dark:text-slate-300 dark:hover:bg-wash-2"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              searchLimit.value = draftLimit
+              onClose()
+              onApply()
+            }}
+            class="rounded-lg bg-orange-500 px-3.5 py-1.5 text-xs font-bold text-white transition hover:bg-orange-600"
+          >
+            Apply
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

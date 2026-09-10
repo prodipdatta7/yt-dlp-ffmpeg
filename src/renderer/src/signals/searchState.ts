@@ -1,4 +1,5 @@
 import { computed, signal } from '@preact/signals'
+import { applySearchHydration } from '../../../shared/searchHydration'
 import {
   DEFAULT_SEARCH_LIMIT,
   SEARCH_PLATFORMS,
@@ -308,18 +309,6 @@ export function setAllResultsSelected(select: boolean): void {
 
 if (typeof window !== 'undefined' && window.mf?.onSearchEntry) {
   window.mf.onSearchEntry((item) => {
-    searchResults.value = searchResults.value.map((r) => {
-      const match =
-        r.url === item.url ||
-        (Boolean(item.url) && r.url.includes(item.url)) ||
-        (Boolean(item.url) && item.url.includes(r.url))
-      if (!match) return r
-      return {
-        ...r,
-        uploadDate: item.uploadDate ?? r.uploadDate,
-        timestamp: item.timestamp ?? r.timestamp,
-        likeCount: item.likeCount ?? r.likeCount,
-      }
-    })
+    searchResults.value = applySearchHydration(searchResults.value, item)
   })
 }

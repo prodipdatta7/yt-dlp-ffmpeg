@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { VideoChaptersResult, VideoTranscriptResult } from '../../../shared/ipcContract'
-import type { ChapterMarker, SearchResultItem, TranscriptCue } from '../../../shared/models'
+import {
+  ERROR_MESSAGES,
+  getSearchPlatform,
+  type ChapterMarker,
+  type SearchResultItem,
+  type TranscriptCue,
+} from '../../../shared/models'
 import { activePreviewUrl, closePreview } from '../signals/searchState'
 import {
   BILIBILI_FORMAT_PRESETS,
@@ -116,6 +122,7 @@ export interface SearchResultCardProps {
   onQuickDownload: (item: SearchResultItem, preset: FormatPresetOption) => void
   onAddToQueue: (item: SearchResultItem, preset: FormatPresetOption) => void
   disabled?: boolean
+  downloadDisabled?: boolean
 }
 
 export function SearchResultCard({
@@ -126,7 +133,9 @@ export function SearchResultCard({
   onQuickDownload,
   onAddToQueue,
   disabled = false,
+  downloadDisabled = false,
 }: SearchResultCardProps) {
+  const platformLabel = getSearchPlatform(entry.platform)?.label ?? entry.platform
   const isSoundCloud =
     entry.platform === 'soundcloud' || (entry.url != null && entry.url.includes('soundcloud.com'))
 
@@ -1426,10 +1435,11 @@ export function SearchResultCard({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation()
-                    setPreviewActive(true)
+                    if (!downloadDisabled) setPreviewActive(true)
                   }}
+                  disabled={disabled || downloadDisabled}
                   title="Play inline video preview"
-                  class="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity duration-200 hover:opacity-100 hover:bg-black/45"
+                  class="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity duration-200 hover:opacity-100 hover:bg-black/45 disabled:cursor-not-allowed"
                 >
                   <span class="flex items-center gap-1.5 rounded-full bg-[#ff5500] px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-md transition-transform duration-150 hover:scale-105 active:scale-95">
                     <PlayIcon class="size-3.5 fill-white" />
@@ -1439,7 +1449,20 @@ export function SearchResultCard({
 
                 {/* Overlaid Badges (Top-Left) */}
                 <div class="pointer-events-none absolute left-2 top-2 z-10 flex items-center gap-1.5">
-                  {isPlaylist ? (
+                  {entry.platform !== 'youtube' && (
+                    <span class="rounded bg-black/75 px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm backdrop-blur-md">
+                      {platformLabel}
+                    </span>
+                  )}
+                  {entry.metadataState === 'loading' ? (
+                    <span class="rounded bg-amber-500 px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm">
+                      Validating
+                    </span>
+                  ) : entry.metadataState === 'unavailable' ? (
+                    <span class="rounded bg-slate-700 px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm">
+                      Metadata unavailable
+                    </span>
+                  ) : isPlaylist ? (
                     <span class="rounded bg-amber-500 px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm flex items-center gap-1">
                       <QueueIcon class="size-3 text-white" />
                       <span>PLAYLIST</span>
@@ -1493,6 +1516,20 @@ export function SearchResultCard({
                     {entry.title}
                   </h3>
 
+                  {entry.metadataState === 'loading' && (
+                    <p class="mt-1 text-[10.5px] font-medium text-amber-600 dark:text-amber-300">
+                      Validating this public link and loading metadata…
+                    </p>
+                  )}
+                  {entry.metadataState === 'unavailable' && (
+                    <p class="mt-1 text-[10.5px] font-medium text-slate-500 dark:text-slate-400">
+                      {entry.metadataErrorCode
+                        ? ERROR_MESSAGES[entry.metadataErrorCode]
+                        : 'Metadata could not be loaded.'}{' '}
+                      Open in Downloader to analyze the link directly.
+                    </p>
+                  )}
+
                   {/* Channel & Metadata Row */}
                   <div class="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
                     <span
@@ -1536,36 +1573,38 @@ export function SearchResultCard({
                 </div>
 
                 {/* Spec Badges Row */}
-                <div class="flex flex-wrap items-center gap-2 text-[11px]">
-                  {/* Format-linked Dynamic Size Badge */}
-                  <div class="rounded-lg border border-[#fed7aa] bg-[#fff8f2] px-2.5 py-1 text-neutral-700 dark:border-orange-500/30 dark:bg-[#1f1915] dark:text-neutral-200">
-                    <span class="font-bold text-[#ea580c] dark:text-orange-400">Size:</span>{' '}
-                    <span class="font-medium text-[#9a3412] dark:text-neutral-200">
-                      {videoSizeSummary}
-                    </span>
-                  </div>
+                {!downloadDisabled && (
+                  <div class="flex flex-wrap items-center gap-2 text-[11px]">
+                    {/* Format-linked Dynamic Size Badge */}
+                    <div class="rounded-lg border border-[#fed7aa] bg-[#fff8f2] px-2.5 py-1 text-neutral-700 dark:border-orange-500/30 dark:bg-[#1f1915] dark:text-neutral-200">
+                      <span class="font-bold text-[#ea580c] dark:text-orange-400">Size:</span>{' '}
+                      <span class="font-medium text-[#9a3412] dark:text-neutral-200">
+                        {videoSizeSummary}
+                      </span>
+                    </div>
 
-                  {/* Audio stream intelligence */}
-                  <div class="rounded-lg border border-neutral-200 bg-[#f4f4f5] px-2.5 py-1 text-neutral-700 dark:border-white/10 dark:bg-[#161c28] dark:text-neutral-200">
-                    <span class="font-bold text-neutral-800 dark:text-neutral-300">Audio:</span>{' '}
-                    <span class="font-medium text-neutral-600 dark:text-neutral-300">
-                      {audioSub.audioBadge}
-                    </span>
-                  </div>
+                    {/* Audio stream intelligence */}
+                    <div class="rounded-lg border border-neutral-200 bg-[#f4f4f5] px-2.5 py-1 text-neutral-700 dark:border-white/10 dark:bg-[#161c28] dark:text-neutral-200">
+                      <span class="font-bold text-neutral-800 dark:text-neutral-300">Audio:</span>{' '}
+                      <span class="font-medium text-neutral-600 dark:text-neutral-300">
+                        {audioSub.audioBadge}
+                      </span>
+                    </div>
 
-                  {/* Subtitles intelligence */}
-                  <div class="rounded-lg border border-[#a7f3d0] bg-[#ecfdf5] px-2.5 py-1 text-[#047857] dark:border-emerald-800/40 dark:bg-[#062419]/60 dark:text-emerald-300">
-                    <span class="font-bold text-[#059669] dark:text-emerald-400">Subtitles:</span>{' '}
-                    <span class="font-medium">{audioSub.subtitleBadge}</span>
-                  </div>
+                    {/* Subtitles intelligence */}
+                    <div class="rounded-lg border border-[#a7f3d0] bg-[#ecfdf5] px-2.5 py-1 text-[#047857] dark:border-emerald-800/40 dark:bg-[#062419]/60 dark:text-emerald-300">
+                      <span class="font-bold text-[#059669] dark:text-emerald-400">Subtitles:</span>{' '}
+                      <span class="font-medium">{audioSub.subtitleBadge}</span>
+                    </div>
 
-                  {/* Technical Details Specs */}
-                  <div class="pl-1 text-[11px] font-medium text-neutral-400 dark:text-neutral-500 whitespace-nowrap">
-                    <span>
-                      {specs.fpsBadge} • {specs.colorProfile}
-                    </span>
+                    {/* Technical Details Specs */}
+                    <div class="pl-1 text-[11px] font-medium text-neutral-400 dark:text-neutral-500 whitespace-nowrap">
+                      <span>
+                        {specs.fpsBadge} • {specs.colorProfile}
+                      </span>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Action Bar (Bottom Row) */}
                 <div class="mt-2.5 flex flex-wrap items-center justify-between gap-3">
@@ -1586,7 +1625,7 @@ export function SearchResultCard({
                           <select
                             value={selectedPresetId}
                             onChange={(e) => setSelectedPresetId(e.currentTarget.value)}
-                            disabled={disabled}
+                            disabled={disabled || downloadDisabled}
                             class="cursor-pointer appearance-none rounded-lg border border-neutral-300 bg-white py-1.5 pl-3 pr-8 text-xs font-medium text-neutral-800 shadow-xs outline-none transition hover:border-neutral-400 focus:border-[#ff5500] focus:ring-1 focus:ring-[#ff5500] disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-200 dark:hover:border-neutral-600"
                           >
                             {SEARCH_FORMAT_PRESETS.map((preset) => {
@@ -1630,7 +1669,7 @@ export function SearchResultCard({
                       <button
                         type="button"
                         onClick={() => setPreviewActive(!previewActive)}
-                        disabled={disabled}
+                        disabled={disabled || downloadDisabled}
                         title={previewActive ? 'Close inline preview' : 'Quick preview video'}
                         class={`mf-focus-ring flex items-center justify-center rounded-lg border p-2 shadow-xs transition disabled:cursor-not-allowed disabled:opacity-50 ${
                           previewActive
@@ -1658,8 +1697,12 @@ export function SearchResultCard({
                       <button
                         type="button"
                         onClick={() => onQuickDownload(entry, currentPreset)}
-                        disabled={disabled}
-                        title={`Download Reel as ${currentPreset.label}`}
+                        disabled={disabled || downloadDisabled}
+                        title={
+                          downloadDisabled
+                            ? 'Waiting for link validation'
+                            : `Download Reel as ${currentPreset.label}`
+                        }
                         class="mf-focus-ring flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 px-4 py-1.5 text-xs font-bold text-white shadow-sm transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <DownloadIcon class="size-4" />
@@ -1669,8 +1712,12 @@ export function SearchResultCard({
                       <button
                         type="button"
                         onClick={() => onQuickDownload(entry, currentPreset)}
-                        disabled={disabled}
-                        title={`Quick Download as ${currentPreset.label}`}
+                        disabled={disabled || downloadDisabled}
+                        title={
+                          downloadDisabled
+                            ? 'Waiting for link validation'
+                            : `Quick Download as ${currentPreset.label}`
+                        }
                         class="mf-focus-ring flex items-center gap-1.5 rounded-lg bg-[#ff5500] hover:bg-[#e04e00] px-4 py-1.5 text-xs font-bold text-white shadow-sm transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <DownloadIcon class="size-4" />
@@ -1699,7 +1746,7 @@ export function SearchResultCard({
                               setMenuOpen(false)
                               onOpenInDownloader(entry)
                             }}
-                            class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-700 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800 dark:hover:text-white"
+                            class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-700 transition hover:bg-neutral-100 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-200 dark:hover:bg-neutral-800 dark:hover:text-white"
                           >
                             <EyeIcon class="size-3.5 text-sky-500" />
                             <span>Open in Downloader</span>
@@ -1707,6 +1754,7 @@ export function SearchResultCard({
 
                           <button
                             type="button"
+                            disabled={downloadDisabled}
                             onClick={() => {
                               setMenuOpen(false)
                               const mp3Preset = SEARCH_FORMAT_PRESETS.find(
@@ -1714,7 +1762,7 @@ export function SearchResultCard({
                               )!
                               onQuickDownload(entry, mp3Preset)
                             }}
-                            class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-700 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800 dark:hover:text-white"
+                            class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-700 transition hover:bg-neutral-100 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-200 dark:hover:bg-neutral-800 dark:hover:text-white"
                           >
                             <MusicIcon class="size-3.5 text-amber-500" />
                             <span>Audio-only Rip (320k MP3)</span>
@@ -1722,6 +1770,7 @@ export function SearchResultCard({
 
                           <button
                             type="button"
+                            disabled={downloadDisabled}
                             onClick={() => {
                               setMenuOpen(false)
                               const flacPreset = SEARCH_FORMAT_PRESETS.find(
@@ -1729,7 +1778,7 @@ export function SearchResultCard({
                               )!
                               onQuickDownload(entry, flacPreset)
                             }}
-                            class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-700 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800 dark:hover:text-white"
+                            class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-700 transition hover:bg-neutral-100 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-200 dark:hover:bg-neutral-800 dark:hover:text-white"
                           >
                             <MusicIcon class="size-3.5 text-indigo-500" />
                             <span>Audio-only Rip (FLAC)</span>
@@ -1741,6 +1790,7 @@ export function SearchResultCard({
                               setMenuOpen(false)
                               onAddToQueue(entry, currentPreset)
                             }}
+                            disabled={downloadDisabled}
                             class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-neutral-700 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800 dark:hover:text-white"
                           >
                             <QueueIcon class="size-3.5 text-emerald-500" />

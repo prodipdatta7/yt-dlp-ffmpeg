@@ -20,6 +20,11 @@ import {
 import { openSettings } from '../signals/uiState'
 
 function SearchEmptyState() {
+  const lastPlatform = lastSearchedQuery.value
+    ? SEARCH_PLATFORMS.find((platform) => platform.id === lastSearchedQuery.value?.platform)
+    : undefined
+  const emptyFederatedSearch = lastPlatform?.discovery.kind === 'public-web'
+
   return (
     <div class="flex min-h-0 flex-1 items-center justify-center">
       <div class="w-full max-w-md text-center">
@@ -29,11 +34,14 @@ function SearchEmptyState() {
           </span>
         </span>
         <p class="text-base font-bold tracking-tight text-ink">
-          Search a platform without leaving the app.
+          {emptyFederatedSearch
+            ? 'No public video results found.'
+            : 'Search a platform without leaving the app.'}
         </p>
         <p class="mt-1.5 text-xs leading-relaxed text-slate-500">
-          Pick a platform on the left of the bar above, type a query, and press Search. Select
-          results below to open one in the Downloader tab or queue several at once.
+          {emptyFederatedSearch
+            ? 'Public-web discovery did not return a downloadable post for this query. Try broader keywords or paste a direct link in Downloader.'
+            : 'Pick a platform on the left of the bar above, type a query, and press Search. Select results below to open one in the Downloader tab or queue several at once.'}
         </p>
         <div class="mt-5 flex flex-wrap items-center justify-center gap-1.5">
           {SEARCH_PLATFORMS.map((p) => (

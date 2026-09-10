@@ -50,6 +50,11 @@ export interface RawInfo {
   like_count?: number | null
   comment_count?: number | null
   upload_date?: string
+  timestamp?: number | null
+  release_timestamp?: number | null
+  channel_is_verified?: boolean
+  uploader_is_verified?: boolean
+  description?: string | null
   thumbnail?: string | null
   thumbnails?: RawThumbnail[] | null
   webpage_url?: string

@@ -26,8 +26,22 @@ describe('classifyStderr per error catalog (AGENTS.md §10)', () => {
     { code: 'MF_RATE_LIMITED', lines: ['WARNING: [youtube] HTTP Error 403: Forbidden'] },
     { code: 'MF_EXTRACTOR_STALE', lines: ['ERROR: [youtube] abc: Unable to extract uploader id'] },
     {
+      code: 'MF_EXTRACTOR_STALE',
+      lines: ['ERROR: [TikTok] abc: Unable to extract universal data for rehydration'],
+    },
+    {
       code: 'MF_UNSUPPORTED_SOURCE',
       lines: ['ERROR: Unsupported URL: https://x.test/v'],
+    },
+    {
+      code: 'MF_UNSUPPORTED_SOURCE',
+      lines: [
+        'ERROR: [Reddit] 16v8w8q: Unable to download JSON metadata: HTTP Error 404: Not Found',
+      ],
+    },
+    {
+      code: 'MF_UNSUPPORTED_SOURCE',
+      lines: ["ERROR: There's no video in this post."],
     },
     { code: 'MF_DISK_FULL', lines: ['ERROR: unable to write data: No space left on device'] },
     { code: 'MF_DISK_FULL', lines: ['write failed: ENOSPC'] },

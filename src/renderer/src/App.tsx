@@ -67,12 +67,24 @@ import {
   type QueueRunMode,
 } from './signals/queueState'
 import type { DownloadStartResponse } from '../../shared/ipcContract'
-import type { FormatRow, JobConfig, SearchResultItem } from '../../shared/models'
+import {
+  getSearchPlatform,
+  type FormatRow,
+  type JobConfig,
+  type SearchResultItem,
+} from '../../shared/models'
 import { estimateEntryBytes, estimatePresetBytes, type FormatPresetOption } from './utils/estimate'
 import { fmtSize } from './utils/format'
 import { POPULAR_SOURCES } from './utils/source'
 
 type EngineInfo = { version: string | null; source: string | null }
+
+function isSearchItemReadyToDownload(item: SearchResultItem): boolean {
+  return (
+    getSearchPlatform(item.platform)?.discovery.kind !== 'public-web' ||
+    item.metadataState === 'ready'
+  )
+}
 
 function LogoMark() {
   return (
@@ -721,6 +733,7 @@ export function App() {
 
   async function launchQueueFromSearch(items: SearchResultItem[], sel: JobSelection) {
     if (busy) return
+    if (!items.every(isSearchItemReadyToDownload)) return
     const entries = items.map((item) => ({ url: item.url, title: item.title }))
     setPaused(null)
     setQueueDraft(null)
@@ -731,6 +744,7 @@ export function App() {
 
   async function handleQuickDownloadFromSearch(item: SearchResultItem, preset: FormatPresetOption) {
     if (busy) return
+    if (!isSearchItemReadyToDownload(item)) return
     const defaultDir = (await window.mf.getDefaultDestDir().catch(() => '')) || ''
     const sel: JobSelection = {
       mode: preset.mode,

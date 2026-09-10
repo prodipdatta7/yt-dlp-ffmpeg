@@ -42,7 +42,7 @@ These amend the PRD. Traceability: `AM-nn` may appear in commit messages and tes
 | AM-11 | — | Additions the PRD omitted: structured logging with redaction (§11.3), error catalog mapping CLI stderr → user messages (§10), licensing/distribution notes (§14), filename safety delegated primarily to yt-dlp flags `--windows-filenames --trim-filenames` with app-side sanitizer as defense-in-depth (§7.4). |
 | AM-12 | 5.3 | Tailwind CSS v4 is sanctioned as a **build-time-only** styling layer (compiles to static CSS before packaging ⇒ zero runtime weight, honors §5.3's actual target of installer/runtime size). Plain CSS / CSS Modules remain allowed side-by-side where utility classes don't fit. React remains banned — renderer framework stays Preact (AM rationale: identical rendering, ~10× smaller runtime). No UI kits/icon libraries still applies; use inline SVG icons. |
 | AM-13 | 7.6 | FFmpeg self-updating is now in scope (was excluded for v1). Updates come from `BtbN/FFmpeg-Builds` **LGPL** `ffmpeg-master-latest-win64-lgpl.zip` + its `.sha256` sidecar (same source as `fetch-binaries.mjs`), checksum-verified before a `tar -xf` extraction, atomic swap into `<userData>/binaries/win32/`, and rollback on failure. Because the rolling build has no comparable version tag, "newer" is detected by comparing the installed build's zip hash (stored in `.ffmpeg-update.json`). The Settings updater is now split into per-driver **yt-dlp** and **FFmpeg** cards (`DriverUpdateCard`). |
-| AM-14 | — | In-app keyword search (M8, new — not in the original PRD) is scoped to the small set of platforms yt-dlp can natively *query*: it exposes a `PREFIXn:query` pseudo-URL syntax for a handful of extractors (verified against `supportedsites.md`: `ytsearch`/`ytsearchdate`, `scsearch`, `bilisearch`, plus niche ones we don't surface — `nicosearch`, `yvsearch`, `rkfnsearch`, `prxseries`/`prxstories`). It has **no such mechanism** for the majority of this app's existing paste-a-link platforms (TikTok, Instagram, Facebook, X, Vimeo, Twitch, Reddit, Rumble, Dailymotion, Internet Archive…) — yt-dlp can resolve a URL on those sites but cannot browse/query them, so they are not offered in the Search tab's platform picker and remain paste-a-link-only in the Downloader tab. Do not add a platform to `SEARCH_PLATFORMS` (`src/shared/models.ts`) without re-confirming its prefix still exists upstream. |
+| AM-14 | — | In-app keyword search (M8, new — not in the original PRD) has two explicit discovery strategies. YouTube, SoundCloud, and Bilibili use native yt-dlp query extractors (`ytsearch`/`ytsearchdate`, `scsearch`, `bilisearch`). Facebook, Instagram, X, TikTok, and Reddit use best-effort cookie-free DuckDuckGo public-web discovery scoped with fixed `site:` expressions, with Brave Search as a fallback when DuckDuckGo returns a challenge page or no usable links; every discovered URL is then allowlist/path validated and hydrated by its native yt-dlp extractor. Federated discovery is relevance-only and may be incomplete because it uses public result HTML rather than a supported API. `gvsearch` must not be used here: Google currently responds with a JavaScript challenge and yt-dlp returns an empty success playlist. Do not add another platform without defining and testing its discovery strategy, media-URL policy, and capabilities in `SEARCH_PLATFORMS`. |
 | AM-15 | 6.3/AM-08 | AM-08's "check-for-updates" covered only the core drivers (yt-dlp/FFmpeg, §7.6) — the app itself had no version-check surface, leaving users with no in-app way to learn a new MediaForge release exists or install it. Closed with a Settings **About** section: resolves the latest tag from `github.com/<owner>/<repo>/releases/latest` (same no-REST-API redirect pattern as §7.6, reusing `resolveLatestTag`/`isNewerVersion`) and compares it against `app.getVersion()`. "View Release" opens that page via `shell.openExternal`. "Download & Install" goes further than the drivers do — it downloads the NSIS installer asset, checksum-verifies it against a `SHA256SUMS` sidecar `release.yml` now publishes (added there for this; same shape as yt-dlp's SHA2-256SUMS), writes it to `<userData>/updates/`, launches it detached, then quits the app so the installer isn't fighting file locks on its own running executable. Still no silent/background auto-update (no `electron-updater`, no differential patching) — this is a user-initiated foreground action, refused while `orchestrator.isBusy()` (an active download would otherwise be killed by the quit). The app never swaps its **own** installed files itself (AM-03's Program-Files rationale applies harder here) — the downloaded installer wizard does that. |
 
 ## 3. Locked Technology Decisions
@@ -187,7 +187,9 @@ Violations block merge regardless of feature completeness.
    checksums (yt-dlp `SHA2-256SUMS`; FFmpeg BtbN `.sha256` sidecar) (AM-03). Reject mismatch → rollback.
 8. Logs redact URL query strings and never contain cookie contents or raw env (§11.3).
 9. No telemetry, no crash reporting, no analytics. Network egress is limited to: user-requested
-   media hosts (via yt-dlp), thumbnail hosts, GitHub API/releases (updater only).
+   media hosts (via yt-dlp), DuckDuckGo and Brave public-web discovery for an explicit Search
+   action (cookie-free),
+   thumbnail hosts, GitHub API/releases (updater only).
 
 ## 7. External CLI Integration Contract
 
@@ -317,28 +319,19 @@ only works against releases published after it landed; "View Release" always wor
 yt-dlp -J --no-warnings --flat-playlist "ytsearch20:lofi hip hop"
 ```
 
-`SearchService` (`src/main/media/search.ts`) builds the pseudo-URL via `buildSearchQuery`
-(`src/main/media/argBuilders.ts` — the only place that composes it, per the §7 choke-point rule)
-as `${prefix}${limit}:${query}`, then reuses `buildAnalyzeArgs` + `mapRawInfo` unchanged: yt-dlp
-returns a search result set as a `_type: "playlist"` object, so it maps through the exact same
-flat-playlist code path as an actual playlist. The whole pseudo-URL is one argv element (AM-02) —
-no shell, so the raw query text needs no escaping.
+`SearchService` (`src/main/media/search.ts`) builds native pseudo-URLs via
+`buildSearchTarget`/`buildSearchQuery` (`src/main/media/argBuilders.ts`, the §7 choke point).
+The whole native query remains one argv element (AM-02). Federated discovery uses the same
+allowlisted query builder to request DuckDuckGo's public HTML endpoint without cookies, falling
+back to Brave when DuckDuckGo returns no usable result links. Federated
+search over-fetches up to 3× (cap 50), admits only platform-specific public media URLs, returns
+loading cards, and progressively runs full metadata extraction with concurrency 2.
+Generation-based cancellation suppresses stale updates from an earlier search.
 
-Deliberately **no per-entry hydration** (unlike playlist analysis, which spawns one extra
-`yt-dlp -J` per entry via `AnalyzeService.hydrateEntries` to fill in duration/views/uploader).
-Hydrating N search results would mean N full extractions just to render a result grid — exactly
-the "heavy" cost that earned this feature its own tab instead of living on the Downloader screen.
-Result cards show only what the platform's flat search response already includes (title, url,
-duration, view count, uploader, thumbnail where present); opening one in the Downloader tab runs
-a normal full analysis for that single URL.
-
-Advanced filters (duration range, minimum views) are pure client-side array filters over the
-already-fetched result set (`filteredResults` computed signal in `signals/searchState.ts`) — they
-never re-query yt-dlp. Only the sort toggle re-queries: "Newest" swaps `prefix` for a platform's
-`dateSortPrefix` (only YouTube and Niconico have one upstream; unsupported platforms only offer
-Relevance). There is no pagination — "more results" means re-running the same query with a larger
-`limit`, which replaces the result set rather than appending to it (yt-dlp's search extractors
-don't expose a cursor).
+Advanced filters remain available for native platforms. Federated platforms force Relevance and
+disable advanced filters in both renderer and IPC validation because public-web discovery does not expose
+reliable structured fields for those constraints. There is no pagination: a larger `limit`
+replaces the result set.
 
 Server-side validation (`parseSearchRequest` in `ipc/handlers.ts`) checks `platform` against the
 `SEARCH_PLATFORMS` allowlist, trims/caps `query` to `MAX_SEARCH_QUERY_LENGTH`, and clamps `limit`
@@ -362,8 +355,9 @@ All channel names + payload types live in `src/shared/ipcContract.ts`. Handlers 
 | R→M invoke | `app:update-check` / `app:update-open-release` (AM-15) | `{}` → `{currentVersion,latestVersion,updateAvailable,error?}` / `{ok}` |
 | R→M invoke | `app:update-download-install` (AM-15) | `{}` → `{ok,error?}` |
 | M→R event | `app:update-phase` (AM-15) | `{phase: checking\|downloading\|verifying\|launching-installer}` |
-| R→M invoke | `search:start` (M8) | `SearchRequest{platform, query, limit, sort}` → `{kind:'ok', results: SearchResultItem[]}` or `{kind:'error', code, message}` |
+| R→M invoke | `search:start` (M8) | `SearchRequest{platform, query, limit, sort, filters?}` → `{kind:'ok', results: SearchResultItem[]}` or `{kind:'error', code, message}` |
 | R→M invoke | `search:cancel` (M8) | `{}` → `{ok}` |
+| M→R event | `search:entry` (M8) | `{sourceUrl, metadataState, patch}` progressive exact-key metadata update |
 | M→R event | `job:event` | `JobEvent{jobId, phase, percent, speedBps, etaSec, message?}` |
 | M→R event | `job:done` | `{jobId, status: completed\|cancelled\|failed, errorCode?, outputPath?}` |
 
@@ -413,8 +407,8 @@ AC: installer builds and installs on clean Win10 + Win11 VM · happy-path downlo
 
 ### M8 — In-app platform search (AM-14, new — not in the original PRD)
 Scope: a dedicated **Search** tab (own nav item, alongside Downloader/Queue/Settings) for
-keyword search against the handful of platforms yt-dlp can natively query — v1 ships **YouTube,
-SoundCloud, Bilibili** only (§7.7/AM-14). Everything else stays paste-a-link-only.
+native keyword search on **YouTube, SoundCloud, and Bilibili**, plus best-effort federated public
+video discovery for **Facebook, Instagram, X, TikTok, and Reddit** (§7.7/AM-14).
 
 - **Search bar** (`SearchBar.tsx`): three sections in one control — left is a platform picker
   (`Segmented`, `SEARCH_PLATFORMS`), middle is the query input, right is the Search/Cancel button.
@@ -428,18 +422,18 @@ SoundCloud, Bilibili** only (§7.7/AM-14). Everything else stays paste-a-link-on
   URL) and **Add to Queue** (one or more selected — opens a quality-preset modal reusing
   `ModeSelector` with `formats: []`, exactly like queuing an already-analyzed playlist, then feeds
   the same `runQueue`/`runParallelQueue` pipeline via `App.tsx`'s `launchQueueFromSearch`).
-- **Main process**: `SearchService` (§7.7) — one flat `-J` call per search, no hydration, own
-  cancel/`activeHandles` state separate from `AnalyzeService` so a Downloader analysis and a
-  Search query can run concurrently without fighting over cancellation.
+- **Main process**: `SearchService` (§7.7) — one flat discovery call per search, URL/path
+  validation for federated results, progressive bounded-concurrency metadata hydration, and
+  generation-scoped process cancellation separate from `AnalyzeService`.
 - **IPC**: `search:start` / `search:cancel` (§8), request/response validated server-side
   (`parseSearchRequest`) against `SEARCH_PLATFORMS`, `MAX_SEARCH_QUERY_LENGTH`, `MAX_SEARCH_LIMIT`.
 
 AC: `buildSearchQuery` unit-tested for prefix/limit/query composition and limit clamping ·
 `SearchService` unit-tested for platform/query validation short-circuiting before any process
-spawn (mirrors the `AnalyzeService` input-validation tests) · typecheck/lint/test gate green ·
-manually verified: search returns and renders results, "Open in Downloader" switches tabs and
-re-analyzes the single URL, "Add to Queue" queues multiple selected results through the existing
-Queue tab.
+spawn (mirrors the `AnalyzeService` input-validation tests) · federated URL policies, metadata
+updates, and stale-generation suppression unit-tested · typecheck/lint/test gate green · manually
+verified: one public result per platform can be opened in Downloader and downloaded through the
+existing queue pipeline; external rate limits surface an actionable error.
 
 ## 10. Error Catalog & Edge Case Matrix (amended)
 

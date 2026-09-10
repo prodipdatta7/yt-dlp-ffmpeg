@@ -112,33 +112,96 @@ export const LOSSLESS_AUDIO_FORMATS: readonly AudioFormat[] = ['flac', 'wav']
 export type BitrateTier = '320K' | '192K' | '128K'
 export const BITRATE_TIERS: readonly BitrateTier[] = ['320K', '192K', '128K']
 
-/**
- * In-app keyword search (M8) only covers platforms yt-dlp itself can query via a native
- * `PREFIXn:query` pseudo-URL extractor — it cannot browse a site that has no search API.
- * Verified against yt-dlp's supportedsites.md (search-capable extractors: ytsearch,
- * ytsearchdate, scsearch, bilisearch, plus niche ones like nicosearch/yvsearch/rkfnsearch
- * that we don't surface). Do not add a platform here without confirming its prefix still
- * exists in that list — everything else (TikTok, Instagram, Facebook, X, Vimeo, Twitch,
- * Reddit, Rumble, Dailymotion…) stays paste-a-link-only in the Downloader tab.
- */
-export interface SearchPlatform {
-  id: string
-  label: string
-  /** yt-dlp search-prefix extractor name, e.g. "ytsearch" (combines with a count + query as `${prefix}${n}:${query}`). */
-  prefix: string
-  /** Prefix that sorts by upload date (newest first) instead of relevance, when the extractor has one. */
-  dateSortPrefix?: string
-}
-
-export const SEARCH_PLATFORMS: readonly SearchPlatform[] = [
-  { id: 'youtube', label: 'YouTube', prefix: 'ytsearch', dateSortPrefix: 'ytsearchdate' },
-  { id: 'soundcloud', label: 'SoundCloud', prefix: 'scsearch' },
-  { id: 'bilibili', label: 'Bilibili', prefix: 'bilisearch' },
-]
-
 export type SearchSort = 'relevance' | 'newest' | 'views'
 export type UploadRecency = 'all' | '24h' | 'week' | 'month' | 'year'
 export type SearchContentType = 'all' | 'video' | 'playlist' | 'reel' | 'music'
+
+export type SearchPlatformId =
+  'youtube' | 'soundcloud' | 'bilibili' | 'facebook' | 'instagram' | 'twitter' | 'tiktok' | 'reddit'
+
+export type SearchDiscovery =
+  | { kind: 'native-ytdlp'; prefix: string; dateSortPrefix?: string }
+  | { kind: 'public-web'; queryScope: string }
+
+/**
+ * Search platforms either use a native yt-dlp search extractor or best-effort public-web
+ * discovery. Public-web URLs are still validated and downloaded by their native yt-dlp
+ * extractors; the renderer never performs remote requests itself.
+ */
+export interface SearchPlatform {
+  id: SearchPlatformId
+  label: string
+  discovery: SearchDiscovery
+  supportsAdvancedFilters: boolean
+}
+
+export const SEARCH_PLATFORMS: readonly SearchPlatform[] = [
+  {
+    id: 'youtube',
+    label: 'YouTube',
+    discovery: { kind: 'native-ytdlp', prefix: 'ytsearch', dateSortPrefix: 'ytsearchdate' },
+    supportsAdvancedFilters: true,
+  },
+  {
+    id: 'soundcloud',
+    label: 'SoundCloud',
+    discovery: { kind: 'native-ytdlp', prefix: 'scsearch' },
+    supportsAdvancedFilters: true,
+  },
+  {
+    id: 'bilibili',
+    label: 'Bilibili',
+    discovery: { kind: 'native-ytdlp', prefix: 'bilisearch' },
+    supportsAdvancedFilters: true,
+  },
+  {
+    id: 'facebook',
+    label: 'Facebook',
+    discovery: {
+      kind: 'public-web',
+      queryScope:
+        '(site:facebook.com/watch/ OR site:facebook.com/reel/ OR site:facebook.com/videos/ OR site:fb.watch)',
+    },
+    supportsAdvancedFilters: false,
+  },
+  {
+    id: 'instagram',
+    label: 'Instagram',
+    discovery: {
+      kind: 'public-web',
+      queryScope: '(site:instagram.com/reel/ OR site:instagram.com/p/)',
+    },
+    supportsAdvancedFilters: false,
+  },
+  {
+    id: 'twitter',
+    label: 'X (Twitter)',
+    discovery: { kind: 'public-web', queryScope: '(site:x.com OR site:twitter.com)' },
+    supportsAdvancedFilters: false,
+  },
+  {
+    id: 'tiktok',
+    label: 'TikTok',
+    discovery: {
+      kind: 'public-web',
+      queryScope: '(site:tiktok.com inurl:video OR site:vm.tiktok.com)',
+    },
+    supportsAdvancedFilters: false,
+  },
+  {
+    id: 'reddit',
+    label: 'Reddit',
+    discovery: {
+      kind: 'public-web',
+      queryScope: '(site:v.redd.it OR (site:reddit.com/r/ inurl:comments video))',
+    },
+    supportsAdvancedFilters: false,
+  },
+]
+
+export function getSearchPlatform(id: string): SearchPlatform | undefined {
+  return SEARCH_PLATFORMS.find((platform) => platform.id === id)
+}
 
 export interface SearchFilterCriteria {
   contentType?: SearchContentType
@@ -165,6 +228,10 @@ export interface SearchResultItem extends PlaylistEntryPreview {
   isPlaylist?: boolean
   isReel?: boolean
   isMusicVideo?: boolean
+  /** Present for federated results while yt-dlp validates and enriches the discovered URL. */
+  metadataState?: 'loading' | 'ready' | 'unavailable'
+  /** Why federated metadata validation failed, when yt-dlp returned a known error. */
+  metadataErrorCode?: MfErrorCode
 }
 
 export type DownloadMode = 'video-audio' | 'audio-only' | 'advanced'

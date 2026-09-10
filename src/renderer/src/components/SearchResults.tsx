@@ -34,6 +34,9 @@ export function SearchResults({
   if (total === 0) return null
 
   const selectedItems = results.filter((r) => selected.has(r.url))
+  const selectedItemsReady = selectedItems.every(
+    (item) => item.metadataState === undefined || item.metadataState === 'ready',
+  )
 
   return (
     <div class="mf-card flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -63,9 +66,13 @@ export function SearchResults({
           </button>
           <button
             type="button"
-            disabled={selectedCount === 0 || busy}
+            disabled={selectedCount === 0 || busy || !selectedItemsReady}
             onClick={() => onAddToQueue(selectedItems)}
-            title="Queue the selected results for download"
+            title={
+              selectedItemsReady
+                ? 'Queue the selected results for download'
+                : 'Wait for link validation before adding these results to the queue'
+            }
             class="mf-focus-ring flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-sky-500 to-indigo-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow shadow-sky-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
           >
             <QueueIcon class="size-3.5" />
@@ -96,6 +103,9 @@ export function SearchResults({
               }}
               onAddToQueue={(item, preset) => onAddToQueue([item], preset)}
               disabled={busy}
+              downloadDisabled={
+                entry.metadataState === 'loading' || entry.metadataState === 'unavailable'
+              }
             />
           ))}
         </ol>

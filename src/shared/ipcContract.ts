@@ -69,10 +69,31 @@ export interface VideoChaptersResult {
 }
 
 export interface SearchHydratePayload {
-  url: string
-  uploadDate: string | null
-  timestamp: number | null
-  likeCount: number | null
+  /** Exact URL originally returned to the renderer; used as a stable update key. */
+  sourceUrl: string
+  metadataState: 'ready' | 'unavailable'
+  /** A classified yt-dlp error for an unavailable federated result, if one was emitted. */
+  errorCode?: import('./models').MfErrorCode
+  patch: Partial<
+    Pick<
+      SearchResultItem,
+      | 'title'
+      | 'id'
+      | 'durationSec'
+      | 'uploader'
+      | 'viewCount'
+      | 'likeCount'
+      | 'commentCount'
+      | 'thumbnailUrl'
+      | 'uploadDate'
+      | 'timestamp'
+      | 'isVerified'
+      | 'description'
+      | 'isPlaylist'
+      | 'isReel'
+      | 'isMusicVideo'
+    >
+  >
 }
 
 export interface PingResult {

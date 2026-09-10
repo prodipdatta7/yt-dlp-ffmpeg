@@ -71,7 +71,7 @@ import {
   MAX_SEARCH_LIMIT,
   MAX_SEARCH_QUERY_LENGTH,
   RESOLUTION_TIERS,
-  SEARCH_PLATFORMS,
+  getSearchPlatform,
   ERROR_MESSAGES,
   type AudioFormat,
   type BitrateTier,
@@ -353,9 +353,9 @@ function parseSearchRequest(payload: unknown): {
   if (!payload || typeof payload !== 'object') return null
   const raw = payload as Record<string, unknown>
 
-  if (typeof raw.platform !== 'string' || !SEARCH_PLATFORMS.some((p) => p.id === raw.platform)) {
-    return null
-  }
+  if (typeof raw.platform !== 'string') return null
+  const platform = getSearchPlatform(raw.platform)
+  if (!platform) return null
   if (typeof raw.query !== 'string') return null
   const query = raw.query.trim()
   if (query.length === 0 || query.length > MAX_SEARCH_QUERY_LENGTH) return null
@@ -406,7 +406,11 @@ function parseSearchRequest(payload: unknown): {
     }
   }
 
-  return { platform: raw.platform, query, limit, sort, filters }
+  if (!platform.supportsAdvancedFilters) {
+    return { platform: platform.id, query, limit, sort: 'relevance', filters: undefined }
+  }
+
+  return { platform: platform.id, query, limit, sort, filters }
 }
 
 function extractUrl(payload: unknown): string | null {

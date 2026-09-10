@@ -2,9 +2,10 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import {
-  SEARCH_PLATFORMS,
+  getSearchPlatform,
   type ChapterMarker,
   type SearchFilterCriteria,
+  type SearchPlatformId,
   type SearchResultItem,
   type SearchSort,
   type TranscriptCue,
@@ -15,8 +16,22 @@ import type { LocatedBinary } from '../binaries/locator'
 import { spawnProcess, type SpawnHandle } from '../binaries/runner'
 import type { Logger } from '../store/logger'
 import { classifyStderr } from './classifyStderr'
-import { buildAnalyzeArgs, buildSearchTarget } from './argBuilders'
+import {
+  buildAnalyzeArgs,
+  buildEntryInfoArgs,
+  buildFederatedDiscoveryQuery,
+  buildSearchTarget,
+} from './argBuilders'
 import { mapRawInfo, MfError, type RawInfo } from './metadata'
+import {
+  buildBravePublicWebSearchUrl,
+  buildPublicWebSearchUrl,
+  extractBravePublicWebResultUrls,
+  extractPublicWebResultUrls,
+  fetchPublicWebSearch,
+  isPublicWebChallenge,
+  PublicWebSearchError,
+} from './publicWebSearch'
 
 export interface SearchServiceOptions {
   resolveYtDlp: () => Promise<LocatedBinary | null>
@@ -25,9 +40,11 @@ export interface SearchServiceOptions {
   /** Raw CLI line tap (stdout/stderr of yt-dlp) for the live console. */
   onProcessLine?: (line: string, stream: 'out' | 'err') => void
   onEntryHydrated?: (item: SearchHydratePayload) => void
+  /** Injectable only for deterministic tests; production uses the cookie-free public-web fetcher. */
+  fetchPublicWebSearch?: (url: string, signal: AbortSignal) => Promise<string>
 }
 
-/** Parses a formatted print line "%(webpage_url)s|%(upload_date)s|%(timestamp)s|%(like_count)s" */
+/** Parses a formatted print line "%(original_url)s|%(upload_date)s|%(timestamp)s|%(like_count)s". */
 export function parseHydrateLine(line: string): SearchHydratePayload | null {
   const parts = line.trim().split('|')
   if (parts.length < 4) return null
@@ -41,7 +58,143 @@ export function parseHydrateLine(line: string): SearchHydratePayload | null {
     Number.isFinite(tsNum) && tsNum > 0 ? (tsNum < 100_000_000_000 ? tsNum * 1000 : tsNum) : null
   const likesNum = Number(rawLikes)
   const likeCount = Number.isFinite(likesNum) && likesNum > 0 ? likesNum : null
-  return { url, uploadDate, timestamp, likeCount }
+  return {
+    sourceUrl: url,
+    metadataState: 'ready',
+    patch: { uploadDate, timestamp, likeCount },
+  }
+}
+
+const FEDERATED_PLATFORM_IDS = new Set<SearchPlatformId>([
+  'facebook',
+  'instagram',
+  'twitter',
+  'tiktok',
+  'reddit',
+])
+
+function hostMatches(host: string, base: string): boolean {
+  return host === base || host.endsWith(`.${base}`)
+}
+
+function isFederatedMediaPath(platformId: SearchPlatformId, url: URL): boolean {
+  const host = url.hostname.toLowerCase().replace(/\.$/, '')
+  const path = url.pathname
+
+  switch (platformId) {
+    case 'facebook':
+      if (host === 'fb.watch') return path.length > 1
+      if (!hostMatches(host, 'facebook.com')) return false
+      return (
+        /\/(?:reel|reels|videos|share\/(?:r|v))\//i.test(path) ||
+        /\/(?:watch\/?|video\.php|story\.php)$/i.test(path)
+      )
+    case 'instagram':
+      return hostMatches(host, 'instagram.com') && /^\/(?:p|reel|reels|tv)\/[\w.-]+/i.test(path)
+    case 'twitter':
+      if (host === 't.co') return path.length > 1
+      return (
+        (hostMatches(host, 'x.com') || hostMatches(host, 'twitter.com')) &&
+        /^\/[^/]+\/status\/\d+/i.test(path)
+      )
+    case 'tiktok':
+      if (!hostMatches(host, 'tiktok.com')) return false
+      if (host === 'vm.tiktok.com' || host === 'vt.tiktok.com') return path.length > 1
+      return /^\/(?:@[^/]+\/video\/\d+|t\/[\w-]+)/i.test(path)
+    case 'reddit':
+      if (host === 'redd.it' || host === 'v.redd.it') return path.length > 1
+      return hostMatches(host, 'reddit.com') && /\/(?:comments|gallery)\/[a-z0-9]+/i.test(path)
+    default:
+      return false
+  }
+}
+
+/** Validates and normalizes a Google-discovered URL before it can reach the renderer. */
+export function normalizeFederatedCandidateUrl(platformId: string, rawUrl: string): string | null {
+  if (!FEDERATED_PLATFORM_IDS.has(platformId as SearchPlatformId)) return null
+
+  let url: URL
+  try {
+    url = new URL(rawUrl)
+  } catch {
+    return null
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
+  if (!isFederatedMediaPath(platformId as SearchPlatformId, url)) return null
+
+  url.hostname = url.hostname.toLowerCase().replace(/^www\./, '')
+  url.pathname = url.pathname.replace(/\/+$/, '') || '/'
+  url.hash = ''
+  for (const key of [...url.searchParams.keys()]) {
+    if (/^utm_/i.test(key) || ['fbclid', 'igshid', 'si', 'ref'].includes(key.toLowerCase())) {
+      url.searchParams.delete(key)
+    }
+  }
+  return url.toString()
+}
+
+function normalizeUploadDate(raw: string | null | undefined): string | null {
+  if (!raw || !/^\d{8}$/.test(raw)) return null
+  return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`
+}
+
+function normalizeTimestamp(raw: number | null | undefined): number | null {
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) return null
+  return raw < 100_000_000_000 ? raw * 1000 : raw
+}
+
+function isReelUrl(platformId: string, url: string): boolean {
+  return (
+    platformId === 'tiktok' ||
+    /instagram\.com\/(?:reel|reels)\//i.test(url) ||
+    /facebook\.com\/(?:reel|reels)\//i.test(url)
+  )
+}
+
+/** Maps a full yt-dlp metadata document into an exact federated result update. */
+export function parseFederatedHydration(
+  sourceUrl: string,
+  platformId: string,
+  jsonText: string,
+): SearchHydratePayload {
+  try {
+    const raw = JSON.parse(jsonText) as RawInfo
+    const mapped = mapRawInfo(raw, sourceUrl)
+    const metadata = mapped.metadata
+    const reel = isReelUrl(platformId, sourceUrl)
+    const music =
+      /\b(official (music )?video|music video|lyric video|official audio|visualizer)\b/i.test(
+        `${metadata.title} ${raw.description ?? ''}`,
+      )
+    return {
+      sourceUrl,
+      metadataState: 'ready',
+      patch: {
+        title: metadata.title,
+        id: metadata.id,
+        durationSec: metadata.durationSec,
+        uploader: metadata.uploader,
+        viewCount: metadata.viewCount,
+        likeCount: metadata.likeCount ?? null,
+        commentCount: raw.comment_count ?? null,
+        thumbnailUrl: metadata.thumbnailUrl,
+        uploadDate: metadata.uploadDate ?? normalizeUploadDate(raw.upload_date),
+        timestamp: normalizeTimestamp(raw.timestamp ?? raw.release_timestamp),
+        isVerified: raw.channel_is_verified === true || raw.uploader_is_verified === true,
+        description: raw.description ?? null,
+        isPlaylist: mapped.kind === 'playlist',
+        isReel: reel,
+        isMusicVideo: !reel && music,
+      },
+    }
+  } catch {
+    return {
+      sourceUrl,
+      metadataState: 'unavailable',
+      errorCode: 'MF_EXTRACTOR_STALE',
+      patch: {},
+    }
+  }
 }
 
 export function formatChapterTime(totalSec: number): string {
@@ -282,14 +435,18 @@ const SEARCH_TIMEOUT_MS = 45_000
 
 export class SearchService {
   private readonly activeHandles = new Set<SpawnHandle>()
-  private cancelRequested = false
+  private readonly searchHandles = new Set<SpawnHandle>()
+  private searchGeneration = 0
+  private searchAbortController: AbortController | null = null
 
   constructor(private readonly opts: SearchServiceOptions) {}
 
   cancel(): void {
-    this.cancelRequested = true
-    const handles = [...this.activeHandles]
-    this.activeHandles.clear()
+    this.searchGeneration++
+    this.searchAbortController?.abort()
+    this.searchAbortController = null
+    const handles = [...this.searchHandles]
+    this.searchHandles.clear()
     for (const handle of handles) void handle.killTree()
   }
 
@@ -300,27 +457,50 @@ export class SearchService {
     sort: SearchSort,
     filters?: SearchFilterCriteria,
   ): Promise<SearchResultItem[]> {
-    const platform = SEARCH_PLATFORMS.find((p) => p.id === platformId)
+    const platform = getSearchPlatform(platformId)
     const trimmed = query.trim()
     if (!platform || trimmed.length === 0) throw new MfError('MF_INVALID_QUERY')
 
+    // A new search supersedes both discovery and background hydration from the previous one.
+    this.cancel()
+    const generation = this.searchGeneration
     const binary = await this.opts.resolveYtDlp()
     if (!binary) throw new MfError('MF_UNKNOWN')
 
-    this.cancelRequested = false
+    if (platform.discovery.kind === 'public-web') {
+      return this.searchPublicWeb(
+        platform.id,
+        platform.label,
+        platform.discovery.queryScope,
+        trimmed,
+        limit,
+        binary.path,
+        generation,
+      )
+    }
+
+    const isFederated = false
+    const effectiveSort: SearchSort = sort
+    const effectiveFilters = filters
+
     const { urlOrQuery, extraFlags } = buildSearchTarget(
-      platformId,
-      platform.prefix,
+      platform,
       trimmed,
       limit,
-      sort,
-      filters,
+      effectiveSort,
+      effectiveFilters,
     )
+    // Never send imported cookies to Google discovery. Target hydration may still use them.
     const args = buildAnalyzeArgs(urlOrQuery, this.opts.getCookiesPath?.() ?? null, extraFlags)
 
     const stdoutLines: string[] = []
     const stderrLines: string[] = []
-    this.opts.logger?.debug('search spawn started', { platform: platformId, limit, sort, filters })
+    this.opts.logger?.debug('search spawn started', {
+      platform: platformId,
+      limit,
+      sort: effectiveSort,
+      federated: false,
+    })
     this.opts.onProcessLine?.(`$ yt-dlp ${args.join(' ')}`, 'out')
     const handle = spawnProcess(binary.path, args, {
       onStdoutLine: (line) => {
@@ -333,16 +513,16 @@ export class SearchService {
       },
       timeoutMs: SEARCH_TIMEOUT_MS,
     })
-    this.activeHandles.add(handle)
+    this.searchHandles.add(handle)
 
     let result
     try {
       result = await handle.result
     } finally {
-      this.activeHandles.delete(handle)
+      this.searchHandles.delete(handle)
     }
 
-    if (this.cancelRequested) throw new MfError('MF_CANCELLED')
+    if (generation !== this.searchGeneration) throw new MfError('MF_CANCELLED')
 
     if (result.code !== 0) {
       this.opts.logger?.debug('search failed', { stderrTail: stderrLines.slice(-5).join(' / ') })
@@ -358,42 +538,46 @@ export class SearchService {
     }
 
     const mapped = mapRawInfo(raw, urlOrQuery)
-    let entries: SearchResultItem[] = (
-      mapped.kind === 'playlist' ? (mapped.playlistEntries ?? []) : []
-    ).map((entry) => {
-      const isPl = entry.url.includes('/playlist?list=')
-      const isRl =
-        !isPl &&
-        (filters?.contentType === 'reel' ||
-          entry.url.includes('/shorts/') ||
-          Boolean(
-            entry.durationSec != null &&
-            entry.durationSec <= 180 &&
-            /#shorts\b/i.test(`${entry.title} ${entry.description ?? ''}`),
-          ))
-      const isMv =
-        !isPl &&
-        !isRl &&
-        (filters?.contentType === 'music' ||
-          /\b(official (music )?video|official mv|official m\/v|music video|official lyric video|official visualizer)\b/i.test(
-            entry.title,
-          ) ||
-          /(?:\(|\[)(?:official video|official music video|music video|mv|m\/v|official visualizer)(?:\)|\])/i.test(
-            entry.title,
-          ) ||
-          (entry.uploader != null &&
-            (/\bvevo\b/i.test(entry.uploader) || entry.uploader.endsWith(' - Topic'))))
-      return {
-        ...entry,
-        platform: platformId,
-        isPlaylist: isPl,
-        isReel: isRl,
-        isMusicVideo: isMv,
-      }
-    })
+    const discoveredEntries = mapped.kind === 'playlist' ? (mapped.playlistEntries ?? []) : []
+    let entries: SearchResultItem[]
+
+    {
+      entries = discoveredEntries.map((entry) => {
+        const isPl = entry.url.includes('/playlist?list=')
+        const isRl =
+          !isPl &&
+          (filters?.contentType === 'reel' ||
+            entry.url.includes('/shorts/') ||
+            Boolean(
+              entry.durationSec != null &&
+              entry.durationSec <= 180 &&
+              /#shorts\b/i.test(`${entry.title} ${entry.description ?? ''}`),
+            ))
+        const isMv =
+          !isPl &&
+          !isRl &&
+          (filters?.contentType === 'music' ||
+            /\b(official (music )?video|official mv|official m\/v|music video|official lyric video|official visualizer)\b/i.test(
+              entry.title,
+            ) ||
+            /(?:\(|\[)(?:official video|official music video|music video|mv|m\/v|official visualizer)(?:\)|\])/i.test(
+              entry.title,
+            ) ||
+            (entry.uploader != null &&
+              (/\bvevo\b/i.test(entry.uploader) || entry.uploader.endsWith(' - Topic'))))
+        return {
+          ...entry,
+          platform: platformId,
+          isPlaylist: isPl,
+          isReel: isRl,
+          isMusicVideo: isMv,
+        }
+      })
+    }
 
     // Server-side filtering for all popover criteria
-    if (filters) {
+    if (!isFederated && effectiveFilters) {
+      const filters = effectiveFilters
       entries = entries.filter((r) => {
         if (filters.contentType === 'playlist') {
           return Boolean(r.isPlaylist || r.url.includes('/playlist?list='))
@@ -452,9 +636,9 @@ export class SearchService {
     }
 
     // Server-side sort application
-    if (sort === 'views') {
+    if (!isFederated && effectiveSort === 'views') {
       entries.sort((a, b) => (b.viewCount ?? 0) - (a.viewCount ?? 0))
-    } else if (sort === 'newest') {
+    } else if (!isFederated && effectiveSort === 'newest') {
       entries.sort((a, b) => {
         const aT = a.timestamp ?? (a.uploadDate ? new Date(a.uploadDate).getTime() : 0)
         const bT = b.timestamp ?? (b.uploadDate ? new Date(b.uploadDate).getTime() : 0)
@@ -463,18 +647,128 @@ export class SearchService {
     }
 
     // Slice to the requested user limit
-    entries = entries.slice(0, limit)
+    const userLimit = Math.min(50, Math.max(1, Number.isFinite(limit) ? Math.trunc(limit) : 20))
+    entries = entries.slice(0, userLimit)
 
-    // Kick off progressive background hydration of real upload date and likes
+    // Defer hydration one turn so the initial IPC response reaches the renderer first.
     if (this.opts.onEntryHydrated && entries.length > 0) {
-      void this.hydrateEntries(binary.path, entries)
+      setTimeout(() => {
+        void this.hydrateEntries(binary.path, entries, generation, isFederated)
+      }, 0)
     }
 
     return entries
   }
 
-  private async hydrateEntries(binaryPath: string, entries: SearchResultItem[]): Promise<void> {
-    if (!this.opts.onEntryHydrated || entries.length === 0 || this.cancelRequested) return
+  private async searchPublicWeb(
+    platformId: SearchPlatformId,
+    platformLabel: string,
+    queryScope: string,
+    query: string,
+    limit: number,
+    binaryPath: string,
+    generation: number,
+  ): Promise<SearchResultItem[]> {
+    const platform = getSearchPlatform(platformId)
+    if (!platform) throw new MfError('MF_INVALID_QUERY')
+    const target = buildFederatedDiscoveryQuery(platform, query, limit)
+    const controller = new AbortController()
+    this.searchAbortController = controller
+    const requestUrl = buildPublicWebSearchUrl(queryScope, query)
+
+    this.opts.logger?.debug('public-web search started', {
+      platform: platformId,
+      limit,
+      candidateLimit: target.candidateLimit,
+    })
+
+    let discoveredUrls: string[]
+    try {
+      const fetcher = this.opts.fetchPublicWebSearch ?? fetchPublicWebSearch
+      const duckDuckGoHtml = await fetcher(requestUrl, controller.signal)
+      discoveredUrls = extractPublicWebResultUrls(duckDuckGoHtml)
+
+      // DuckDuckGo can return a 200 challenge page after repeated searches. The backup stays
+      // cookie-free and only runs when there are no usable primary-result links.
+      if (discoveredUrls.length === 0) {
+        const braveHtml = await fetcher(
+          buildBravePublicWebSearchUrl(queryScope, query),
+          controller.signal,
+        )
+        discoveredUrls = extractBravePublicWebResultUrls(braveHtml)
+        this.opts.logger?.debug('public-web backup search used', {
+          platform: platformId,
+          duckDuckGoChallenge: isPublicWebChallenge(duckDuckGoHtml),
+          braveCandidates: discoveredUrls.length,
+        })
+      }
+    } catch (error) {
+      if (generation !== this.searchGeneration || controller.signal.aborted) {
+        throw new MfError('MF_CANCELLED')
+      }
+      if (error instanceof PublicWebSearchError) {
+        throw new MfError(
+          error.kind === 'rate-limited'
+            ? 'MF_RATE_LIMITED'
+            : error.kind === 'cancelled'
+              ? 'MF_CANCELLED'
+              : 'MF_NETWORK',
+        )
+      }
+      throw new MfError('MF_NETWORK')
+    } finally {
+      if (this.searchAbortController === controller) this.searchAbortController = null
+    }
+
+    if (generation !== this.searchGeneration) throw new MfError('MF_CANCELLED')
+
+    const seen = new Set<string>()
+    const userLimit = Math.min(50, Math.max(1, Number.isFinite(limit) ? Math.trunc(limit) : 20))
+    const entries: SearchResultItem[] = []
+    for (const rawUrl of discoveredUrls) {
+      const normalizedUrl = normalizeFederatedCandidateUrl(platformId, rawUrl)
+      if (!normalizedUrl || seen.has(normalizedUrl)) continue
+      seen.add(normalizedUrl)
+      entries.push({
+        index: entries.length + 1,
+        id: null,
+        title: `${platformLabel} video`,
+        url: normalizedUrl,
+        platform: platformId,
+        isPlaylist: false,
+        isReel: isReelUrl(platformId, normalizedUrl),
+        metadataState: 'loading',
+      })
+      if (entries.length >= userLimit) break
+    }
+
+    // Defer metadata extraction so lightweight cards render before full yt-dlp analysis begins.
+    if (this.opts.onEntryHydrated && entries.length > 0) {
+      setTimeout(() => {
+        void this.hydrateFederatedEntries(binaryPath, entries, generation)
+      }, 0)
+    }
+    return entries
+  }
+
+  private async hydrateEntries(
+    binaryPath: string,
+    entries: SearchResultItem[],
+    generation: number,
+    federated: boolean,
+  ): Promise<void> {
+    if (
+      !this.opts.onEntryHydrated ||
+      entries.length === 0 ||
+      generation !== this.searchGeneration
+    ) {
+      return
+    }
+
+    if (federated) {
+      await this.hydrateFederatedEntries(binaryPath, entries, generation)
+      return
+    }
 
     const chunkSize = 10
     const chunks: SearchResultItem[][] = []
@@ -484,7 +778,7 @@ export class SearchService {
 
     let nextChunk = 0
     const worker = async (): Promise<void> => {
-      while (nextChunk < chunks.length && !this.cancelRequested) {
+      while (nextChunk < chunks.length && generation === this.searchGeneration) {
         const chunk = chunks[nextChunk++]
         const urls = chunk
           .map((e) => e.url)
@@ -494,7 +788,7 @@ export class SearchService {
         const args = [
           '--no-warnings',
           '--print',
-          '%(webpage_url)s|%(upload_date)s|%(timestamp)s|%(like_count)s',
+          '%(original_url)s|%(upload_date)s|%(timestamp)s|%(like_count)s',
         ]
         const cookies = this.opts.getCookiesPath?.()
         if (cookies) args.push('--cookies', cookies)
@@ -503,24 +797,80 @@ export class SearchService {
         const handle = spawnProcess(binaryPath, args, {
           onStdoutLine: (line) => {
             const parsed = parseHydrateLine(line)
-            if (parsed) {
+            if (parsed && generation === this.searchGeneration) {
               this.opts.onEntryHydrated?.(parsed)
             }
           },
           timeoutMs: 30_000,
         })
-        this.activeHandles.add(handle)
+        this.searchHandles.add(handle)
         try {
           await handle.result
         } catch {
           /* best effort */
         } finally {
-          this.activeHandles.delete(handle)
+          this.searchHandles.delete(handle)
         }
       }
     }
 
     const concurrency = Math.min(2, chunks.length)
+    await Promise.all(Array.from({ length: concurrency }, () => worker()))
+  }
+
+  private async hydrateFederatedEntries(
+    binaryPath: string,
+    entries: SearchResultItem[],
+    generation: number,
+  ): Promise<void> {
+    let nextEntry = 0
+    const worker = async (): Promise<void> => {
+      while (nextEntry < entries.length && generation === this.searchGeneration) {
+        const entry = entries[nextEntry++]
+        const stdoutLines: string[] = []
+        const stderrLines: string[] = []
+        const args = buildEntryInfoArgs(entry.url, this.opts.getCookiesPath?.() ?? null)
+        const handle = spawnProcess(binaryPath, args, {
+          onStdoutLine: (line) => stdoutLines.push(line),
+          onStderrLine: (line) => stderrLines.push(line),
+          timeoutMs: 30_000,
+        })
+        this.searchHandles.add(handle)
+
+        let update: SearchHydratePayload = {
+          sourceUrl: entry.url,
+          metadataState: 'unavailable',
+          patch: {},
+        }
+        try {
+          const result = await handle.result
+          if (result.code === 0 && stdoutLines.length > 0) {
+            update = parseFederatedHydration(
+              entry.url,
+              entry.platform,
+              stdoutLines.join('\n').trim(),
+            )
+          } else if (result.code !== 0) {
+            const errorCode = classifyStderr(stderrLines)
+            update = { ...update, errorCode }
+            this.opts.logger?.debug('federated result hydration failed', {
+              platform: entry.platform,
+              errorCode,
+            })
+          }
+        } catch {
+          // Individual metadata failures leave an analyzable URL card in place.
+        } finally {
+          this.searchHandles.delete(handle)
+        }
+
+        if (generation === this.searchGeneration) {
+          this.opts.onEntryHydrated?.(update)
+        }
+      }
+    }
+
+    const concurrency = Math.min(2, entries.length)
     await Promise.all(Array.from({ length: concurrency }, () => worker()))
   }
 

@@ -1,14 +1,32 @@
 import { describe, expect, it, vi } from 'vitest'
 import { buildSearchQuery } from '../../src/main/media/argBuilders'
 import {
+  buildBravePublicWebSearchUrl,
+  buildPublicWebSearchUrl,
+  extractBravePublicWebResultUrls,
+  extractPublicWebResultUrls,
+  isPublicWebChallenge,
+} from '../../src/main/media/publicWebSearch'
+import {
+  getSearchPlatform,
+  type SearchPlatformId,
+  type SearchResultItem,
+} from '../../src/shared/models'
+import {
   formatChapterTime,
   parseChaptersFromDescription,
   parseChaptersOutput,
+  parseFederatedHydration,
   parseHydrateLine,
   parseJson3Transcript,
   parseVttTranscript,
+  normalizeFederatedCandidateUrl,
   SearchService,
 } from '../../src/main/media/search'
+
+function platform(id: SearchPlatformId) {
+  return getSearchPlatform(id)!
+}
 
 describe('buildSearchQuery (yt-dlp search pseudo-URL)', () => {
   it('combines prefix, limit and query verbatim', () => {
@@ -23,6 +41,209 @@ describe('buildSearchQuery (yt-dlp search pseudo-URL)', () => {
 
   it('falls back to a sane default for a non-finite limit', () => {
     expect(buildSearchQuery('scsearch', 'q', Number.NaN)).toBe('scsearch20:q')
+  })
+})
+
+describe('federated social-video discovery', () => {
+  it('builds scoped, over-fetched public-web queries without yt-dlp filter flags', async () => {
+    const { buildFederatedDiscoveryQuery } = await import('../../src/main/media/argBuilders')
+    const target = buildFederatedDiscoveryQuery(platform('facebook'), 'funny cats', 20)
+
+    expect(target.urlOrQuery).toBe(
+      '(site:facebook.com/watch/ OR site:facebook.com/reel/ OR site:facebook.com/videos/ OR site:fb.watch) funny cats',
+    )
+    expect(target.extraFlags).toEqual([])
+    expect(target.candidateLimit).toBe(50)
+
+    const smallTarget = buildFederatedDiscoveryQuery(platform('reddit'), 'short film', 10)
+    expect(smallTarget.urlOrQuery).toBe(
+      '(site:v.redd.it OR (site:reddit.com/r/ inurl:comments video)) short film',
+    )
+    expect(smallTarget.candidateLimit).toBe(30)
+  })
+
+  it('extracts only DuckDuckGo result destinations from public-web markup', () => {
+    const url = buildPublicWebSearchUrl('site:instagram.com', 'funny cats')
+    expect(url).toContain('q=site%3Ainstagram.com+funny+cats')
+    expect(
+      extractPublicWebResultUrls(
+        '<a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.instagram.com%2Freel%2FABC123%2F&amp;rut=ignored">Result</a><a href="https://example.com">Ignore</a>',
+      ),
+    ).toEqual(['https://www.instagram.com/reel/ABC123/'])
+  })
+
+  it('extracts direct Brave result links and recognizes a DuckDuckGo challenge page', () => {
+    expect(buildBravePublicWebSearchUrl('site:tiktok.com', 'funny cats')).toContain(
+      'q=site%3Atiktok.com+funny+cats',
+    )
+    expect(
+      extractBravePublicWebResultUrls(
+        '<a href="https://www.tiktok.com/@creator/video/1234567890" class="result">Result</a><a href="/search?q=test">Ignore</a>',
+      ),
+    ).toEqual(['https://www.tiktok.com/@creator/video/1234567890'])
+    expect(isPublicWebChallenge('<p>Please complete the captcha robot check</p>')).toBe(true)
+  })
+
+  it('uses public-web discovery results immediately without spawning yt-dlp discovery', async () => {
+    const fetchPublicWebSearch = vi.fn(
+      async () =>
+        '<a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.instagram.com%2Freel%2FABC123%2F">Result</a>',
+    )
+    const service = new SearchService({
+      resolveYtDlp: async () => ({ path: 'fake-ytdlp' }) as never,
+      fetchPublicWebSearch,
+      getCookiesPath: () => 'must-not-be-used-for-discovery.txt',
+    })
+
+    await expect(service.search('instagram', 'funny cats', 20, 'views')).resolves.toMatchObject([
+      {
+        url: 'https://instagram.com/reel/ABC123',
+        metadataState: 'loading',
+        title: 'Instagram video',
+      },
+    ])
+    expect(fetchPublicWebSearch).toHaveBeenCalledWith(
+      expect.stringContaining('instagram.com%2Freel'),
+      expect.any(AbortSignal),
+    )
+  })
+
+  it('falls back to Brave when DuckDuckGo returns a challenge page', async () => {
+    const fetchPublicWebSearch = vi.fn(async (url: string) =>
+      url.includes('search.brave.com')
+        ? '<a href="https://www.tiktok.com/@creator/video/1234567890">Result</a>'
+        : '<p>Please complete the captcha robot check</p>',
+    )
+    const service = new SearchService({
+      resolveYtDlp: async () => ({ path: 'fake-ytdlp' }) as never,
+      fetchPublicWebSearch,
+    })
+
+    await expect(service.search('tiktok', 'funny cats', 20, 'relevance')).resolves.toMatchObject([
+      { url: 'https://tiktok.com/@creator/video/1234567890', metadataState: 'loading' },
+    ])
+    expect(fetchPublicWebSearch).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([
+    [
+      'facebook',
+      'https://www.facebook.com/watch/?v=123&utm_source=test&fbclid=tracking',
+      'https://facebook.com/watch?v=123',
+    ],
+    [
+      'instagram',
+      'https://www.instagram.com/reel/ABC_123/?igshid=tracking#fragment',
+      'https://instagram.com/reel/ABC_123',
+    ],
+    [
+      'twitter',
+      'https://x.com/example/status/123456?s=20',
+      'https://x.com/example/status/123456?s=20',
+    ],
+    [
+      'tiktok',
+      'https://www.tiktok.com/@creator/video/1234567890?utm_campaign=test',
+      'https://tiktok.com/@creator/video/1234567890',
+    ],
+    ['twitter', 'https://t.co/AbCd1234', 'https://t.co/AbCd1234'],
+    [
+      'reddit',
+      'https://www.reddit.com/r/videos/comments/abc123/a_video/?ref=share',
+      'https://reddit.com/r/videos/comments/abc123/a_video',
+    ],
+  ])('accepts and normalizes %s media URLs', (platformId, input, expected) => {
+    expect(normalizeFederatedCandidateUrl(platformId, input)).toBe(expected)
+  })
+
+  it.each([
+    ['instagram', 'https://instagram.com/explore/tags/cats/'],
+    ['twitter', 'https://x.com/example'],
+    ['tiktok', 'https://tiktok.com/@creator'],
+    ['reddit', 'https://reddit.com/r/videos/'],
+    ['facebook', 'https://facebook.com.example/reel/123'],
+    ['facebook', 'https://google.com/url?q=https://facebook.com/reel/123'],
+    ['youtube', 'https://youtube.com/watch?v=abc'],
+    ['instagram', 'javascript:alert(1)'],
+  ])('rejects non-media or untrusted %s candidates', (platformId, input) => {
+    expect(normalizeFederatedCandidateUrl(platformId, input)).toBeNull()
+  })
+
+  it('maps full yt-dlp metadata into an exact progressive result update', () => {
+    const sourceUrl = 'https://instagram.com/reel/ABC_123'
+    const update = parseFederatedHydration(
+      sourceUrl,
+      'instagram',
+      JSON.stringify({
+        id: 'ABC_123',
+        title: 'A public reel',
+        uploader: 'creator',
+        duration: 42,
+        view_count: 1234,
+        like_count: 100,
+        comment_count: 7,
+        upload_date: '20260909',
+        timestamp: 1788950000,
+        thumbnail: 'https://cdn.example/thumb.jpg',
+        webpage_url: sourceUrl,
+        channel_is_verified: true,
+        description: 'A short public video',
+        formats: [],
+      }),
+    )
+
+    expect(update.sourceUrl).toBe(sourceUrl)
+    expect(update.metadataState).toBe('ready')
+    expect(update.patch).toMatchObject({
+      id: 'ABC_123',
+      title: 'A public reel',
+      uploader: 'creator',
+      durationSec: 42,
+      viewCount: 1234,
+      likeCount: 100,
+      commentCount: 7,
+      uploadDate: '2026-09-09',
+      isVerified: true,
+      isReel: true,
+    })
+  })
+
+  it('marks malformed hydration output unavailable without throwing', () => {
+    expect(parseFederatedHydration('https://x.com/u/status/1', 'twitter', 'not json')).toEqual({
+      sourceUrl: 'https://x.com/u/status/1',
+      metadataState: 'unavailable',
+      errorCode: 'MF_EXTRACTOR_STALE',
+      patch: {},
+    })
+  })
+
+  it('applies progressive metadata only to the exact source URL', async () => {
+    const { applySearchHydration } = await import('../../src/shared/searchHydration')
+    const results: SearchResultItem[] = [
+      {
+        index: 1,
+        title: 'Loading one',
+        url: 'https://x.com/user/status/1',
+        platform: 'twitter',
+        metadataState: 'loading',
+      },
+      {
+        index: 2,
+        title: 'Loading ten',
+        url: 'https://x.com/user/status/10',
+        platform: 'twitter',
+        metadataState: 'loading',
+      },
+    ]
+
+    const updated = applySearchHydration(results, {
+      sourceUrl: 'https://x.com/user/status/1',
+      metadataState: 'ready',
+      patch: { title: 'Exact match' },
+    })
+
+    expect(updated[0]).toMatchObject({ title: 'Exact match', metadataState: 'ready' })
+    expect(updated[1]).toEqual(results[1])
   })
 })
 
@@ -62,17 +283,17 @@ describe('SearchService input validation (rejects before spawning any process)',
       'https://www.youtube.com/watch?v=YykjpeuMNEk|20160129|1454079638|16236614',
     )
     expect(parsed).not.toBeNull()
-    expect(parsed?.url).toBe('https://www.youtube.com/watch?v=YykjpeuMNEk')
-    expect(parsed?.uploadDate).toBe('2016-01-29')
-    expect(parsed?.timestamp).toBe(1454079638000)
-    expect(parsed?.likeCount).toBe(16236614)
+    expect(parsed?.sourceUrl).toBe('https://www.youtube.com/watch?v=YykjpeuMNEk')
+    expect(parsed?.patch.uploadDate).toBe('2016-01-29')
+    expect(parsed?.patch.timestamp).toBe(1454079638000)
+    expect(parsed?.patch.likeCount).toBe(16236614)
 
     // Handles NA or invalid values safely
     const parsedNa = parseHydrateLine('https://example.com/watch?v=abc|NA|NA|NA')
     expect(parsedNa).not.toBeNull()
-    expect(parsedNa?.uploadDate).toBeNull()
-    expect(parsedNa?.timestamp).toBeNull()
-    expect(parsedNa?.likeCount).toBeNull()
+    expect(parsedNa?.patch.uploadDate).toBeNull()
+    expect(parsedNa?.patch.timestamp).toBeNull()
+    expect(parsedNa?.patch.likeCount).toBeNull()
 
     // Ignores junk lines (warnings / headers)
     expect(parseHydrateLine('WARNING: [youtube] Something')).toBeNull()
@@ -457,7 +678,7 @@ describe('Search Filters & Server Criteria (Option 2)', () => {
       await import('../../src/main/media/argBuilders')
 
     // 1. YouTube Sort by Views
-    const viewsTarget = buildSearchTarget('youtube', 'ytsearch', 'elden ring', 20, 'views')
+    const viewsTarget = buildSearchTarget(platform('youtube'), 'elden ring', 20, 'views')
     expect(viewsTarget.urlOrQuery).toContain(
       'https://www.youtube.com/results?search_query=elden%20ring&sp=CAM%3D',
     )
@@ -465,30 +686,29 @@ describe('Search Filters & Server Criteria (Option 2)', () => {
     expect(viewsTarget.candidateLimit).toBeGreaterThanOrEqual(50)
 
     // 2. YouTube Sort by Upload Date (newest)
-    const dateTarget = buildSearchTarget('youtube', 'ytsearch', 'elden ring', 20, 'newest')
+    const dateTarget = buildSearchTarget(platform('youtube'), 'elden ring', 20, 'newest')
     expect(dateTarget.urlOrQuery).toContain('ytsearch50:elden ring after:')
     expect(dateTarget.candidateLimit).toBeGreaterThanOrEqual(50)
 
     // 3. YouTube Upload Recency (uses after:YYYY-MM-DD query syntax)
-    const weekTarget = buildSearchTarget('youtube', 'ytsearch', 'nodejs', 20, 'relevance', {
+    const weekTarget = buildSearchTarget(platform('youtube'), 'nodejs', 20, 'relevance', {
       uploadRecency: 'week',
     })
     expect(weekTarget.urlOrQuery).toBe(`ytsearch50:nodejs after:${getIsoDateDaysAgo(7)}`)
 
-    const dayTarget = buildSearchTarget('youtube', 'ytsearch', 'nodejs', 20, 'relevance', {
+    const dayTarget = buildSearchTarget(platform('youtube'), 'nodejs', 20, 'relevance', {
       uploadRecency: '24h',
     })
     expect(dayTarget.urlOrQuery).toBe(`ytsearch50:nodejs after:${getIsoDateDaysAgo(1)}`)
 
     // 4. Fallback on standard prefix (SoundCloud, Bilibili, standard YouTube relevance)
-    const scTarget = buildSearchTarget('soundcloud', 'scsearch', 'chillhop', 10, 'relevance')
+    const scTarget = buildSearchTarget(platform('soundcloud'), 'chillhop', 10, 'relevance')
     expect(scTarget.urlOrQuery).toBe('scsearch10:chillhop')
     expect(scTarget.candidateLimit).toBe(10)
 
     // With filters, candidate limit increases to prevent depleting results
     const scFilteredTarget = buildSearchTarget(
-      'soundcloud',
-      'scsearch',
+      platform('soundcloud'),
       'chillhop',
       10,
       'relevance',
@@ -500,7 +720,7 @@ describe('Search Filters & Server Criteria (Option 2)', () => {
     expect(scFilteredTarget.candidateLimit).toBe(50)
 
     // 5. YouTube Playlists Only Target
-    const playlistTarget = buildSearchTarget('youtube', 'ytsearch', 'lofi beats', 20, 'relevance', {
+    const playlistTarget = buildSearchTarget(platform('youtube'), 'lofi beats', 20, 'relevance', {
       contentType: 'playlist',
     })
     expect(playlistTarget.urlOrQuery).toBe(
@@ -510,7 +730,7 @@ describe('Search Filters & Server Criteria (Option 2)', () => {
     expect(playlistTarget.candidateLimit).toBeGreaterThanOrEqual(50)
 
     // 6. YouTube Reels & Shorts Target (routes to native short video filter)
-    const reelTarget = buildSearchTarget('youtube', 'ytsearch', 'funny cats', 20, 'relevance', {
+    const reelTarget = buildSearchTarget(platform('youtube'), 'funny cats', 20, 'relevance', {
       contentType: 'reel',
     })
     expect(reelTarget.urlOrQuery).toBe(
@@ -518,7 +738,7 @@ describe('Search Filters & Server Criteria (Option 2)', () => {
     )
     expect(reelTarget.extraFlags).toContain('--playlist-items')
 
-    const reelViewsTarget = buildSearchTarget('youtube', 'ytsearch', 'funny cats', 20, 'views', {
+    const reelViewsTarget = buildSearchTarget(platform('youtube'), 'funny cats', 20, 'views', {
       contentType: 'reel',
     })
     expect(reelViewsTarget.urlOrQuery).toBe(
@@ -526,21 +746,13 @@ describe('Search Filters & Server Criteria (Option 2)', () => {
     )
 
     // 7. YouTube Music Videos Only Target
-    const musicTarget = buildSearchTarget(
-      'youtube',
-      'ytsearch',
-      'coldplay yellow',
-      20,
-      'relevance',
-      {
-        contentType: 'music',
-      },
-    )
+    const musicTarget = buildSearchTarget(platform('youtube'), 'coldplay yellow', 20, 'relevance', {
+      contentType: 'music',
+    })
     expect(musicTarget.urlOrQuery).toBe('ytsearch50:coldplay yellow official music video')
 
     const musicViewsTarget = buildSearchTarget(
-      'youtube',
-      'ytsearch',
+      platform('youtube'),
       'coldplay yellow',
       20,
       'views',
