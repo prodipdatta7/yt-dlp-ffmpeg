@@ -52,6 +52,7 @@ import {
   listPartialDirs,
   isUnderTempRoot,
 } from './fsops/partials'
+import { sanitizeFileName } from './fsops/sanitizer'
 import { dirname } from 'node:path'
 import { chromeThemeColors, createWindowOptions, getWindowSecurityFlags } from './windowOptions'
 
@@ -503,6 +504,43 @@ app.whenReady().then(() => {
       cancelSearch: () => {
         searchService.cancel()
         return { ok: true }
+      },
+      fetchChapters: async (url: string) => {
+        const binary = await binariesService.locate('yt-dlp')
+        if (!binary) return { chapters: [] }
+        return await searchService.fetchChapters(binary.path, url)
+      },
+      fetchTranscript: async (url: string) => {
+        const binary = await binariesService.locate('yt-dlp')
+        if (!binary) return { cues: [] }
+        return await searchService.fetchTranscript(binary.path, url)
+      },
+      saveTextFile: async (defaultFilename: string, content: string) => {
+        const safeName = sanitizeFileName(defaultFilename)
+        const current = settings.load()
+        const defaultPath = join(current.lastOutputDir || app.getPath('downloads'), safeName)
+        const opts = {
+          title: 'Save Transcript',
+          defaultPath,
+          filters: [
+            { name: 'Text Document (*.txt)', extensions: ['txt'] },
+            { name: 'All Files (*.*)', extensions: ['*'] },
+          ],
+        }
+        const result = mainWindow
+          ? await dialog.showSaveDialog(mainWindow, opts)
+          : await dialog.showSaveDialog(opts)
+        if (result.canceled || !result.filePath) {
+          return { ok: false, canceled: true }
+        }
+        try {
+          writeFileSync(result.filePath, content, 'utf8')
+          logger.info('transcript text file saved', { path: result.filePath })
+          return { ok: true, filePath: result.filePath }
+        } catch (err) {
+          logger.error('failed to write transcript text file', { error: String(err) })
+          return { ok: false }
+        }
       },
     },
     logger,

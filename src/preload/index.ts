@@ -24,6 +24,9 @@ import {
   MF_SEARCH_CANCEL,
   MF_SEARCH_ENTRY,
   MF_SEARCH_START,
+  MF_FETCH_CHAPTERS,
+  MF_FETCH_TRANSCRIPT,
+  MF_SAVE_TEXT_FILE,
   MF_SETTINGS_CLEAR_COOKIES,
   MF_SETTINGS_GET,
   MF_SETTINGS_IMPORT_COOKIES,
@@ -59,6 +62,9 @@ import {
   type UpdaterApplyResult,
   type UpdaterCheckResult,
   type UpdaterPhaseEvent,
+  type VideoChaptersResult,
+  type VideoTranscriptResult,
+  type SaveTextFileResult,
 } from '../shared/ipcContract'
 import type { UpdaterDriverKind } from '../shared/models'
 
@@ -149,6 +155,12 @@ const api: MfApi = {
     ipcRenderer.on(MF_APP_UPDATE_PHASE, wrapped)
     return () => ipcRenderer.removeListener(MF_APP_UPDATE_PHASE, wrapped)
   },
+  fetchChapters: (url: string): Promise<VideoChaptersResult> =>
+    ipcRenderer.invoke(MF_FETCH_CHAPTERS, url),
+  fetchTranscript: (url: string): Promise<VideoTranscriptResult> =>
+    ipcRenderer.invoke(MF_FETCH_TRANSCRIPT, url),
+  saveTextFile: (defaultFilename: string, content: string): Promise<SaveTextFileResult> =>
+    ipcRenderer.invoke(MF_SAVE_TEXT_FILE, defaultFilename, content),
 }
 
 contextBridge.exposeInMainWorld('mf', api)

@@ -2,6 +2,7 @@ import type { SearchResultItem } from '../../../shared/models'
 import { CheckSquare } from './PreviewPanel'
 import { LinkIcon, QueueIcon, RotateCcwIcon } from './icons'
 import {
+  activePreviewUrl,
   filteredResults,
   resetSearch,
   searchResults,
@@ -74,7 +75,11 @@ export function SearchResults({
       </div>
 
       {results.length > 0 ? (
-        <ol class="mt-2 flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto p-2.5">
+        <ol
+          class={`mt-2 flex min-h-0 flex-1 flex-col gap-3.5 ${
+            activePreviewUrl.value !== null ? 'overflow-y-hidden' : 'overflow-y-auto'
+          } p-2.5`}
+        >
           {results.map((entry) => (
             <SearchResultCard
               key={entry.url}

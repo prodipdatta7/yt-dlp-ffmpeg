@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import { getEmbedInfo } from '../utils/source'
 import { CloseIcon, DownloadIcon, FilmIcon, LinkIcon, MaximizeIcon } from './icons'
 
@@ -10,6 +10,8 @@ export interface InlineVideoPreviewProps {
   onExpand?: () => void
   className?: string
   hideHeaderControls?: boolean
+  onTimeUpdate?: (currentTimeSec: number) => void
+  onPlayingChange?: (isPlaying: boolean) => void
 }
 
 export function InlineVideoPreview({
@@ -20,13 +22,103 @@ export function InlineVideoPreview({
   onExpand,
   className = '',
   hideHeaderControls = false,
+  onTimeUpdate,
+  onPlayingChange,
 }: InlineVideoPreviewProps) {
   const embed = getEmbedInfo(url, startSec)
   const [loading, setLoading] = useState(true)
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
     setLoading(true)
   }, [embed?.src])
+
+  // Send command to iframe safely via postMessage
+  const sendIframeCommand = (func: string, args: unknown[] = []) => {
+    try {
+      iframeRef.current?.contentWindow?.postMessage(
+        JSON.stringify({ event: 'command', func, args }),
+        '*',
+      )
+    } catch {
+      /* cross-origin ignore */
+    }
+  }
+
+  // When startSec changes, seek without reloading if iframe is already active
+  useEffect(() => {
+    if (startSec !== undefined && startSec !== null) {
+      if (embed?.type === 'iframe') {
+        sendIframeCommand('seekTo', [startSec, true])
+      } else if (videoRef.current) {
+        videoRef.current.currentTime = startSec
+      }
+    }
+  }, [startSec, embed?.type])
+
+  // Periodic time poll for YouTube iframe embeds
+  useEffect(() => {
+    if (embed?.type !== 'iframe') return
+    const interval = setInterval(() => {
+      sendIframeCommand('getCurrentTime')
+    }, 400)
+    return () => clearInterval(interval)
+  }, [embed?.type])
+
+  // Listen to postMessage from YouTube, SoundCloud, and Vimeo embeds
+  useEffect(() => {
+    const handleMessage = (e: MessageEvent) => {
+      let data = e.data
+      if (typeof data === 'string') {
+        try {
+          data = JSON.parse(data)
+        } catch {
+          return
+        }
+      }
+      if (!data || typeof data !== 'object') return
+      const msg = data as Record<string, unknown>
+
+      // YouTube player API
+      if (msg.event === 'infoDelivery' && msg.info && typeof msg.info === 'object') {
+        const info = msg.info as Record<string, unknown>
+        if (typeof info.currentTime === 'number' && Number.isFinite(info.currentTime)) {
+          onTimeUpdate?.(info.currentTime)
+        }
+        if (typeof info.playerState === 'number') {
+          // 1 = playing, 2 = paused
+          onPlayingChange?.(info.playerState === 1)
+        }
+      }
+      if (msg.event === 'onStateChange' && typeof msg.info === 'number') {
+        onPlayingChange?.(msg.info === 1)
+      }
+
+      // SoundCloud widget events
+      if (msg.method === 'playProgress' && msg.data && typeof msg.data === 'object') {
+        const scData = msg.data as Record<string, unknown>
+        if (typeof scData.currentPosition === 'number') {
+          onTimeUpdate?.(scData.currentPosition / 1000)
+        }
+      }
+      if (msg.method === 'pause') onPlayingChange?.(false)
+      if (msg.method === 'play') onPlayingChange?.(true)
+
+      // Vimeo player events
+      if (msg.event === 'timeupdate' && msg.data && typeof msg.data === 'object') {
+        const vimeoData = msg.data as Record<string, unknown>
+        if (typeof vimeoData.seconds === 'number') {
+          onTimeUpdate?.(vimeoData.seconds)
+        }
+      }
+      if (msg.event === 'play') onPlayingChange?.(true)
+      if (msg.event === 'pause') onPlayingChange?.(false)
+    }
+
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [onTimeUpdate, onPlayingChange])
 
   if (!embed) {
     return (
@@ -72,16 +164,44 @@ export function InlineVideoPreview({
             </div>
           )}
           <iframe
+            ref={iframeRef}
             src={embed.src}
             title={title ?? 'Video preview'}
             class="size-full border-0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
-            onLoad={() => setLoading(false)}
+            onLoad={() => {
+              setLoading(false)
+              try {
+                iframeRef.current?.contentWindow?.postMessage(
+                  JSON.stringify({ event: 'listening' }),
+                  '*',
+                )
+                iframeRef.current?.contentWindow?.postMessage(
+                  JSON.stringify({
+                    event: 'command',
+                    func: 'addEventListener',
+                    args: ['onStateChange'],
+                  }),
+                  '*',
+                )
+              } catch {
+                /* cross-origin ignore */
+              }
+            }}
           />
         </>
       ) : (
-        <video controls autoPlay src={embed.src} class="size-full object-contain" />
+        <video
+          ref={videoRef}
+          controls
+          autoPlay
+          src={embed.src}
+          class="size-full object-contain"
+          onTimeUpdate={(e) => onTimeUpdate?.(e.currentTarget.currentTime)}
+          onPlay={() => onPlayingChange?.(true)}
+          onPause={() => onPlayingChange?.(false)}
+        />
       )}
 
       {/* Floating Header Controls */}
@@ -151,7 +271,7 @@ export function InlineVideoPreviewModal({
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div class="flex w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-neutral-900 shadow-2xl">
+      <div class="flex w-full max-w-[96vw] xl:max-w-6xl 2xl:max-w-7xl max-h-[95vh] flex-col overflow-hidden rounded-2xl border border-white/10 bg-neutral-900 shadow-2xl">
         {/* Modal Header */}
         <div class="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
           <div class="flex min-w-0 flex-1 flex-col">
@@ -170,9 +290,9 @@ export function InlineVideoPreviewModal({
           </button>
         </div>
 
-        {/* 16:9 Video Player Container */}
-        <div class="relative aspect-video w-full bg-black">
-          <InlineVideoPreview url={url} title={title} className="rounded-none" />
+        {/* 16:9 Video Player Container with responsive max height */}
+        <div class="relative flex aspect-video w-full max-h-[78vh] items-center justify-center bg-black">
+          <InlineVideoPreview url={url} title={title} className="rounded-none size-full" />
         </div>
 
         {/* Modal Footer Actions */}

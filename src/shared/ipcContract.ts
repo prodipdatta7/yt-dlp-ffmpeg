@@ -11,6 +11,7 @@ import type {
   SearchSort,
   UpdaterDriverKind,
   UpdaterPhase,
+  VideoTranscriptResult,
 } from './models'
 
 export type { MfErrorCode }
@@ -52,6 +53,20 @@ export const MF_OPEN_FILE = 'mf:open-file' as const
 export const MF_SEARCH_START = 'mf:search:start' as const
 export const MF_SEARCH_CANCEL = 'mf:search:cancel' as const
 export const MF_SEARCH_ENTRY = 'mf:search:entry' as const
+export const MF_FETCH_CHAPTERS = 'mf:media:fetch-chapters' as const
+export const MF_FETCH_TRANSCRIPT = 'mf:media:fetch-transcript' as const
+export const MF_SAVE_TEXT_FILE = 'mf:dialog:save-text-file' as const
+
+export interface SaveTextFileResult {
+  ok: boolean
+  filePath?: string
+  canceled?: boolean
+}
+
+export interface VideoChaptersResult {
+  chapters: import('./models').ChapterMarker[]
+  description?: string | null
+}
 
 export interface SearchHydratePayload {
   url: string
@@ -236,9 +251,13 @@ export interface MfApi {
   openAppReleasePage(): Promise<{ ok: boolean }>
   downloadAndInstallAppUpdate(): Promise<AppUpdateInstallResult>
   onAppUpdatePhase(listener: (event: AppUpdatePhaseEvent) => void): () => void
+  fetchChapters(url: string): Promise<VideoChaptersResult>
+  fetchTranscript(url: string): Promise<VideoTranscriptResult>
+  saveTextFile(defaultFilename: string, content: string): Promise<SaveTextFileResult>
 }
 
 export type {
+  ChapterMarker,
   Container,
   JobConfig,
   JobDonePayload,
@@ -248,5 +267,7 @@ export type {
   SearchPlatform,
   SearchResultItem,
   SearchSort,
+  TranscriptCue,
   UploadRecency,
+  VideoTranscriptResult,
 } from './models'

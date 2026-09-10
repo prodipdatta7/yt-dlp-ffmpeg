@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import type { SearchResultItem } from '../../../shared/models'
+import type { VideoChaptersResult, VideoTranscriptResult } from '../../../shared/ipcContract'
+import type { ChapterMarker, SearchResultItem, TranscriptCue } from '../../../shared/models'
+import { activePreviewUrl, closePreview } from '../signals/searchState'
 import {
   BILIBILI_FORMAT_PRESETS,
   BILIBILI_MULTI_P_PRESETS,
@@ -16,10 +18,21 @@ import {
   type FormatPresetOption,
   type SoundcloudSpecs,
 } from '../utils/estimate'
-import { fmtCount, fmtDuration, fmtLikes, fmtSize, fmtUploadedAgo } from '../utils/format'
+import {
+  fmtCount,
+  fmtDuration,
+  fmtLikes,
+  fmtSize,
+  fmtUploadedAgo,
+  formatTranscriptAsText,
+} from '../utils/format'
 import {
   BilibiliTvIcon,
+  CalendarIcon,
   CheckCircleFilledIcon,
+  CheckIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   ClipboardIcon,
   CloseIcon,
   DownloadIcon,
@@ -32,19 +45,22 @@ import {
   PlayIcon,
   QueueIcon,
   RepeatIcon,
+  RotateCcwIcon,
   SoundcloudIcon,
   ThumbsUpIcon,
 } from './icons'
-import { InlineVideoPreview, InlineVideoPreviewModal } from './InlineVideoPreview'
+import { InlineVideoPreview } from './InlineVideoPreview'
 import { CheckSquare } from './PreviewPanel'
 
-export interface ChapterMarker {
-  time: string
-  title: string
-  seconds: number
-}
+export type { ChapterMarker, TranscriptCue }
 
-function extractRealChapters(description?: string | null): ChapterMarker[] {
+const chaptersCache = new Map<string, VideoChaptersResult>()
+const transcriptCache = new Map<string, VideoTranscriptResult>()
+
+function extractRealChapters(
+  description?: string | null,
+  totalDurationSec?: number | null,
+): ChapterMarker[] {
   if (!description) return []
   const lines = description.split('\n')
   const parsed: ChapterMarker[] = []
@@ -62,23 +78,34 @@ function extractRealChapters(description?: string | null): ChapterMarker[] {
       }
       const cleanTitle = line
         .replace(timeRegex, '')
-        .replace(/^[\s\-–—:•|]+/, '')
-        .replace(/[\s\-–—:•|]+$/, '')
+        .replace(/^[\s\-–—:•|()[\]]+/, '')
+        .replace(/[\s\-–—:•|()[\]]+$/, '')
         .trim()
-      if (cleanTitle.length > 1) {
+      if (cleanTitle.length > 0) {
         parsed.push({
           time: timeStr,
-          title: cleanTitle.length > 36 ? cleanTitle.slice(0, 34) + '...' : cleanTitle,
+          title: cleanTitle,
           seconds: sec,
         })
       }
     }
   }
   // Deduplicate identical timestamps and sort chronologically
-  const unique = parsed.filter(
-    (ch, idx, self) => idx === self.findIndex((o) => o.seconds === ch.seconds),
-  )
-  return unique.sort((a, b) => a.seconds - b.seconds)
+  const unique = parsed
+    .filter((ch, idx, self) => idx === self.findIndex((o) => o.seconds === ch.seconds))
+    .sort((a, b) => a.seconds - b.seconds)
+
+  // Calculate chapter durations
+  for (let i = 0; i < unique.length; i++) {
+    const nextSec = i < unique.length - 1 ? unique[i + 1].seconds : totalDurationSec
+    if (nextSec && nextSec > unique[i].seconds) {
+      const diff = nextSec - unique[i].seconds
+      const m = Math.floor(diff / 60)
+      const s = diff % 60
+      unique[i].duration = `${m}:${s < 10 ? '0' : ''}${s}`
+    }
+  }
+  return unique
 }
 
 export interface SearchResultCardProps {
@@ -178,12 +205,38 @@ export function SearchResultCard({
   }, [isSoundCloud, scSpecs, isBilibili, biliSpecs, entry.title])
 
   const [selectedPresetId, setSelectedPresetId] = useState(defaultPresetId)
-  const [previewActive, setPreviewActive] = useState(false)
-  const [modalPreviewOpen, setModalPreviewOpen] = useState(false)
+  const previewActive = activePreviewUrl.value === entry.url
+  const setPreviewActive = (active: boolean) => {
+    if (active) {
+      activePreviewUrl.value = entry.url
+    } else if (activePreviewUrl.value === entry.url) {
+      closePreview()
+      setSeekSec(undefined)
+    }
+  }
   const [menuOpen, setMenuOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const [imgError, setImgError] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  // Lock body scroll and listen for Escape key while preview is active
+  useEffect(() => {
+    if (!previewActive) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setPreviewActive(false)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      document.body.style.overflow = prevOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [previewActive])
 
   // Sync selected preset when default preset changes (e.g. results update)
   useEffect(() => {
@@ -337,10 +390,259 @@ export function SearchResultCard({
     setMenuOpen(false)
   }
 
-  const [activeChapterIndex, setActiveChapterIndex] = useState(0)
+  const [currentTimeSec, setCurrentTimeSec] = useState(0)
+  const [isPlaying, setIsPlaying] = useState(true)
+  const lastRealUpdateRef = useRef<number>(Date.now())
+  const activeChapterRef = useRef<HTMLButtonElement>(null)
   const [seekSec, setSeekSec] = useState<number | undefined>(undefined)
+  const [copiedLink, setCopiedLink] = useState(false)
+  const [chapterFilter, setChapterFilter] = useState('')
 
-  const chapters = useMemo(() => extractRealChapters(entry.description), [entry.description])
+  const [fetchedData, setFetchedData] = useState<VideoChaptersResult | null>(() => {
+    return entry.url ? (chaptersCache.get(entry.url) ?? null) : null
+  })
+  const [loadingChapters, setLoadingChapters] = useState(false)
+
+  // Fetch full chapters and description on demand when preview is activated
+  useEffect(() => {
+    if (!previewActive || !entry.url) return
+    const cached = chaptersCache.get(entry.url)
+    if (cached) {
+      setFetchedData(cached)
+      return
+    }
+
+    let cancelled = false
+    setLoadingChapters(true)
+    window.mf
+      ?.fetchChapters(entry.url)
+      .then((res) => {
+        if (cancelled) return
+        chaptersCache.set(entry.url, res)
+        setFetchedData(res)
+      })
+      .catch(() => {
+        if (cancelled) return
+        const fallback: VideoChaptersResult = { chapters: [] }
+        chaptersCache.set(entry.url, fallback)
+        setFetchedData(fallback)
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingChapters(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [previewActive, entry.url])
+
+  const fullDescription = fetchedData?.description ?? entry.description
+
+  const chapters = useMemo(() => {
+    if (fetchedData && fetchedData.chapters.length > 0) {
+      return fetchedData.chapters
+    }
+    return extractRealChapters(fullDescription, entry.durationSec)
+  }, [fetchedData, fullDescription, entry.durationSec])
+
+  // Calculate the currently active/running chapter dynamically from playback time
+  const activeChapterIndex = useMemo(() => {
+    if (chapters.length === 0) return 0
+    const cur = currentTimeSec
+    for (let i = chapters.length - 1; i >= 0; i--) {
+      if (cur >= chapters[i].seconds) {
+        return i
+      }
+    }
+    return 0
+  }, [chapters, currentTimeSec])
+
+  // Fallback playback timer for embeds where postMessage is delayed or not emitted
+  useEffect(() => {
+    if (!previewActive || !isPlaying) return
+    const interval = setInterval(() => {
+      if (Date.now() - lastRealUpdateRef.current > 1500) {
+        setCurrentTimeSec((prev) => {
+          const maxSec = entry.durationSec ?? 999999
+          return Math.min(maxSec, prev + 0.5)
+        })
+      }
+    }, 500)
+    return () => clearInterval(interval)
+  }, [previewActive, isPlaying, entry.durationSec])
+
+  // Reset time when a new preview URL opens
+  useEffect(() => {
+    setCurrentTimeSec(0)
+    setSeekSec(undefined)
+    lastRealUpdateRef.current = Date.now()
+  }, [entry.url])
+
+  // Auto-scroll active chapter into view as video plays through chapters
+  useEffect(() => {
+    if (previewActive && activeChapterRef.current) {
+      activeChapterRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  }, [activeChapterIndex, previewActive])
+
+  const [previewTab, setPreviewTab] = useState<'chapters' | 'transcript' | 'info'>('chapters')
+
+  const [transcriptData, setTranscriptData] = useState<VideoTranscriptResult | null>(() => {
+    return entry.url ? (transcriptCache.get(entry.url) ?? null) : null
+  })
+  const [loadingTranscript, setLoadingTranscript] = useState(false)
+  const [transcriptFilter, setTranscriptFilter] = useState('')
+  const [autoScrollTranscript, setAutoScrollTranscript] = useState(true)
+  const activeCueRef = useRef<HTMLButtonElement>(null)
+
+  const fetchTranscriptForEntry = (force = false) => {
+    if (!entry.url) return
+    if (!force) {
+      const cached = transcriptCache.get(entry.url)
+      if (cached && cached.cues.length > 0) {
+        setTranscriptData(cached)
+        return
+      }
+    } else {
+      transcriptCache.delete(entry.url)
+    }
+
+    setLoadingTranscript(true)
+    window.mf
+      ?.fetchTranscript(entry.url)
+      .then((res) => {
+        if (res && res.cues && res.cues.length > 0) {
+          transcriptCache.set(entry.url, res)
+        }
+        setTranscriptData(res)
+      })
+      .catch(() => {
+        setTranscriptData({ cues: [] })
+      })
+      .finally(() => {
+        setLoadingTranscript(false)
+      })
+  }
+
+  // Fetch full transcript on demand when preview is activated
+  useEffect(() => {
+    if (!previewActive || !entry.url) return
+    const cached = transcriptCache.get(entry.url)
+    if (cached && cached.cues.length > 0) {
+      setTranscriptData(cached)
+      return
+    }
+    fetchTranscriptForEntry(false)
+  }, [previewActive, entry.url])
+
+  const cues = useMemo(() => transcriptData?.cues ?? [], [transcriptData])
+
+  // Calculate the currently active transcript cue dynamically from playback time
+  const activeCueIndex = useMemo(() => {
+    if (cues.length === 0) return -1
+    const cur = currentTimeSec
+    for (let i = cues.length - 1; i >= 0; i--) {
+      if (cur >= cues[i].startSec) {
+        return i
+      }
+    }
+    return 0
+  }, [cues, currentTimeSec])
+
+  // Auto-scroll active transcript cue into view as playback advances
+  useEffect(() => {
+    if (
+      previewActive &&
+      previewTab === 'transcript' &&
+      autoScrollTranscript &&
+      activeCueRef.current
+    ) {
+      activeCueRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  }, [activeCueIndex, previewActive, previewTab, autoScrollTranscript])
+
+  const [downloadingTxt, setDownloadingTxt] = useState(false)
+  const [downloadedTxt, setDownloadedTxt] = useState(false)
+
+  const handleDownloadTranscriptTxt = async () => {
+    if (!cues.length) return
+    const filename = `${entry.title || 'Video'} - Transcript.txt`
+    const content = formatTranscriptAsText(entry.title, entry.url, entry.durationSec, cues)
+
+    setDownloadingTxt(true)
+    try {
+      if (window.mf?.saveTextFile) {
+        const res = await window.mf.saveTextFile(filename, content)
+        if (res?.ok) {
+          setDownloadedTxt(true)
+          setTimeout(() => setDownloadedTxt(false), 3000)
+        }
+      } else {
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        a.click()
+        URL.revokeObjectURL(url)
+        setDownloadedTxt(true)
+        setTimeout(() => setDownloadedTxt(false), 3000)
+      }
+    } catch {
+      /* best-effort */
+    } finally {
+      setDownloadingTxt(false)
+    }
+  }
+
+  const filteredCues = useMemo(() => {
+    if (!transcriptFilter.trim()) return cues
+    const q = transcriptFilter.toLowerCase()
+    return cues.filter((c) => c.text.toLowerCase().includes(q) || c.time.includes(q))
+  }, [cues, transcriptFilter])
+
+  useEffect(() => {
+    if (chapters.length > 0) {
+      setPreviewTab('chapters')
+    }
+    setChapterFilter('')
+    setTranscriptFilter('')
+  }, [entry.url, chapters.length])
+
+  const filteredChapters = useMemo(() => {
+    if (!chapterFilter.trim()) return chapters
+    const q = chapterFilter.toLowerCase()
+    return chapters.filter((c) => c.title.toLowerCase().includes(q) || c.time.includes(q))
+  }, [chapters, chapterFilter])
+
+  const handleCopyLink = async () => {
+    if (!entry.url) return
+    try {
+      await navigator.clipboard.writeText(entry.url)
+      setCopiedLink(true)
+      setTimeout(() => setCopiedLink(false), 2000)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const uploadDateStr = useMemo(() => {
+    return fmtUploadedAgo(entry.timestamp, entry.uploadDate) ?? entry.uploadDate ?? 'Recent'
+  }, [entry.timestamp, entry.uploadDate])
+
+  const viewsStr = useMemo(() => {
+    return typeof entry.viewCount === 'number' && entry.viewCount >= 0
+      ? `${fmtCount(entry.viewCount)} views`
+      : '—'
+  }, [entry.viewCount])
+
+  const likesStr = useMemo(() => {
+    return typeof entry.likeCount === 'number' && entry.likeCount >= 0
+      ? `${fmtCount(entry.likeCount)} likes`
+      : null
+  }, [entry.likeCount])
 
   const targetBitrateText = useMemo(() => {
     if (currentPreset.id === '4k-uhd') return '12,800 kbps'
@@ -371,293 +673,15 @@ export function SearchResultCard({
     (Boolean(entry.uploader) &&
       /drama|records|vevo|music|channel|tv|official|sky|capital/i.test(entry.uploader!))
 
-  if (previewActive) {
-    return (
-      <li class="list-none">
-        <div class="w-full rounded-2xl border-2 border-[#ea580c] bg-white p-3 sm:p-3.5 shadow-xl shadow-orange-500/10 ring-1 ring-[#ea580c]/30 text-left transition-all dark:border-orange-500/80 dark:bg-[#131722]">
-          {/* Header Row */}
-          <div class="flex flex-wrap items-center justify-between gap-2.5 border-b border-neutral-100 pb-2.5 mb-3 dark:border-white/5">
-            {/* Left Header info */}
-            <div class="flex min-w-0 flex-1 items-center gap-2">
-              {/* Checkbox button */}
-              <button
-                type="button"
-                onClick={() => onToggleSelect(entry.url)}
-                title={selected ? 'Deselect item' : 'Select item'}
-                class="mf-focus-ring flex shrink-0 items-center justify-center rounded p-0.5 transition"
-              >
-                <CheckSquare checked={selected} />
-              </button>
-
-              {/* Theater Preview Active Pill */}
-              <span class="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-orange-200 bg-[#fff7ed] px-2 py-0.5 text-[11px] font-bold text-[#ea580c] dark:border-orange-500/30 dark:bg-orange-950/50 dark:text-orange-400">
-                <span class="size-1.5 rounded-full bg-[#ea580c] animate-pulse" />
-                <span>Theater Preview Active</span>
-              </span>
-
-              {/* Title & Author */}
-              <div class="flex min-w-0 flex-1 items-center gap-1.5 truncate">
-                <span
-                  class="cursor-pointer truncate text-xs sm:text-sm font-bold text-neutral-900 transition hover:text-[#ea580c] dark:text-white"
-                  title={entry.title}
-                  onClick={() => onOpenInDownloader(entry)}
-                >
-                  {entry.title}
-                </span>
-                <span class="shrink-0 text-[11px] font-normal text-neutral-500 dark:text-neutral-400 sm:text-xs">
-                  by {entry.uploader || 'Unknown Channel'}
-                </span>
-                {isVerified && (
-                  <span class="shrink-0 text-[#3b82f6]" title="Verified Channel">
-                    <CheckCircleFilledIcon class="size-3" />
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Right Header action */}
-            <div class="flex shrink-0 items-center">
-              <button
-                type="button"
-                onClick={() => {
-                  setPreviewActive(false)
-                  setSeekSec(undefined)
-                }}
-                class="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-xs font-semibold text-neutral-700 shadow-2xs transition hover:bg-neutral-100 hover:text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-200 dark:hover:bg-neutral-700"
-              >
-                <CloseIcon class="size-3.5 text-neutral-500 dark:text-neutral-400" />
-                <span>Collapse Preview</span>
-              </button>
-            </div>
-          </div>
-
-          {/* 2-Column Responsive Body (side-by-side from md: onwards) */}
-          <div class="grid grid-cols-1 items-start gap-3.5 md:grid-cols-12 lg:gap-4">
-            {/* Left Column: Video Player Container with generous responsive height */}
-            <div class="md:col-span-7 lg:col-span-8 xl:col-span-8 flex items-center justify-center">
-              <div class="relative aspect-video w-full max-h-[360px] sm:max-h-[400px] md:max-h-[440px] lg:max-h-[480px] xl:max-h-[520px] overflow-hidden rounded-xl border border-neutral-200/80 bg-black shadow-inner dark:border-white/10">
-                {/* Inline Video Player */}
-                <InlineVideoPreview
-                  url={entry.url}
-                  title={entry.title}
-                  startSec={seekSec}
-                  onClose={() => setPreviewActive(false)}
-                  onExpand={() => setModalPreviewOpen(true)}
-                  hideHeaderControls
-                  className="size-full"
-                />
-              </div>
-            </div>
-
-            {/* Right Column: Diagnostics, Chapters, CTA */}
-            <div class="flex flex-col justify-between gap-2.5 md:col-span-5 lg:col-span-4 xl:col-span-4 self-stretch">
-              {/* Section 1: STREAM & CODEC DIAGNOSTICS (Compact 2x2 grid) */}
-              <div>
-                <h4 class="mb-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
-                  STREAM & CODEC DIAGNOSTICS
-                </h4>
-                <div class="grid grid-cols-2 gap-x-2 gap-y-1 rounded-lg border border-neutral-100 bg-neutral-50/80 p-2 text-[11px] dark:border-white/5 dark:bg-neutral-900/40">
-                  <div>
-                    <span class="block text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
-                      Video Stream
-                    </span>
-                    <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
-                      {specs.codecBadge ? `${specs.codecBadge} High@L4.2` : 'H.264 High@L4.2'}
-                    </span>
-                  </div>
-                  <div>
-                    <span class="block text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
-                      Audio Codec
-                    </span>
-                    <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
-                      {audioSub.audioBadge ? `${audioSub.audioBadge} (2ch)` : 'AAC 128 kbps (2ch)'}
-                    </span>
-                  </div>
-                  <div>
-                    <span class="block text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
-                      Target Bitrate
-                    </span>
-                    <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
-                      {targetBitrateText}
-                    </span>
-                  </div>
-                  <div>
-                    <span class="block text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
-                      Source Dimensions
-                    </span>
-                    <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
-                      {sourceDimensionsText}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 2: FORMAT QUALITY PRESETS (Interactive chips) */}
-              <div>
-                <h4 class="mb-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
-                  DOWNLOAD QUALITY
-                </h4>
-                <div class="flex flex-wrap gap-1">
-                  {presets.map((preset) => {
-                    const isSel = preset.id === selectedPresetId
-                    return (
-                      <button
-                        key={preset.id}
-                        type="button"
-                        onClick={() => setSelectedPresetId(preset.id)}
-                        disabled={disabled}
-                        class={`rounded-md px-2 py-0.5 text-[10.5px] font-semibold transition ${
-                          isSel
-                            ? 'bg-[#ea580c] text-white shadow-xs'
-                            : 'border border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50 dark:border-white/10 dark:bg-neutral-900/50 dark:text-neutral-300 dark:hover:bg-neutral-800'
-                        }`}
-                      >
-                        {preset.shortLabel}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* Section 3: JUMP TO CHAPTER (All real chapters) OR QUICK SEEK */}
-              {chapters.length >= 2 ? (
-                <div>
-                  <div class="mb-1 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
-                    <span>CHAPTERS ({chapters.length})</span>
-                    <span class="font-mono font-semibold text-[#ea580c] dark:text-orange-400">
-                      {chapters[activeChapterIndex]?.time ?? '00:00'}
-                    </span>
-                  </div>
-                  <div class="flex items-center gap-1">
-                    <div class="relative min-w-0 flex-1">
-                      <select
-                        value={activeChapterIndex}
-                        onChange={(e) => {
-                          const idx = Number(e.currentTarget.value)
-                          setActiveChapterIndex(idx)
-                          if (chapters[idx]) {
-                            setSeekSec(chapters[idx].seconds)
-                          }
-                        }}
-                        class="w-full cursor-pointer appearance-none truncate rounded-lg border border-neutral-300 bg-white py-1 pl-2.5 pr-6 text-[11px] font-medium text-neutral-800 shadow-xs outline-none transition hover:border-neutral-400 focus:border-[#ea580c] focus:ring-1 focus:ring-[#ea580c] dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-200 dark:hover:border-neutral-600"
-                      >
-                        {chapters.map((ch, idx) => (
-                          <option key={idx} value={idx}>
-                            {ch.time} • {ch.title}
-                          </option>
-                        ))}
-                      </select>
-                      <span class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400">
-                        <svg class="size-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M19 9l-7 7-7-7"
-                          />
-                        </svg>
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={activeChapterIndex <= 0}
-                      onClick={() => {
-                        const newIdx = Math.max(0, activeChapterIndex - 1)
-                        setActiveChapterIndex(newIdx)
-                        setSeekSec(chapters[newIdx].seconds)
-                      }}
-                      title="Previous chapter"
-                      class="flex size-6 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-white text-xs font-bold text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 disabled:opacity-30 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-300"
-                    >
-                      ‹
-                    </button>
-                    <button
-                      type="button"
-                      disabled={activeChapterIndex >= chapters.length - 1}
-                      onClick={() => {
-                        const newIdx = Math.min(chapters.length - 1, activeChapterIndex + 1)
-                        setActiveChapterIndex(newIdx)
-                        setSeekSec(chapters[newIdx].seconds)
-                      }}
-                      title="Next chapter"
-                      class="flex size-6 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-white text-xs font-bold text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 disabled:opacity-30 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-300"
-                    >
-                      ›
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <div class="mb-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
-                    QUICK TIMELINE SEEK
-                  </div>
-                  <div class="grid grid-cols-4 gap-1">
-                    {[
-                      { label: '0:00', pct: 0 },
-                      { label: '25%', pct: 0.25 },
-                      { label: '50%', pct: 0.5 },
-                      { label: '75%', pct: 0.75 },
-                    ].map((step, idx) => {
-                      const dur = entry.durationSec ?? 600
-                      const targetSec = Math.round(dur * step.pct)
-                      return (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => setSeekSec(targetSec)}
-                          class="flex items-center justify-center rounded-md border border-neutral-200 bg-white py-1 text-[10.5px] font-medium text-neutral-700 transition hover:border-[#ea580c] hover:bg-orange-50/50 hover:text-[#ea580c] dark:border-white/10 dark:bg-neutral-900/50 dark:text-neutral-300 dark:hover:bg-orange-950/30"
-                        >
-                          {step.label}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Section 4: Download Profile & CTA Button */}
-              <div class="pt-0.5">
-                <div class="mb-1.5 flex items-center justify-between text-[11px]">
-                  <span class="text-neutral-500 dark:text-neutral-400">Profile:</span>
-                  <span class="font-semibold text-neutral-800 dark:text-neutral-200">
-                    {currentPreset.label} ({selectedSize ? `~${fmtSize(selectedSize)}` : '~127 MB'})
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onQuickDownload(entry, currentPreset)}
-                  disabled={disabled}
-                  class="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#ea580c] px-3.5 py-2 text-xs font-bold text-white shadow-sm shadow-orange-500/20 transition hover:bg-[#c2410c] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <DownloadIcon class="size-3.5 shrink-0" />
-                  <span>Download Current Video</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {modalPreviewOpen && (
-          <InlineVideoPreviewModal
-            url={entry.url}
-            title={entry.title}
-            uploader={entry.uploader}
-            onClose={() => setModalPreviewOpen(false)}
-            onQuickDownload={() => onQuickDownload(entry, currentPreset)}
-            onOpenInDownloader={() => onOpenInDownloader(entry)}
-          />
-        )}
-      </li>
-    )
-  }
-
   return (
     <li class="list-none">
       <div
         class={`w-full rounded-2xl border p-3.5 transition-all duration-150 sm:p-4 text-left ${
           selected
             ? 'border-[#ff5500]/70 bg-orange-50/40 shadow-md shadow-orange-500/10 dark:border-sky-500/50 dark:bg-[#161d2d]'
-            : 'border-neutral-200 bg-white shadow-xs hover:border-neutral-300 hover:shadow-sm dark:border-white/10 dark:bg-[#131722]/95 dark:hover:border-neutral-700'
+            : previewActive
+              ? 'border-[#ea580c] bg-orange-50/20 shadow-md ring-2 ring-orange-500/20 dark:border-orange-500/60 dark:bg-orange-950/10'
+              : 'border-neutral-200 bg-white shadow-xs hover:border-neutral-300 hover:shadow-sm dark:border-white/10 dark:bg-[#131722]/95 dark:hover:border-neutral-700'
         }`}
       >
         <div class="flex flex-col gap-3.5 sm:flex-row sm:items-start">
@@ -678,99 +702,87 @@ export function SearchResultCard({
             <>
               {/* Artwork column (Square aspect-square) */}
               <div class="relative aspect-square w-full shrink-0 overflow-hidden rounded-xl border border-neutral-200/80 bg-neutral-100 shadow-inner sm:w-44 md:w-52 dark:border-white/5 dark:bg-neutral-900">
-                {previewActive ? (
-                  <InlineVideoPreview
-                    url={entry.url}
-                    title={entry.title}
-                    onClose={() => setPreviewActive(false)}
-                    onExpand={() => setModalPreviewOpen(true)}
-                    className="size-full"
+                {entry.thumbnailUrl && !imgError ? (
+                  <img
+                    src={entry.thumbnailUrl}
+                    alt={entry.title}
+                    onError={() => setImgError(true)}
+                    class="size-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    loading="lazy"
                   />
                 ) : (
-                  <>
-                    {entry.thumbnailUrl && !imgError ? (
-                      <img
-                        src={entry.thumbnailUrl}
-                        alt={entry.title}
-                        onError={() => setImgError(true)}
-                        class="size-full object-cover transition-transform duration-300 group-hover:scale-105"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div class="flex size-full items-center justify-center bg-neutral-100 text-[#ff5500]/60 dark:bg-neutral-800 dark:text-orange-500/60">
-                        <SoundcloudIcon class="size-10" />
-                      </div>
-                    )}
-
-                    {/* Hover Play/Preview Overlay Button */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setPreviewActive(true)
-                      }}
-                      title="Play audio preview"
-                      class="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity duration-200 hover:opacity-100 hover:bg-black/45"
-                    >
-                      <span class="flex items-center gap-1.5 rounded-full bg-[#ff5500] px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-md transition-transform duration-150 hover:scale-105 active:scale-95">
-                        <PlayIcon class="size-3.5 fill-white" />
-                        <span>Preview</span>
-                      </span>
-                    </button>
-
-                    {/* Overlaid Badges (Top-Left) */}
-                    <div class="pointer-events-none absolute left-2 top-2 z-10 flex items-center gap-1.5">
-                      <span class="flex items-center gap-1 rounded bg-[#ff5500] px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm">
-                        <SoundcloudIcon class="size-3 fill-white" />
-                        <span>{scSpecs.artworkBadge1}</span>
-                      </span>
-                      <span class="rounded border border-white/10 bg-black/75 px-1.5 py-0.5 text-[10px] font-bold text-amber-300 shadow-sm backdrop-blur-md">
-                        {scSpecs.artworkBadge2}
-                      </span>
-                    </div>
-
-                    {/* Bottom-Left Overlay: Waveform or CUE pill */}
-                    {scSpecs.bottomLeftOverlay === 'cue' ? (
-                      <div class="pointer-events-none absolute bottom-2 left-2 z-10">
-                        <span class="rounded border border-white/10 bg-black/80 px-1.5 py-0.5 text-[10px] font-mono text-neutral-300 shadow backdrop-blur-md">
-                          CUE Sheet Detected
-                        </span>
-                      </div>
-                    ) : (
-                      <div class="pointer-events-none absolute bottom-2 left-2 z-10 flex items-end gap-0.5 rounded bg-black/60 px-1.5 py-1 backdrop-blur-md">
-                        <span class="w-1 rounded-full bg-[#ff5500] h-2 animate-pulse" />
-                        <span class="w-1 rounded-full bg-[#ff5500] h-4" />
-                        <span
-                          class="w-1 rounded-full bg-[#ff7700] h-3 animate-pulse"
-                          style={{ animationDelay: '150ms' }}
-                        />
-                        <span class="w-1 rounded-full bg-[#ff5500] h-5" />
-                        <span
-                          class="w-1 rounded-full bg-[#ff7700] h-2.5 animate-pulse"
-                          style={{ animationDelay: '300ms' }}
-                        />
-                        <span class="w-1 rounded-full bg-[#ff5500] h-4" />
-                        <span class="w-1 rounded-full bg-[#ffaa00] h-1.5" />
-                      </div>
-                    )}
-
-                    {/* Bottom-Right Duration Overlay */}
-                    <div class="pointer-events-none absolute bottom-2 right-2 z-10">
-                      {scSpecs.isDjSet ? (
-                        <span class="rounded bg-black/85 px-1.5 py-0.5 text-[10.5px] font-mono font-bold text-white shadow backdrop-blur-md">
-                          <span class="text-[#22c55e]">Auto Split OK</span>{' '}
-                          <span>
-                            {entry.durationSec != null ? fmtDuration(entry.durationSec) : '1:14:20'}
-                          </span>
-                        </span>
-                      ) : (
-                        <span class="rounded bg-black/85 px-1.5 py-0.5 text-[11px] font-bold font-mono text-white shadow backdrop-blur-md">
-                          {entry.durationSec != null ? fmtDuration(entry.durationSec) : '04:12'}
-                        </span>
-                      )}
-                    </div>
-                  </>
+                  <div class="flex size-full items-center justify-center bg-neutral-100 text-[#ff5500]/60 dark:bg-neutral-800 dark:text-orange-500/60">
+                    <SoundcloudIcon class="size-10" />
+                  </div>
                 )}
+
+                {/* Hover Play/Preview Overlay Button */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setPreviewActive(true)
+                  }}
+                  title="Play audio preview"
+                  class="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity duration-200 hover:opacity-100 hover:bg-black/45"
+                >
+                  <span class="flex items-center gap-1.5 rounded-full bg-[#ff5500] px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-md transition-transform duration-150 hover:scale-105 active:scale-95">
+                    <PlayIcon class="size-3.5 fill-white" />
+                    <span>Preview</span>
+                  </span>
+                </button>
+
+                {/* Overlaid Badges (Top-Left) */}
+                <div class="pointer-events-none absolute left-2 top-2 z-10 flex items-center gap-1.5">
+                  <span class="flex items-center gap-1 rounded bg-[#ff5500] px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm">
+                    <SoundcloudIcon class="size-3 fill-white" />
+                    <span>{scSpecs.artworkBadge1}</span>
+                  </span>
+                  <span class="rounded border border-white/10 bg-black/75 px-1.5 py-0.5 text-[10px] font-bold text-amber-300 shadow-sm backdrop-blur-md">
+                    {scSpecs.artworkBadge2}
+                  </span>
+                </div>
+
+                {/* Bottom-Left Overlay: Waveform or CUE pill */}
+                {scSpecs.bottomLeftOverlay === 'cue' ? (
+                  <div class="pointer-events-none absolute bottom-2 left-2 z-10">
+                    <span class="rounded border border-white/10 bg-black/80 px-1.5 py-0.5 text-[10px] font-mono text-neutral-300 shadow backdrop-blur-md">
+                      CUE Sheet Detected
+                    </span>
+                  </div>
+                ) : (
+                  <div class="pointer-events-none absolute bottom-2 left-2 z-10 flex items-end gap-0.5 rounded bg-black/60 px-1.5 py-1 backdrop-blur-md">
+                    <span class="w-1 rounded-full bg-[#ff5500] h-2 animate-pulse" />
+                    <span class="w-1 rounded-full bg-[#ff5500] h-4" />
+                    <span
+                      class="w-1 rounded-full bg-[#ff7700] h-3 animate-pulse"
+                      style={{ animationDelay: '150ms' }}
+                    />
+                    <span class="w-1 rounded-full bg-[#ff5500] h-5" />
+                    <span
+                      class="w-1 rounded-full bg-[#ff7700] h-2.5 animate-pulse"
+                      style={{ animationDelay: '300ms' }}
+                    />
+                    <span class="w-1 rounded-full bg-[#ff5500] h-4" />
+                    <span class="w-1 rounded-full bg-[#ffaa00] h-1.5" />
+                  </div>
+                )}
+
+                {/* Bottom-Right Duration Overlay */}
+                <div class="pointer-events-none absolute bottom-2 right-2 z-10">
+                  {scSpecs.isDjSet ? (
+                    <span class="rounded bg-black/85 px-1.5 py-0.5 text-[10.5px] font-mono font-bold text-white shadow backdrop-blur-md">
+                      <span class="text-[#22c55e]">Auto Split OK</span>{' '}
+                      <span>
+                        {entry.durationSec != null ? fmtDuration(entry.durationSec) : '1:14:20'}
+                      </span>
+                    </span>
+                  ) : (
+                    <span class="rounded bg-black/85 px-1.5 py-0.5 text-[11px] font-bold font-mono text-white shadow backdrop-blur-md">
+                      {entry.durationSec != null ? fmtDuration(entry.durationSec) : '04:12'}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Details Column */}
@@ -1074,89 +1086,75 @@ export function SearchResultCard({
               {/* Dedicated Bilibili Layout (Single 4K / Multi-P Course Series) */}
               {/* Thumbnail column with Bilibili Badges */}
               <div class="relative aspect-[16/9] w-full shrink-0 overflow-hidden rounded-xl border border-neutral-200/80 bg-neutral-100 shadow-inner sm:w-56 md:w-64 dark:border-white/5 dark:bg-neutral-900">
-                {previewActive ? (
-                  <InlineVideoPreview
-                    url={entry.url}
-                    title={entry.title}
-                    onClose={() => setPreviewActive(false)}
-                    onExpand={() => setModalPreviewOpen(true)}
-                    className="size-full"
+                {entry.thumbnailUrl && !imgError ? (
+                  <img
+                    src={entry.thumbnailUrl}
+                    alt={entry.title}
+                    onError={() => setImgError(true)}
+                    class="size-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    loading="lazy"
                   />
                 ) : (
-                  <>
-                    {entry.thumbnailUrl && !imgError ? (
-                      <img
-                        src={entry.thumbnailUrl}
-                        alt={entry.title}
-                        onError={() => setImgError(true)}
-                        class="size-full object-cover transition-transform duration-300 group-hover:scale-105"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div class="flex size-full items-center justify-center bg-neutral-100 text-neutral-400 dark:bg-neutral-800 dark:text-neutral-600">
-                        <FilmIcon class="size-8" />
-                      </div>
-                    )}
+                  <div class="flex size-full items-center justify-center bg-neutral-100 text-neutral-400 dark:bg-neutral-800 dark:text-neutral-600">
+                    <FilmIcon class="size-8" />
+                  </div>
+                )}
 
-                    {/* Hover Play/Preview Overlay Button */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setPreviewActive(true)
-                      }}
-                      title="Play inline video preview"
-                      class="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity duration-200 hover:opacity-100 hover:bg-black/45"
-                    >
-                      <span class="flex items-center gap-1.5 rounded-full bg-[#00aeec] px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-md transition-transform duration-150 hover:scale-105 active:scale-95">
-                        <PlayIcon class="size-3.5 fill-white" />
-                        <span>Preview</span>
-                      </span>
-                    </button>
+                {/* Hover Play/Preview Overlay Button */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setPreviewActive(true)
+                  }}
+                  title="Play inline video preview"
+                  class="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity duration-200 hover:opacity-100 hover:bg-black/45"
+                >
+                  <span class="flex items-center gap-1.5 rounded-full bg-[#00aeec] px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-md transition-transform duration-150 hover:scale-105 active:scale-95">
+                    <PlayIcon class="size-3.5 fill-white" />
+                    <span>Preview</span>
+                  </span>
+                </button>
 
-                    {/* Overlaid Badges (Top-Left) */}
-                    <div class="pointer-events-none absolute left-2 top-2 z-10 flex flex-wrap items-center gap-1.5">
-                      <span class="flex items-center gap-1 rounded bg-[#00aeec] px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white shadow-xs">
-                        <BilibiliTvIcon class="size-3 text-white" />
-                        <span>BILIBILI</span>
-                      </span>
-                      <span
-                        class={`rounded px-1.5 py-0.5 text-[10px] font-extrabold tracking-wide text-white shadow-xs ${
-                          biliSpecs.isMultiPart ? 'bg-[#ea580c]' : 'bg-[#fb7299]'
-                        }`}
-                      >
-                        {biliSpecs.partBadge}
-                      </span>
-                      <span
-                        class={`rounded px-1.5 py-0.5 text-[10px] font-bold text-white shadow-xs backdrop-blur-md ${
-                          biliSpecs.isMultiPart
-                            ? 'bg-[#059669]'
-                            : 'border border-white/10 bg-black/80'
-                        }`}
-                      >
-                        {biliSpecs.badge3}
-                      </span>
-                    </div>
+                {/* Overlaid Badges (Top-Left) */}
+                <div class="pointer-events-none absolute left-2 top-2 z-10 flex flex-wrap items-center gap-1.5">
+                  <span class="flex items-center gap-1 rounded bg-[#00aeec] px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white shadow-xs">
+                    <BilibiliTvIcon class="size-3 text-white" />
+                    <span>BILIBILI</span>
+                  </span>
+                  <span
+                    class={`rounded px-1.5 py-0.5 text-[10px] font-extrabold tracking-wide text-white shadow-xs ${
+                      biliSpecs.isMultiPart ? 'bg-[#ea580c]' : 'bg-[#fb7299]'
+                    }`}
+                  >
+                    {biliSpecs.partBadge}
+                  </span>
+                  <span
+                    class={`rounded px-1.5 py-0.5 text-[10px] font-bold text-white shadow-xs backdrop-blur-md ${
+                      biliSpecs.isMultiPart ? 'bg-[#059669]' : 'border border-white/10 bg-black/80'
+                    }`}
+                  >
+                    {biliSpecs.badge3}
+                  </span>
+                </div>
 
-                    {/* Danmaku Badge (Bottom-Left) */}
-                    {biliSpecs.danmakuCount && (
-                      <div class="pointer-events-none absolute bottom-2 left-2 z-10">
-                        <span class="flex items-center gap-1 rounded bg-black/75 px-1.5 py-0.5 text-[10.5px] font-medium text-[#fb7299] shadow backdrop-blur-md">
-                          <span>弹幕</span>
-                          <span class="font-semibold text-white">{biliSpecs.danmakuCount}</span>
-                        </span>
-                      </div>
-                    )}
+                {/* Danmaku Badge (Bottom-Left) */}
+                {biliSpecs.danmakuCount && (
+                  <div class="pointer-events-none absolute bottom-2 left-2 z-10">
+                    <span class="flex items-center gap-1 rounded bg-black/75 px-1.5 py-0.5 text-[10.5px] font-medium text-[#fb7299] shadow backdrop-blur-md">
+                      <span>弹幕</span>
+                      <span class="font-semibold text-white">{biliSpecs.danmakuCount}</span>
+                    </span>
+                  </div>
+                )}
 
-                    {/* Duration / Parts Badge (Bottom-Right) */}
-                    {biliSpecs.durationText && (
-                      <div class="pointer-events-none absolute bottom-2 right-2 z-10">
-                        <span class="rounded bg-black/85 px-1.5 py-0.5 font-mono text-[11px] font-bold text-white shadow backdrop-blur-md">
-                          {biliSpecs.durationText}
-                        </span>
-                      </div>
-                    )}
-                  </>
+                {/* Duration / Parts Badge (Bottom-Right) */}
+                {biliSpecs.durationText && (
+                  <div class="pointer-events-none absolute bottom-2 right-2 z-10">
+                    <span class="rounded bg-black/85 px-1.5 py-0.5 font-mono text-[11px] font-bold text-white shadow backdrop-blur-md">
+                      {biliSpecs.durationText}
+                    </span>
+                  </div>
                 )}
               </div>
 
@@ -1409,90 +1407,78 @@ export function SearchResultCard({
               {/* Standard 16:9 Video Layout (YouTube, Bilibili) */}
               {/* Thumbnail column with Badges */}
               <div class="relative aspect-[16/9] w-full shrink-0 overflow-hidden rounded-xl border border-neutral-200/80 bg-neutral-100 shadow-inner sm:w-56 md:w-64 dark:border-white/5 dark:bg-neutral-900">
-                {previewActive ? (
-                  <InlineVideoPreview
-                    url={entry.url}
-                    title={entry.title}
-                    onClose={() => setPreviewActive(false)}
-                    onExpand={() => setModalPreviewOpen(true)}
-                    className="size-full"
+                {entry.thumbnailUrl && !imgError ? (
+                  <img
+                    src={entry.thumbnailUrl}
+                    alt={entry.title}
+                    onError={() => setImgError(true)}
+                    class="size-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    loading="lazy"
                   />
                 ) : (
-                  <>
-                    {entry.thumbnailUrl && !imgError ? (
-                      <img
-                        src={entry.thumbnailUrl}
-                        alt={entry.title}
-                        onError={() => setImgError(true)}
-                        class="size-full object-cover transition-transform duration-300 group-hover:scale-105"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div class="flex size-full items-center justify-center bg-neutral-100 text-neutral-400 dark:bg-neutral-800 dark:text-neutral-600">
-                        <FilmIcon class="size-8" />
-                      </div>
-                    )}
-
-                    {/* Hover Play/Preview Overlay Button */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setPreviewActive(true)
-                      }}
-                      title="Play inline video preview"
-                      class="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity duration-200 hover:opacity-100 hover:bg-black/45"
-                    >
-                      <span class="flex items-center gap-1.5 rounded-full bg-[#ff5500] px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-md transition-transform duration-150 hover:scale-105 active:scale-95">
-                        <PlayIcon class="size-3.5 fill-white" />
-                        <span>Preview</span>
-                      </span>
-                    </button>
-
-                    {/* Overlaid Badges (Top-Left) */}
-                    <div class="pointer-events-none absolute left-2 top-2 z-10 flex items-center gap-1.5">
-                      {isPlaylist ? (
-                        <span class="rounded bg-amber-500 px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm flex items-center gap-1">
-                          <QueueIcon class="size-3 text-white" />
-                          <span>PLAYLIST</span>
-                        </span>
-                      ) : isReel ? (
-                        <span class="rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm flex items-center gap-1">
-                          <span>REEL / SHORT</span>
-                        </span>
-                      ) : isMusicVideo ? (
-                        <span class="rounded bg-purple-600 px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm flex items-center gap-1">
-                          <MusicIcon class="size-3 text-white" />
-                          <span>MUSIC VIDEO</span>
-                        </span>
-                      ) : (
-                        <>
-                          <span class="rounded bg-[#ff5500] px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm">
-                            {specs.resolutionBadge}
-                          </span>
-                          <span class="rounded border border-white/10 bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-sm backdrop-blur-md">
-                            {specs.codecBadge}
-                          </span>
-                        </>
-                      )}
-                    </div>
-
-                    {/* Duration Badge (Bottom-Right) */}
-                    {isPlaylist ? (
-                      <div class="pointer-events-none absolute bottom-2 right-2 z-10">
-                        <span class="rounded bg-black/85 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-400 shadow backdrop-blur-md">
-                          Playlist
-                        </span>
-                      </div>
-                    ) : entry.durationSec != null ? (
-                      <div class="pointer-events-none absolute bottom-2 right-2 z-10">
-                        <span class="rounded bg-black/85 px-1.5 py-0.5 text-[11px] font-bold font-mono text-white shadow backdrop-blur-md">
-                          {fmtDuration(entry.durationSec)}
-                        </span>
-                      </div>
-                    ) : null}
-                  </>
+                  <div class="flex size-full items-center justify-center bg-neutral-100 text-neutral-400 dark:bg-neutral-800 dark:text-neutral-600">
+                    <FilmIcon class="size-8" />
+                  </div>
                 )}
+
+                {/* Hover Play/Preview Overlay Button */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setPreviewActive(true)
+                  }}
+                  title="Play inline video preview"
+                  class="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity duration-200 hover:opacity-100 hover:bg-black/45"
+                >
+                  <span class="flex items-center gap-1.5 rounded-full bg-[#ff5500] px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-md transition-transform duration-150 hover:scale-105 active:scale-95">
+                    <PlayIcon class="size-3.5 fill-white" />
+                    <span>Preview</span>
+                  </span>
+                </button>
+
+                {/* Overlaid Badges (Top-Left) */}
+                <div class="pointer-events-none absolute left-2 top-2 z-10 flex items-center gap-1.5">
+                  {isPlaylist ? (
+                    <span class="rounded bg-amber-500 px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm flex items-center gap-1">
+                      <QueueIcon class="size-3 text-white" />
+                      <span>PLAYLIST</span>
+                    </span>
+                  ) : isReel ? (
+                    <span class="rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm flex items-center gap-1">
+                      <span>REEL / SHORT</span>
+                    </span>
+                  ) : isMusicVideo ? (
+                    <span class="rounded bg-purple-600 px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm flex items-center gap-1">
+                      <MusicIcon class="size-3 text-white" />
+                      <span>MUSIC VIDEO</span>
+                    </span>
+                  ) : (
+                    <>
+                      <span class="rounded bg-[#ff5500] px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm">
+                        {specs.resolutionBadge}
+                      </span>
+                      <span class="rounded border border-white/10 bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-sm backdrop-blur-md">
+                        {specs.codecBadge}
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                {/* Duration Badge (Bottom-Right) */}
+                {isPlaylist ? (
+                  <div class="pointer-events-none absolute bottom-2 right-2 z-10">
+                    <span class="rounded bg-black/85 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-400 shadow backdrop-blur-md">
+                      Playlist
+                    </span>
+                  </div>
+                ) : entry.durationSec != null ? (
+                  <div class="pointer-events-none absolute bottom-2 right-2 z-10">
+                    <span class="rounded bg-black/85 px-1.5 py-0.5 text-[11px] font-bold font-mono text-white shadow backdrop-blur-md">
+                      {fmtDuration(entry.durationSec)}
+                    </span>
+                  </div>
+                ) : null}
               </div>
 
               {/* Details Column */}
@@ -1791,15 +1777,673 @@ export function SearchResultCard({
         </div>
       </div>
 
-      {modalPreviewOpen && (
-        <InlineVideoPreviewModal
-          url={entry.url}
-          title={entry.title}
-          uploader={entry.uploader}
-          onClose={() => setModalPreviewOpen(false)}
-          onQuickDownload={() => onQuickDownload(entry, currentPreset)}
-          onOpenInDownloader={() => onOpenInDownloader(entry)}
-        />
+      {/* Focused Theater Overlay when previewActive is true */}
+      {previewActive && (
+        <div
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-5 backdrop-blur-md animate-in fade-in duration-150"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setPreviewActive(false)
+            }
+          }}
+          onWheel={(e) => e.stopPropagation()}
+        >
+          <div
+            class="flex w-full max-w-[96vw] xl:max-w-[94vw] 2xl:max-w-[1560px] max-h-[96vh] flex-col overflow-y-auto rounded-2xl border-2 border-[#ea580c] bg-white p-3 sm:p-4 md:p-5 shadow-2xl ring-1 ring-[#ea580c]/30 text-left transition-all dark:border-orange-500/80 dark:bg-[#131722]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header Row */}
+            <div class="flex flex-wrap items-center justify-between gap-2.5 border-b border-neutral-100 pb-2.5 mb-3 dark:border-white/5">
+              {/* Left Header info */}
+              <div class="flex min-w-0 flex-1 items-center gap-2">
+                {/* Theater Preview Active Pill */}
+                <span class="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-orange-200 bg-[#fff7ed] px-2.5 py-1 text-[11px] font-bold text-[#ea580c] dark:border-orange-500/30 dark:bg-orange-950/50 dark:text-orange-400">
+                  <span class="size-1.5 rounded-full bg-[#ea580c] animate-pulse" />
+                  <span>Focused Preview</span>
+                </span>
+
+                {/* Title & Author */}
+                <div class="flex min-w-0 flex-1 items-center gap-1.5 truncate">
+                  <span
+                    class="truncate text-xs sm:text-sm font-bold text-neutral-900 transition hover:text-[#ea580c] dark:text-white"
+                    title={entry.title}
+                  >
+                    {entry.title}
+                  </span>
+                  <span class="shrink-0 text-[11px] font-normal text-neutral-500 dark:text-neutral-400 sm:text-xs">
+                    by {entry.uploader || 'Unknown Channel'}
+                  </span>
+                  {isVerified && (
+                    <span class="shrink-0 text-[#3b82f6]" title="Verified Channel">
+                      <CheckCircleFilledIcon class="size-3" />
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Right Header action */}
+              <div class="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  title="Copy Video URL"
+                  class="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-xs font-semibold text-neutral-700 shadow-2xs transition hover:bg-neutral-100 hover:text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-200 dark:hover:bg-neutral-700"
+                >
+                  {copiedLink ? (
+                    <>
+                      <CheckIcon class="size-3.5 text-emerald-500" />
+                      <span class="text-emerald-600 dark:text-emerald-400">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <ClipboardIcon class="size-3.5 text-neutral-500 dark:text-neutral-400" />
+                      <span>Copy URL</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPreviewActive(false)}
+                  title="Collapse Preview (Esc)"
+                  class="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-xs font-semibold text-neutral-700 shadow-2xs transition hover:bg-neutral-100 hover:text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-200 dark:hover:bg-neutral-700"
+                >
+                  <CloseIcon class="size-3.5 text-neutral-500 dark:text-neutral-400" />
+                  <span>Collapse Preview</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Responsive Body: Side-by-side on md+ screens, stacked on small screens */}
+            <div class="flex flex-col md:flex-row items-start gap-4 lg:gap-6 flex-1 min-h-0">
+              {/* Main/Left Column: Video Player Container scaled dynamically */}
+              <div class="flex-1 min-w-0 w-full flex flex-col items-center justify-center self-stretch">
+                <div class="relative aspect-video w-full max-h-[48vh] sm:max-h-[54vh] md:max-h-[60vh] lg:max-h-[66vh] xl:max-h-[72vh] overflow-hidden rounded-xl border border-neutral-200/80 bg-black shadow-inner dark:border-white/10">
+                  {/* Inline Video Player */}
+                  <InlineVideoPreview
+                    url={entry.url}
+                    title={entry.title}
+                    startSec={seekSec}
+                    onClose={() => setPreviewActive(false)}
+                    hideHeaderControls
+                    onTimeUpdate={(t) => {
+                      lastRealUpdateRef.current = Date.now()
+                      setCurrentTimeSec(t)
+                    }}
+                    onPlayingChange={(playing) => {
+                      setIsPlaying(playing)
+                    }}
+                    className="size-full"
+                  />
+                </div>
+
+                {/* Video Quick Navigation Bar below player */}
+                <div class="mt-2.5 flex w-full flex-wrap items-center justify-between gap-2 px-1">
+                  {/* Quick Seek Scrubbing */}
+                  <div class="flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = Math.max(0, currentTimeSec - 10)
+                        setSeekSec(target)
+                        setCurrentTimeSec(target)
+                      }}
+                      title="Jump 10 seconds backward"
+                      class="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:border-orange-400 hover:bg-orange-50 hover:text-[#ea580c] transition dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-300 dark:hover:bg-orange-950/40"
+                    >
+                      <RotateCcwIcon class="size-3 text-neutral-400" />
+                      <span>-10s</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = Math.min(entry.durationSec ?? 999999, currentTimeSec + 10)
+                        setSeekSec(target)
+                        setCurrentTimeSec(target)
+                      }}
+                      title="Jump 10 seconds forward"
+                      class="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:border-orange-400 hover:bg-orange-50 hover:text-[#ea580c] transition dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-300 dark:hover:bg-orange-950/40"
+                    >
+                      <span>+10s</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSeekSec(0)
+                        setCurrentTimeSec(0)
+                      }}
+                      title="Restart from beginning"
+                      class="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:border-orange-400 hover:bg-orange-50 hover:text-[#ea580c] transition dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-300 dark:hover:bg-orange-950/40"
+                    >
+                      <span>Restart (0:00)</span>
+                    </button>
+                  </div>
+
+                  {/* Shortcuts & Webpage link */}
+                  <div class="hidden sm:flex items-center gap-3 text-[10.5px] text-neutral-400 dark:text-neutral-500">
+                    <span>
+                      <kbd class="rounded border border-neutral-300 px-1 py-0.5 font-mono text-[9.5px] dark:border-neutral-700">
+                        Esc
+                      </kbd>{' '}
+                      Close
+                    </span>
+                    {entry.url && (
+                      <button
+                        type="button"
+                        onClick={() => window.open(entry.url, '_blank', 'noopener,noreferrer')}
+                        class="hover:text-neutral-600 dark:hover:text-neutral-300 transition underline underline-offset-2"
+                      >
+                        Open Original Webpage ↗
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Side/Right Column: Video Info & Chapters Navigation Hub */}
+              <div class="w-full md:w-80 lg:w-[350px] xl:w-96 shrink-0 flex flex-col justify-between gap-3 self-stretch min-h-0">
+                {/* Top Section: Tab switcher & Content */}
+                <div class="flex flex-col flex-1 min-h-0">
+                  {/* Segmented Switch */}
+                  <div class="flex items-center gap-1 rounded-lg border border-neutral-200/80 bg-neutral-100/80 p-0.5 dark:border-white/10 dark:bg-neutral-800/60 mb-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewTab('chapters')}
+                      class={`flex-1 rounded-md py-1 text-center text-xs font-semibold transition ${
+                        previewTab === 'chapters'
+                          ? 'bg-white text-[#ea580c] shadow-xs dark:bg-neutral-900 dark:text-orange-400'
+                          : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white'
+                      }`}
+                    >
+                      Chapters{' '}
+                      {loadingChapters ? '...' : chapters.length > 0 ? `(${chapters.length})` : ''}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewTab('transcript')}
+                      class={`flex-1 rounded-md py-1 text-center text-xs font-semibold transition ${
+                        previewTab === 'transcript'
+                          ? 'bg-white text-[#ea580c] shadow-xs dark:bg-neutral-900 dark:text-orange-400'
+                          : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white'
+                      }`}
+                    >
+                      Transcript{' '}
+                      {loadingTranscript ? '...' : cues.length > 0 ? `(${cues.length})` : ''}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewTab('info')}
+                      class={`flex-1 rounded-md py-1 text-center text-xs font-semibold transition ${
+                        previewTab === 'info'
+                          ? 'bg-white text-[#ea580c] shadow-xs dark:bg-neutral-900 dark:text-orange-400'
+                          : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white'
+                      }`}
+                    >
+                      Details & Specs
+                    </button>
+                  </div>
+
+                  {/* Tab 1: Chapters (while scanning) */}
+                  {previewTab === 'chapters' && loadingChapters && (
+                    <div class="flex flex-col flex-1 min-h-0 items-center justify-center p-6 text-center gap-3">
+                      <div class="size-6 animate-spin rounded-full border-2 border-[#ea580c] border-t-transparent dark:border-orange-400" />
+                      <p class="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                        Scanning video chapters & timeline...
+                      </p>
+                      <p class="text-[11px] text-neutral-400 dark:text-neutral-500">
+                        Extracting real chapter titles and navigation points.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Tab 1: Chapters (if chapters.length > 0) */}
+                  {previewTab === 'chapters' && !loadingChapters && chapters.length > 0 && (
+                    <div class="flex flex-col flex-1 min-h-0">
+                      {/* Chapter Header & Prev/Next */}
+                      <div class="mb-2 flex items-center justify-between">
+                        <div class="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
+                          <span>Chapters</span>
+                          <span class="rounded bg-orange-50 px-1.5 py-0.5 font-mono text-[10.5px] font-bold text-[#ea580c] border border-orange-200/60 dark:border-orange-900/40 dark:bg-orange-950/60 dark:text-orange-400">
+                            {chapters[activeChapterIndex]?.time ?? '00:00'}
+                          </span>
+                        </div>
+                        <div class="inline-flex items-center rounded-lg border border-neutral-200 bg-neutral-100/70 p-0.5 shadow-xs dark:border-neutral-700 dark:bg-neutral-800/70">
+                          <button
+                            type="button"
+                            disabled={activeChapterIndex <= 0}
+                            onClick={() => {
+                              const newIdx = Math.max(0, activeChapterIndex - 1)
+                              const targetSec = chapters[newIdx].seconds
+                              setSeekSec(targetSec)
+                              setCurrentTimeSec(targetSec)
+                            }}
+                            title="Previous chapter"
+                            class="flex size-6 items-center justify-center rounded-md text-neutral-600 transition hover:bg-white hover:text-neutral-900 hover:shadow-xs disabled:cursor-not-allowed disabled:opacity-25 disabled:hover:bg-transparent dark:text-neutral-300 dark:hover:bg-neutral-700 dark:hover:text-white"
+                          >
+                            <ChevronLeftIcon class="size-3.5" />
+                          </button>
+                          <span class="px-2 font-mono text-[11px] font-semibold text-neutral-700 select-none dark:text-neutral-200">
+                            {activeChapterIndex + 1}
+                            <span class="font-normal text-neutral-400 dark:text-neutral-500">
+                              {' '}
+                              / {chapters.length}
+                            </span>
+                          </span>
+                          <button
+                            type="button"
+                            disabled={activeChapterIndex >= chapters.length - 1}
+                            onClick={() => {
+                              const newIdx = Math.min(chapters.length - 1, activeChapterIndex + 1)
+                              const targetSec = chapters[newIdx].seconds
+                              setSeekSec(targetSec)
+                              setCurrentTimeSec(targetSec)
+                            }}
+                            title="Next chapter"
+                            class="flex size-6 items-center justify-center rounded-md text-neutral-600 transition hover:bg-white hover:text-neutral-900 hover:shadow-xs disabled:cursor-not-allowed disabled:opacity-25 disabled:hover:bg-transparent dark:text-neutral-300 dark:hover:bg-neutral-700 dark:hover:text-white"
+                          >
+                            <ChevronRightIcon class="size-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Filter chapters search if > 6 chapters */}
+                      {chapters.length > 6 && (
+                        <div class="mb-2">
+                          <input
+                            type="text"
+                            value={chapterFilter}
+                            onInput={(e) => setChapterFilter(e.currentTarget.value)}
+                            placeholder="Filter chapters by title..."
+                            class="w-full rounded-md border border-neutral-200 bg-neutral-50/80 px-2 py-1 text-[11px] text-neutral-800 placeholder-neutral-400 outline-none transition focus:border-[#ea580c] focus:bg-white dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-200"
+                          />
+                        </div>
+                      )}
+
+                      {/* Scrollable list of chapters */}
+                      <div class="flex-1 min-h-0 overflow-y-auto space-y-1 max-h-[46vh] pr-1">
+                        {filteredChapters.map((ch, idx) => {
+                          const isCurrent = ch.seconds === chapters[activeChapterIndex]?.seconds
+                          return (
+                            <button
+                              key={idx}
+                              ref={isCurrent ? activeChapterRef : undefined}
+                              type="button"
+                              onClick={() => {
+                                setSeekSec(ch.seconds)
+                                setCurrentTimeSec(ch.seconds)
+                              }}
+                              class={`group flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition ${
+                                isCurrent
+                                  ? 'border border-[#ea580c] bg-orange-50/90 font-semibold text-[#ea580c] shadow-xs dark:border-orange-500 dark:bg-orange-950/40 dark:text-orange-300'
+                                  : 'border border-transparent hover:border-neutral-200 hover:bg-neutral-50 text-neutral-700 dark:text-neutral-300 dark:hover:border-neutral-700 dark:hover:bg-neutral-800/60'
+                              }`}
+                            >
+                              <div class="flex min-w-0 flex-1 items-center gap-2">
+                                <span
+                                  class={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[10.5px] font-bold ${
+                                    isCurrent
+                                      ? 'bg-[#ea580c] text-white shadow-xs'
+                                      : 'bg-neutral-100 text-neutral-600 group-hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400'
+                                  }`}
+                                >
+                                  {ch.time}
+                                </span>
+                                <span class="truncate text-[11.5px] leading-tight" title={ch.title}>
+                                  {ch.title}
+                                </span>
+                              </div>
+                              <div class="flex items-center gap-1.5 shrink-0">
+                                {isCurrent && (
+                                  <div
+                                    class="flex items-end gap-0.5 h-3 shrink-0"
+                                    title="Currently playing"
+                                  >
+                                    <span class="w-0.5 h-3 bg-[#ea580c] dark:bg-orange-400 rounded-full animate-pulse" />
+                                    <span class="w-0.5 h-1.5 bg-[#ea580c] dark:bg-orange-400 rounded-full" />
+                                    <span
+                                      class="w-0.5 h-2.5 bg-[#ea580c] dark:bg-orange-400 rounded-full animate-pulse"
+                                      style={{ animationDelay: '150ms' }}
+                                    />
+                                  </div>
+                                )}
+                                {ch.duration && (
+                                  <span class="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
+                                    {ch.duration}
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tab 1 (Fallback when chapters === 0): Timeline Jump & Scrub */}
+                  {previewTab === 'chapters' && !loadingChapters && chapters.length === 0 && (
+                    <div class="flex flex-col flex-1 min-h-0 gap-3">
+                      <div class="rounded-lg border border-neutral-100 bg-neutral-50/70 p-3 text-center dark:border-white/5 dark:bg-neutral-900/40">
+                        <FilmIcon class="mx-auto mb-1.5 size-5 text-neutral-400" />
+                        <p class="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                          No embedded chapters detected
+                        </p>
+                        <p class="text-[11px] text-neutral-400 dark:text-neutral-500">
+                          Use the quick jump markers below to scrub through key video segments.
+                        </p>
+                      </div>
+
+                      <div>
+                        <h4 class="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+                          TIMELINE JUMP MARKERS
+                        </h4>
+                        <div class="grid grid-cols-4 gap-1.5">
+                          {[
+                            { label: '0:00 Intro', pct: 0 },
+                            { label: '15%', pct: 0.15 },
+                            { label: '30%', pct: 0.3 },
+                            { label: '45%', pct: 0.45 },
+                            { label: '60%', pct: 0.6 },
+                            { label: '75%', pct: 0.75 },
+                            { label: '90%', pct: 0.9 },
+                            { label: 'End', pct: 0.98 },
+                          ].map((step, idx) => {
+                            const dur = entry.durationSec ?? 600
+                            const targetSec = Math.round(dur * step.pct)
+                            return (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => setSeekSec(targetSec)}
+                                class="flex items-center justify-center rounded-md border border-neutral-200 bg-white py-1.5 text-[10.5px] font-medium text-neutral-700 transition hover:border-[#ea580c] hover:bg-orange-50/50 hover:text-[#ea580c] dark:border-white/10 dark:bg-neutral-900/50 dark:text-neutral-300 dark:hover:bg-orange-950/30"
+                              >
+                                {step.label}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tab 2: Transcript */}
+                  {previewTab === 'transcript' && loadingTranscript && (
+                    <div class="flex flex-col flex-1 min-h-0 items-center justify-center p-6 text-center gap-3">
+                      <div class="size-6 animate-spin rounded-full border-2 border-[#ea580c] border-t-transparent dark:border-orange-400" />
+                      <p class="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                        Extracting live video transcript...
+                      </p>
+                      <p class="text-[11px] text-neutral-400 dark:text-neutral-500">
+                        Fetching synchronized captions and timestamps.
+                      </p>
+                    </div>
+                  )}
+
+                  {previewTab === 'transcript' && !loadingTranscript && cues.length > 0 && (
+                    <div class="flex flex-col flex-1 min-h-0">
+                      {/* Header with search and auto-scroll switch */}
+                      <div class="mb-2 flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
+                          <span>Live Transcript ({cues.length})</span>
+                          {activeCueIndex >= 0 && cues[activeCueIndex] && (
+                            <span class="font-mono text-[11px] font-semibold text-[#ea580c] dark:text-orange-400">
+                              {cues[activeCueIndex].time}
+                            </span>
+                          )}
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={handleDownloadTranscriptTxt}
+                            disabled={downloadingTxt}
+                            title="Download full transcript as formatted .txt file"
+                            class="flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-0.5 text-[10.5px] font-semibold text-neutral-700 shadow-xs transition hover:border-[#ea580c] hover:bg-orange-50/50 hover:text-[#ea580c] disabled:opacity-40 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:border-orange-500 dark:hover:bg-orange-950/30"
+                          >
+                            {downloadedTxt ? (
+                              <>
+                                <CheckIcon class="size-3 text-emerald-500" />
+                                <span class="text-emerald-600 dark:text-emerald-400">Saved</span>
+                              </>
+                            ) : (
+                              <>
+                                <DownloadIcon class="size-3 text-[#ea580c] dark:text-orange-400" />
+                                <span>Export .txt</span>
+                              </>
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setAutoScrollTranscript(!autoScrollTranscript)}
+                            title={
+                              autoScrollTranscript ? 'Auto-scroll is ON' : 'Auto-scroll is OFF'
+                            }
+                            class={`flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[10.5px] font-semibold transition ${
+                              autoScrollTranscript
+                                ? 'bg-orange-100 text-[#ea580c] dark:bg-orange-950/60 dark:text-orange-300 border border-orange-200 dark:border-orange-800/40'
+                                : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 border border-neutral-200 dark:border-neutral-700'
+                            }`}
+                          >
+                            <span
+                              class={`size-1.5 rounded-full ${
+                                autoScrollTranscript
+                                  ? 'bg-[#ea580c] animate-pulse'
+                                  : 'bg-neutral-400'
+                              }`}
+                            />
+                            <span>Auto-scroll</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Filter Search */}
+                      <div class="mb-2">
+                        <input
+                          type="text"
+                          value={transcriptFilter}
+                          onInput={(e) => setTranscriptFilter(e.currentTarget.value)}
+                          placeholder="Search spoken words in transcript..."
+                          class="w-full rounded-md border border-neutral-200 bg-neutral-50/80 px-2 py-1 text-[11px] text-neutral-800 placeholder-neutral-400 outline-none transition focus:border-[#ea580c] focus:bg-white dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-200"
+                        />
+                      </div>
+
+                      {/* Scrollable list of cues */}
+                      <div class="flex-1 min-h-0 overflow-y-auto space-y-1 max-h-[46vh] pr-1">
+                        {filteredCues.map((cue) => {
+                          const isCurrent = cue.id === cues[activeCueIndex]?.id
+                          return (
+                            <button
+                              key={cue.id}
+                              ref={isCurrent ? activeCueRef : undefined}
+                              type="button"
+                              onClick={() => {
+                                setSeekSec(cue.startSec)
+                                setCurrentTimeSec(cue.startSec)
+                              }}
+                              class={`group flex w-full items-start gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs transition ${
+                                isCurrent
+                                  ? 'border border-[#ea580c] bg-orange-50/90 font-medium text-[#ea580c] shadow-xs dark:border-orange-500 dark:bg-orange-950/40 dark:text-orange-300'
+                                  : 'border border-transparent hover:border-neutral-200 hover:bg-neutral-50 text-neutral-700 dark:text-neutral-300 dark:hover:border-neutral-700 dark:hover:bg-neutral-800/60'
+                              }`}
+                            >
+                              <span
+                                class={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] font-bold ${
+                                  isCurrent
+                                    ? 'bg-[#ea580c] text-white shadow-xs'
+                                    : 'bg-neutral-100 text-neutral-600 group-hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400'
+                                }`}
+                              >
+                                {cue.time}
+                              </span>
+                              <span class="flex-1 text-[11.5px] leading-relaxed break-words">
+                                {cue.text}
+                              </span>
+                              {isCurrent && (
+                                <div
+                                  class="flex items-end gap-0.5 h-3 shrink-0 mt-0.5"
+                                  title="Currently playing"
+                                >
+                                  <span class="w-0.5 h-3 bg-[#ea580c] dark:bg-orange-400 rounded-full animate-pulse" />
+                                  <span class="w-0.5 h-1.5 bg-[#ea580c] dark:bg-orange-400 rounded-full" />
+                                  <span
+                                    class="w-0.5 h-2.5 bg-[#ea580c] dark:bg-orange-400 rounded-full animate-pulse"
+                                    style={{ animationDelay: '150ms' }}
+                                  />
+                                </div>
+                              )}
+                            </button>
+                          )
+                        })}
+                        {filteredCues.length === 0 && (
+                          <div class="py-6 text-center text-[11px] text-neutral-400">
+                            No transcript lines match "{transcriptFilter}"
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {previewTab === 'transcript' && !loadingTranscript && cues.length === 0 && (
+                    <div class="flex flex-col flex-1 min-h-0 items-center justify-center p-6 text-center gap-3">
+                      <FilmIcon class="size-6 text-neutral-400" />
+                      <p class="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                        No transcript available
+                      </p>
+                      <p class="text-[11px] text-neutral-400 dark:text-neutral-500 max-w-[260px]">
+                        Captions or automated subtitles were not found for this video, or could not
+                        be loaded.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => fetchTranscriptForEntry(true)}
+                        class="mt-1 flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 shadow-xs transition hover:border-[#ea580c] hover:text-[#ea580c] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:border-orange-500"
+                      >
+                        <RotateCcwIcon class="size-3.5" />
+                        <span>Retry Extraction</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Tab 3: Details & Specs */}
+                  {previewTab === 'info' && (
+                    <div class="flex flex-col flex-1 min-h-0 gap-2.5">
+                      {/* Video Metrics Grid */}
+                      <div class="shrink-0">
+                        <h4 class="mb-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+                          VIDEO OVERVIEW & METRICS
+                        </h4>
+                        <div class="grid grid-cols-2 gap-2 rounded-lg border border-neutral-100 bg-neutral-50/80 p-2 text-[11px] dark:border-white/5 dark:bg-neutral-900/40">
+                          <div>
+                            <span class="block text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
+                              Duration
+                            </span>
+                            <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
+                              {fmtDuration(entry.durationSec ?? null)}
+                            </span>
+                          </div>
+                          <div>
+                            <span class="block text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
+                              Total Views
+                            </span>
+                            <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
+                              {viewsStr}
+                            </span>
+                          </div>
+                          <div>
+                            <span class="flex items-center gap-1 text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
+                              <CalendarIcon class="size-2.5" />
+                              <span>Upload Date</span>
+                            </span>
+                            <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
+                              {uploadDateStr}
+                            </span>
+                          </div>
+                          <div>
+                            <span class="block text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
+                              Likes
+                            </span>
+                            <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
+                              {likesStr ?? 'N/A'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Stream & Codec Specifications */}
+                      <div class="shrink-0">
+                        <h4 class="mb-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+                          STREAM & CODEC SPECS
+                        </h4>
+                        <div class="grid grid-cols-2 gap-2 rounded-lg border border-neutral-100 bg-neutral-50/80 p-2 text-[11px] dark:border-white/5 dark:bg-neutral-900/40">
+                          <div>
+                            <span class="block text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
+                              Video Codec
+                            </span>
+                            <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
+                              {specs.codecBadge ? `${specs.codecBadge} High@L4.2` : 'H.264'}
+                            </span>
+                          </div>
+                          <div>
+                            <span class="block text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
+                              Audio Codec
+                            </span>
+                            <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
+                              {audioSub.audioBadge
+                                ? `${audioSub.audioBadge} (2ch)`
+                                : 'AAC 128 kbps (2ch)'}
+                            </span>
+                          </div>
+                          <div>
+                            <span class="block text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
+                              Resolution
+                            </span>
+                            <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
+                              {sourceDimensionsText}
+                            </span>
+                          </div>
+                          <div>
+                            <span class="block text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
+                              Bitrate
+                            </span>
+                            <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
+                              {targetBitrateText}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Description Box */}
+                      {fullDescription && (
+                        <div class="flex flex-col flex-1 min-h-0">
+                          <h4 class="mb-1 shrink-0 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+                            DESCRIPTION
+                          </h4>
+                          <div class="flex-1 min-h-[80px] max-h-[22vh] sm:max-h-[24vh] md:max-h-[26vh] overflow-y-auto rounded-lg border border-neutral-100 bg-neutral-50/70 p-2.5 text-[11px] leading-relaxed text-neutral-600 dark:border-white/5 dark:bg-neutral-900/40 dark:text-neutral-300 whitespace-pre-wrap break-words select-text pr-1">
+                            {fullDescription}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Bottom Action: Open in Downloader for Format Options */}
+                <div class="mt-auto pt-3 border-t border-neutral-100 dark:border-white/5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPreviewActive(false)
+                      onOpenInDownloader(entry)
+                    }}
+                    class="flex w-full items-center justify-center gap-2 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800/80 px-3.5 py-2 text-xs font-semibold text-neutral-800 dark:text-neutral-200 shadow-2xs transition hover:border-[#ea580c] hover:text-[#ea580c] hover:bg-orange-50/50 dark:hover:bg-orange-950/30"
+                  >
+                    <LinkIcon class="size-3.5 text-neutral-500 dark:text-neutral-400" />
+                    <span>Open in Downloader for Format Options</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </li>
   )

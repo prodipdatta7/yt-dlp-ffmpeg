@@ -1,10 +1,16 @@
+import * as fs from 'fs'
+import * as os from 'os'
+import * as path from 'path'
 import {
   SEARCH_PLATFORMS,
+  type ChapterMarker,
   type SearchFilterCriteria,
   type SearchResultItem,
   type SearchSort,
+  type TranscriptCue,
+  type VideoTranscriptResult,
 } from '../../shared/models'
-import type { SearchHydratePayload } from '../../shared/ipcContract'
+import type { SearchHydratePayload, VideoChaptersResult } from '../../shared/ipcContract'
 import type { LocatedBinary } from '../binaries/locator'
 import { spawnProcess, type SpawnHandle } from '../binaries/runner'
 import type { Logger } from '../store/logger'
@@ -36,6 +42,240 @@ export function parseHydrateLine(line: string): SearchHydratePayload | null {
   const likesNum = Number(rawLikes)
   const likeCount = Number.isFinite(likesNum) && likesNum > 0 ? likesNum : null
   return { url, uploadDate, timestamp, likeCount }
+}
+
+export function formatChapterTime(totalSec: number): string {
+  const s = Math.max(0, Math.floor(totalSec))
+  const hours = Math.floor(s / 3600)
+  const minutes = Math.floor((s % 3600) / 60)
+  const seconds = s % 60
+  const pad = (n: number): string => (n < 10 ? `0${n}` : `${n}`)
+  if (hours > 0) {
+    return `${hours}:${pad(minutes)}:${pad(seconds)}`
+  }
+  return `${pad(minutes)}:${pad(seconds)}`
+}
+
+export function parseChaptersFromDescription(description: string): ChapterMarker[] {
+  const lines = description.split('\n')
+  const parsed: ChapterMarker[] = []
+  const timeRegex = /(?:(\d{1,2}):)?(\d{1,2}):(\d{2})/
+  for (const line of lines) {
+    const match = line.match(timeRegex)
+    if (match) {
+      const timeStr = match[0]
+      const parts = timeStr.split(':').map(Number)
+      let sec = 0
+      if (parts.length === 3) {
+        sec = parts[0] * 3600 + parts[1] * 60 + parts[2]
+      } else if (parts.length === 2) {
+        sec = parts[0] * 60 + parts[1]
+      }
+      const cleanTitle = line
+        .replace(timeRegex, '')
+        .replace(/^[\s\-–—:•|()[\]]+/, '')
+        .replace(/[\s\-–—:•|()[\]]+$/, '')
+        .trim()
+      if (cleanTitle.length > 0) {
+        parsed.push({
+          time: timeStr,
+          title: cleanTitle,
+          seconds: sec,
+        })
+      }
+    }
+  }
+  const unique = parsed
+    .filter((ch, idx, self) => idx === self.findIndex((o) => o.seconds === ch.seconds))
+    .sort((a, b) => a.seconds - b.seconds)
+
+  for (let i = 0; i < unique.length; i++) {
+    if (i < unique.length - 1) {
+      const diff = unique[i + 1].seconds - unique[i].seconds
+      if (diff > 0) {
+        const m = Math.floor(diff / 60)
+        const s = diff % 60
+        unique[i].duration = `${m}:${s < 10 ? '0' : ''}${s}`
+      }
+    }
+  }
+  return unique
+}
+
+export function parseChaptersOutput(stdout: string): VideoChaptersResult {
+  const parts = stdout.split('===MF_DESC_SPLIT===')
+  const jsonPart = parts[0]?.trim()
+  const description =
+    parts.length > 1 ? parts.slice(1).join('===MF_DESC_SPLIT===').trim() || null : null
+
+  if (jsonPart && jsonPart !== 'NA' && jsonPart !== 'null') {
+    try {
+      const rawChapters = JSON.parse(jsonPart)
+      if (Array.isArray(rawChapters) && rawChapters.length > 0) {
+        const chapters: ChapterMarker[] = []
+        for (let i = 0; i < rawChapters.length; i++) {
+          const rc = rawChapters[i]
+          if (!rc || typeof rc !== 'object') continue
+          const startSec =
+            typeof rc.start_time === 'number' && Number.isFinite(rc.start_time)
+              ? Math.max(0, Math.floor(rc.start_time))
+              : 0
+          const title =
+            typeof rc.title === 'string' && rc.title.trim().length > 0
+              ? rc.title.trim()
+              : `Chapter ${i + 1}`
+          let duration: string | undefined
+          if (
+            typeof rc.end_time === 'number' &&
+            Number.isFinite(rc.end_time) &&
+            rc.end_time > startSec
+          ) {
+            const diff = Math.round(rc.end_time - startSec)
+            const dm = Math.floor(diff / 60)
+            const ds = diff % 60
+            duration = `${dm}:${ds < 10 ? '0' : ''}${ds}`
+          }
+          chapters.push({
+            time: formatChapterTime(startSec),
+            title,
+            seconds: startSec,
+            duration,
+          })
+        }
+        if (chapters.length > 0) {
+          return { chapters, description }
+        }
+      }
+    } catch {
+      /* fallback to description parsing below */
+    }
+  }
+
+  if (description) {
+    const descChapters = parseChaptersFromDescription(description)
+    if (descChapters.length > 0) {
+      return { chapters: descChapters, description }
+    }
+  }
+
+  return { chapters: [], description }
+}
+
+export function parseJson3Transcript(rawJson: string): TranscriptCue[] {
+  try {
+    const data = JSON.parse(rawJson)
+    const cues: TranscriptCue[] = []
+    let curCue: { startSec: number; endSec: number; text: string } | null = null
+
+    for (const ev of data.events || []) {
+      if (!ev.segs) continue
+      const segText = ev.segs
+        .map((s: { utf8?: string }) => s.utf8 || '')
+        .join('')
+        .replace(/\n/g, ' ')
+        .trim()
+      if (!segText) continue
+
+      const startSec = (ev.tStartMs || 0) / 1000
+      const durSec = (ev.dDurationMs || 0) / 1000
+      const endSec = startSec + durSec
+
+      if (!curCue) {
+        curCue = { startSec, endSec, text: segText }
+      } else if (startSec - curCue.startSec < 4.5 && curCue.text.length < 85) {
+        curCue.text += ' ' + segText
+        curCue.endSec = Math.max(curCue.endSec, endSec)
+      } else {
+        cues.push({
+          id: cues.length,
+          startSec: Math.round(curCue.startSec * 10) / 10,
+          endSec: Math.round(curCue.endSec * 10) / 10,
+          time: formatChapterTime(curCue.startSec),
+          text: curCue.text.trim(),
+        })
+        curCue = { startSec, endSec, text: segText }
+      }
+    }
+    if (curCue && curCue.text.trim()) {
+      cues.push({
+        id: cues.length,
+        startSec: Math.round(curCue.startSec * 10) / 10,
+        endSec: Math.round(curCue.endSec * 10) / 10,
+        time: formatChapterTime(curCue.startSec),
+        text: curCue.text.trim(),
+      })
+    }
+    return cues
+  } catch {
+    return []
+  }
+}
+
+export function parseVttTranscript(rawVtt: string): TranscriptCue[] {
+  const lines = rawVtt.split(/\r?\n/)
+  const cues: TranscriptCue[] = []
+  const timeRegex =
+    /(?:(\d{2}):)?(\d{2}):(\d{2})[.,](\d{3})\s*-->\s*(?:(\d{2}):)?(\d{2}):(\d{2})[.,](\d{3})/
+  let curTime: { start: number; end: number; timeStr: string } | null = null
+  let textLines: string[] = []
+
+  function toSec(h?: string, m?: string, s?: string, ms?: string): number {
+    return Number(h || 0) * 3600 + Number(m || 0) * 60 + Number(s || 0) + Number(ms || 0) / 1000
+  }
+
+  for (const line of lines) {
+    const match = line.match(timeRegex)
+    if (match) {
+      if (curTime && textLines.length > 0) {
+        const text = textLines
+          .join(' ')
+          .replace(/<[^>]+>/g, '')
+          .trim()
+        if (text) {
+          cues.push({
+            id: cues.length,
+            startSec: Math.round(curTime.start * 10) / 10,
+            endSec: Math.round(curTime.end * 10) / 10,
+            time: curTime.timeStr,
+            text,
+          })
+        }
+        textLines = []
+      }
+      const start = toSec(match[1], match[2], match[3], match[4])
+      const end = toSec(match[5], match[6], match[7], match[8])
+      curTime = {
+        start,
+        end,
+        timeStr: formatChapterTime(start),
+      }
+    } else if (
+      curTime &&
+      line.trim() &&
+      !line.startsWith('NOTE') &&
+      !line.startsWith('WEBVTT') &&
+      !/^\d+$/.test(line.trim())
+    ) {
+      textLines.push(line.trim())
+    }
+  }
+
+  if (curTime && textLines.length > 0) {
+    const text = textLines
+      .join(' ')
+      .replace(/<[^>]+>/g, '')
+      .trim()
+    if (text) {
+      cues.push({
+        id: cues.length,
+        startSec: Math.round(curTime.start * 10) / 10,
+        endSec: Math.round(curTime.end * 10) / 10,
+        time: curTime.timeStr,
+        text,
+      })
+    }
+  }
+  return cues
 }
 
 const SEARCH_TIMEOUT_MS = 45_000
@@ -282,5 +522,148 @@ export class SearchService {
 
     const concurrency = Math.min(2, chunks.length)
     await Promise.all(Array.from({ length: concurrency }, () => worker()))
+  }
+
+  async fetchChapters(binaryPath: string, url: string): Promise<VideoChaptersResult> {
+    const args = [
+      '--no-warnings',
+      '--print',
+      '%(chapters)j',
+      '--print',
+      '===MF_DESC_SPLIT===',
+      '--print',
+      '%(description)s',
+    ]
+    const cookies = this.opts.getCookiesPath?.()
+    if (cookies) args.push('--cookies', cookies)
+    args.push(url)
+
+    const handle = spawnProcess(binaryPath, args, { timeoutMs: 15_000 })
+    this.activeHandles.add(handle)
+    try {
+      const res = await handle.result
+      if (res.code === 0) {
+        return parseChaptersOutput(res.stdoutLines.join('\n'))
+      }
+      return { chapters: [] }
+    } catch {
+      return { chapters: [] }
+    } finally {
+      this.activeHandles.delete(handle)
+    }
+  }
+
+  async fetchTranscript(binaryPath: string, url: string): Promise<VideoTranscriptResult> {
+    const tmpDir = path.join(
+      os.tmpdir(),
+      `mf-transcripts-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    )
+    try {
+      await fs.promises.mkdir(tmpDir, { recursive: true })
+      const primaryArgs = [
+        '--skip-download',
+        '--ignore-errors',
+        '--no-warnings',
+        '--write-auto-subs',
+        '--write-subs',
+        '--sub-langs',
+        'en,en-US,en-GB,en-orig,es,es-419,de,fr,ja,ko,zh-Hans,zh-Hant,hi,bn,pt,pt-BR,ru,it,ar,id,tr,vi,nl,pl,sv,uk,ro,el,th,cs,da,fi,he,hu,no',
+        '--sub-format',
+        'json3/vtt/srt',
+        '-o',
+        path.join(tmpDir, '%(id)s.%(ext)s'),
+      ]
+      const cookies = this.opts.getCookiesPath?.()
+      if (cookies) primaryArgs.push('--cookies', cookies)
+      primaryArgs.push(url)
+
+      const handle = spawnProcess(binaryPath, primaryArgs, { timeoutMs: 25_000 })
+      this.activeHandles.add(handle)
+      try {
+        await handle.result
+      } finally {
+        this.activeHandles.delete(handle)
+      }
+
+      let files = await fs.promises.readdir(tmpDir)
+
+      // Fallback: if none of the explicit primary language tags matched, try all available subtitles
+      if (files.length === 0) {
+        const fallbackArgs = [
+          '--skip-download',
+          '--ignore-errors',
+          '--no-warnings',
+          '--write-auto-subs',
+          '--write-subs',
+          '--sub-langs',
+          'all,-live_chat',
+          '--sub-format',
+          'json3/vtt/srt',
+          '-o',
+          path.join(tmpDir, '%(id)s.%(ext)s'),
+        ]
+        if (cookies) fallbackArgs.push('--cookies', cookies)
+        fallbackArgs.push(url)
+
+        const fbHandle = spawnProcess(binaryPath, fallbackArgs, { timeoutMs: 20_000 })
+        this.activeHandles.add(fbHandle)
+        try {
+          await fbHandle.result
+        } finally {
+          this.activeHandles.delete(fbHandle)
+        }
+        files = await fs.promises.readdir(tmpDir)
+      }
+
+      if (files.length === 0) {
+        return { cues: [] }
+      }
+
+      const json3Files = files.filter((f) => f.endsWith('.json3'))
+      const textSubFiles = files.filter((f) => f.endsWith('.vtt') || f.endsWith('.srt'))
+
+      const targetJson3 =
+        json3Files.find(
+          (f) =>
+            f.includes('.en.') ||
+            f.includes('.en-') ||
+            f.includes('.en_') ||
+            f.endsWith('.en.json3'),
+        ) ?? json3Files[0]
+      if (targetJson3) {
+        const raw = await fs.promises.readFile(path.join(tmpDir, targetJson3), 'utf8')
+        const cues = parseJson3Transcript(raw)
+        if (cues.length > 0) {
+          return { cues }
+        }
+      }
+
+      const targetText =
+        textSubFiles.find(
+          (f) =>
+            f.includes('.en.') ||
+            f.includes('.en-') ||
+            f.includes('.en_') ||
+            f.endsWith('.en.vtt') ||
+            f.endsWith('.en.srt'),
+        ) ?? textSubFiles[0]
+      if (targetText) {
+        const raw = await fs.promises.readFile(path.join(tmpDir, targetText), 'utf8')
+        const cues = parseVttTranscript(raw)
+        if (cues.length > 0) {
+          return { cues }
+        }
+      }
+
+      return { cues: [] }
+    } catch {
+      return { cues: [] }
+    } finally {
+      try {
+        await fs.promises.rm(tmpDir, { recursive: true, force: true })
+      } catch {
+        /* best-effort cleanup */
+      }
+    }
   }
 }

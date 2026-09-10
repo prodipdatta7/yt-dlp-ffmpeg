@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import { buildSearchQuery } from '../../src/main/media/argBuilders'
-import { parseHydrateLine, SearchService } from '../../src/main/media/search'
+import {
+  formatChapterTime,
+  parseChaptersFromDescription,
+  parseChaptersOutput,
+  parseHydrateLine,
+  parseJson3Transcript,
+  parseVttTranscript,
+  SearchService,
+} from '../../src/main/media/search'
 
 describe('buildSearchQuery (yt-dlp search pseudo-URL)', () => {
   it('combines prefix, limit and query verbatim', () => {
@@ -584,5 +592,229 @@ describe('Search Filters & Server Criteria (Option 2)', () => {
     const regularSearchUrl = 'https://www.youtube.com/results?search_query=lofi&sp=CAM%3D'
     const regularResult = mapRawInfo(rawPlaylistData, regularSearchUrl)
     expect(regularResult.playlistEntries).toHaveLength(0)
+  })
+
+  describe('formatChapterTime and parseChaptersOutput (Real Chapters Navigation)', () => {
+    it('formats chapter start times correctly (mm:ss and hh:mm:ss)', () => {
+      expect(formatChapterTime(0)).toBe('00:00')
+      expect(formatChapterTime(5)).toBe('00:05')
+      expect(formatChapterTime(65)).toBe('01:05')
+      expect(formatChapterTime(600)).toBe('10:00')
+      expect(formatChapterTime(3665)).toBe('1:01:05')
+      expect(formatChapterTime(7200)).toBe('2:00:00')
+    })
+
+    it('parses official chapters JSON from yt-dlp output', () => {
+      const stdout = [
+        JSON.stringify([
+          { start_time: 0, title: 'Intro', end_time: 120 },
+          { start_time: 120, title: 'Architecture Overview', end_time: 450 },
+          { start_time: 450, title: 'Conclusion', end_time: 600 },
+        ]),
+        '===MF_DESC_SPLIT===',
+        'This is the full video description with extra links.',
+      ].join('\n')
+
+      const result = parseChaptersOutput(stdout)
+      expect(result.chapters).toHaveLength(3)
+      expect(result.description).toBe('This is the full video description with extra links.')
+
+      expect(result.chapters[0]).toEqual({
+        time: '00:00',
+        title: 'Intro',
+        seconds: 0,
+        duration: '2:00',
+      })
+      expect(result.chapters[1]).toEqual({
+        time: '02:00',
+        title: 'Architecture Overview',
+        seconds: 120,
+        duration: '5:30',
+      })
+      expect(result.chapters[2]).toEqual({
+        time: '07:30',
+        title: 'Conclusion',
+        seconds: 450,
+        duration: '2:30',
+      })
+    })
+
+    it('falls back to description timestamps when official chapters are NA', () => {
+      const stdout = [
+        'NA',
+        '===MF_DESC_SPLIT===',
+        'Check out the video breakdown below:\n00:00 - Getting Started\n03:45 - Live Demo\n08:12 - Wrap Up & Next Steps',
+      ].join('\n')
+
+      const result = parseChaptersOutput(stdout)
+      expect(result.chapters).toHaveLength(3)
+      expect(result.chapters[0].title).toBe('Getting Started')
+      expect(result.chapters[0].time).toBe('00:00')
+      expect(result.chapters[0].seconds).toBe(0)
+      expect(result.chapters[1].title).toBe('Live Demo')
+      expect(result.chapters[1].time).toBe('03:45')
+      expect(result.chapters[1].seconds).toBe(225)
+      expect(result.chapters[2].title).toBe('Wrap Up & Next Steps')
+      expect(result.chapters[2].time).toBe('08:12')
+      expect(result.chapters[2].seconds).toBe(492)
+    })
+
+    it('returns empty chapters when neither official chapters nor description timestamps exist', () => {
+      const stdout = [
+        'NA',
+        '===MF_DESC_SPLIT===',
+        'Just a regular music video with no timestamps or chapters.',
+      ].join('\n')
+
+      const result = parseChaptersOutput(stdout)
+      expect(result.chapters).toHaveLength(0)
+      expect(result.description).toBe('Just a regular music video with no timestamps or chapters.')
+    })
+
+    it('handles malformed JSON gracefully and falls back to description', () => {
+      const stdout = [
+        '{"invalid_json": true',
+        '===MF_DESC_SPLIT===',
+        '00:00 Intro\n01:30 Feature Demo',
+      ].join('\n')
+
+      const result = parseChaptersOutput(stdout)
+      expect(result.chapters).toHaveLength(2)
+      expect(result.chapters[0].title).toBe('Intro')
+      expect(result.chapters[1].title).toBe('Feature Demo')
+    })
+
+    it('parseChaptersFromDescription handles 3-part timestamps (hh:mm:ss)', () => {
+      const desc = '1:05:20 Long Podcast Topic\n00:00 Start'
+      const parsed = parseChaptersFromDescription(desc)
+      expect(parsed).toHaveLength(2)
+      expect(parsed[0].time).toBe('00:00')
+      expect(parsed[0].seconds).toBe(0)
+      expect(parsed[1].time).toBe('1:05:20')
+      expect(parsed[1].seconds).toBe(3920)
+      expect(parsed[1].title).toBe('Long Podcast Topic')
+    })
+  })
+
+  describe('parseJson3Transcript and parseVttTranscript (Full Live Transcripts)', () => {
+    it('parses JSON3 timed text events into natural sentence-length cues', () => {
+      const json3Data = JSON.stringify({
+        events: [
+          {
+            tStartMs: 1200,
+            dDurationMs: 2500,
+            segs: [{ utf8: 'Welcome to this' }, { utf8: ' tutorial on Electron.' }],
+          },
+          {
+            tStartMs: 3800,
+            dDurationMs: 1800,
+            segs: [{ utf8: 'Today we will build' }, { utf8: ' something awesome.' }],
+          },
+          {
+            tStartMs: 15400,
+            dDurationMs: 3000,
+            segs: [{ utf8: 'Let us jump right into the code.' }],
+          },
+        ],
+      })
+
+      const cues = parseJson3Transcript(json3Data)
+      expect(cues.length).toBeGreaterThanOrEqual(2)
+      // First two events occur close together and are combined into a natural sentence
+      expect(cues[0].startSec).toBe(1.2)
+      expect(cues[0].time).toBe('00:01')
+      expect(cues[0].text).toContain('Welcome to this tutorial on Electron.')
+      expect(cues[0].text).toContain('Today we will build something awesome.')
+
+      // Next event is far enough in time to start a new cue
+      expect(cues[1].startSec).toBe(15.4)
+      expect(cues[1].text).toBe('Let us jump right into the code.')
+    })
+
+    it('returns empty array for invalid or empty JSON3 data', () => {
+      expect(parseJson3Transcript('')).toEqual([])
+      expect(parseJson3Transcript('not json')).toEqual([])
+      expect(parseJson3Transcript('{}')).toEqual([])
+      expect(parseJson3Transcript('{"events": []}')).toEqual([])
+    })
+
+    it('parses standard WebVTT subtitles with stripping of inline formatting tags', () => {
+      const vtt = [
+        'WEBVTT',
+        'Kind: captions',
+        'Language: en',
+        '',
+        '00:00:01.500 --> 00:00:04.200',
+        '<c.colorCCCCCC>Hello world</c> and welcome to the stream!',
+        '',
+        '00:00:04.500 --> 00:00:07.800',
+        'In this video, <b>we explore</b> advanced yt-dlp features.',
+        '',
+        '01:05:10.000 --> 01:05:14.500',
+        'Thank you everyone for watching.',
+      ].join('\n')
+
+      const cues = parseVttTranscript(vtt)
+      expect(cues).toHaveLength(3)
+      expect(cues[0].startSec).toBe(1.5)
+      expect(cues[0].endSec).toBe(4.2)
+      expect(cues[0].time).toBe('00:01')
+      expect(cues[0].text).toBe('Hello world and welcome to the stream!')
+
+      expect(cues[1].startSec).toBe(4.5)
+      expect(cues[1].text).toBe('In this video, we explore advanced yt-dlp features.')
+
+      expect(cues[2].startSec).toBe(3910)
+      expect(cues[2].time).toBe('1:05:10')
+      expect(cues[2].text).toBe('Thank you everyone for watching.')
+    })
+
+    it('parses SubRip (.srt) subtitles with numeric sequence markers and comma timestamps', () => {
+      const srt = [
+        '1',
+        '00:00:02,100 --> 00:00:05,400',
+        'Hello and welcome to the live podcast.',
+        '',
+        '2',
+        '00:00:06,000 --> 00:00:09,250',
+        'Today we are discussing real-time media streams.',
+      ].join('\n')
+
+      const cues = parseVttTranscript(srt)
+      expect(cues).toHaveLength(2)
+      expect(cues[0].startSec).toBe(2.1)
+      expect(cues[0].endSec).toBe(5.4)
+      expect(cues[0].time).toBe('00:02')
+      expect(cues[0].text).toBe('Hello and welcome to the live podcast.')
+
+      expect(cues[1].startSec).toBe(6)
+      expect(cues[1].endSec).toBe(9.3)
+      expect(cues[1].time).toBe('00:06')
+      expect(cues[1].text).toBe('Today we are discussing real-time media streams.')
+    })
+
+    it('handles empty or malformed WebVTT safely', () => {
+      expect(parseVttTranscript('')).toEqual([])
+      expect(parseVttTranscript('WEBVTT\n\nSome junk text without timestamp')).toEqual([])
+    })
+
+    it('formats full transcript cues into structured plain text document', async () => {
+      const { formatTranscriptAsText } = await import('../../src/renderer/src/utils/format')
+      const cues = [
+        { id: 0, startSec: 0, endSec: 3.5, time: '00:00', text: 'Welcome to this deep dive.' },
+        { id: 1, startSec: 4.2, endSec: 8.0, time: '00:04', text: 'Let us get started.' },
+      ]
+      const text = formatTranscriptAsText(
+        'How to Code GPT',
+        'https://www.youtube.com/watch?v=123',
+        120,
+        cues,
+      )
+      expect(text).toContain('Title: How to Code GPT')
+      expect(text).toContain('URL: https://www.youtube.com/watch?v=123')
+      expect(text).toContain('Total Cues: 2')
+      expect(text).toContain('[00:00] Welcome to this deep dive.')
+      expect(text).toContain('[00:04] Let us get started.')
+    })
   })
 })

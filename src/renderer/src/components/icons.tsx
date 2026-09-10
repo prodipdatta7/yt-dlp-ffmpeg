@@ -61,6 +61,22 @@ export function ArrowRightIcon({ class: cls }: IconProps) {
   )
 }
 
+export function ChevronLeftIcon({ class: cls }: IconProps) {
+  return (
+    <Svg class={cls}>
+      <path d="m15 18-6-6 6-6" />
+    </Svg>
+  )
+}
+
+export function ChevronRightIcon({ class: cls }: IconProps) {
+  return (
+    <Svg class={cls}>
+      <path d="m9 18 6-6-6-6" />
+    </Svg>
+  )
+}
+
 export function PauseIcon({ class: cls }: IconProps) {
   return (
     <Svg class={cls} filled>

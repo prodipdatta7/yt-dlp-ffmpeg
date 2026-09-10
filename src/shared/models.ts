@@ -74,6 +74,26 @@ export interface PlaylistEntryPreview {
   description?: string | null
 }
 
+export interface ChapterMarker {
+  time: string
+  title: string
+  seconds: number
+  duration?: string
+}
+
+export interface TranscriptCue {
+  id: number
+  startSec: number
+  endSec: number
+  time: string
+  text: string
+}
+
+export interface VideoTranscriptResult {
+  cues: TranscriptCue[]
+  language?: string
+}
+
 export interface AnalyzeResult {
   kind: 'video' | 'playlist'
   metadata: MediaMetadata

@@ -88,3 +88,27 @@ export function fmtLikes(viewCount: number | null, likeCount?: number | null): s
   }
   return null
 }
+
+export function formatTranscriptAsText(
+  title: string,
+  url: string,
+  durationSec: number | null | undefined,
+  cues: Array<{ time: string; text: string }>,
+): string {
+  const meta = [
+    `Title: ${title}`,
+    `URL: ${url}`,
+    durationSec ? `Duration: ${fmtDuration(durationSec)}` : null,
+    `Total Cues: ${cues.length}`,
+    `Exported: ${new Date().toLocaleString()}`,
+    'Source: MediaForge Desktop',
+    '',
+    '='.repeat(60),
+    '',
+  ]
+    .filter((l) => l !== null)
+    .join('\r\n')
+
+  const body = cues.map((c) => `[${c.time}] ${c.text}`).join('\r\n\r\n')
+  return meta + body + '\r\n'
+}

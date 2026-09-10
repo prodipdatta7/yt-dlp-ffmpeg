@@ -27,6 +27,9 @@ import {
   MF_OPEN_FILE,
   MF_SEARCH_CANCEL,
   MF_SEARCH_START,
+  MF_FETCH_CHAPTERS,
+  MF_FETCH_TRANSCRIPT,
+  MF_SAVE_TEXT_FILE,
   MF_UPDATER_APPLY,
   MF_UPDATER_CHECK,
   MF_APP_VERSION,
@@ -48,7 +51,10 @@ import {
   type PartialsClearResult,
   type PartialsListResult,
   type PingResult,
+  type SaveTextFileResult,
   type SearchResponse,
+  type VideoChaptersResult,
+  type VideoTranscriptResult,
 } from '../../shared/ipcContract'
 import type {
   SearchContentType,
@@ -135,6 +141,9 @@ export interface IpcDeps {
   checkAppUpdate: () => Promise<AppUpdateCheckResult>
   openAppReleasePage: () => Promise<{ ok: boolean }>
   downloadAndInstallAppUpdate: () => Promise<AppUpdateInstallResult>
+  fetchChapters: (url: string) => Promise<VideoChaptersResult>
+  fetchTranscript: (url: string) => Promise<VideoTranscriptResult>
+  saveTextFile: (defaultFilename: string, content: string) => Promise<SaveTextFileResult>
 }
 
 function invalidUrl(): AnalyzeResponse {
@@ -287,6 +296,51 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
     }
   })
   ipcMain.handle(MF_SEARCH_CANCEL, () => deps.cancelSearch())
+
+  ipcMain.handle(
+    MF_FETCH_CHAPTERS,
+    async (_event, payload: unknown): Promise<VideoChaptersResult> => {
+      const url = extractUrl(payload)
+      if (!url) return { chapters: [] }
+      try {
+        return await deps.fetchChapters(url)
+      } catch {
+        return { chapters: [] }
+      }
+    },
+  )
+
+  ipcMain.handle(
+    MF_FETCH_TRANSCRIPT,
+    async (_event, payload: unknown): Promise<VideoTranscriptResult> => {
+      const url = extractUrl(payload)
+      if (!url) return { cues: [] }
+      try {
+        return await deps.fetchTranscript(url)
+      } catch {
+        return { cues: [] }
+      }
+    },
+  )
+
+  ipcMain.handle(
+    MF_SAVE_TEXT_FILE,
+    async (_event, defaultFilename: unknown, content: unknown): Promise<SaveTextFileResult> => {
+      if (
+        typeof defaultFilename !== 'string' ||
+        typeof content !== 'string' ||
+        !defaultFilename.trim() ||
+        content.length > 10 * 1024 * 1024
+      ) {
+        return { ok: false }
+      }
+      try {
+        return await deps.saveTextFile(defaultFilename.trim(), content)
+      } catch {
+        return { ok: false }
+      }
+    },
+  )
 }
 
 function parseSearchRequest(payload: unknown): {

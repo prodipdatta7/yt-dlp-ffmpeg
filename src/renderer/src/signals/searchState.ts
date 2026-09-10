@@ -38,6 +38,11 @@ export const searchResults = signal<SearchResultItem[]>([])
 export const searchError = signal<{ code: string; message: string } | null>(null)
 export const lastSearchedQuery = signal<{ platform: string; query: string } | null>(null)
 export const selectedResultUrls = signal<ReadonlySet<string>>(new Set())
+export const activePreviewUrl = signal<string | null>(null)
+
+export function closePreview(): void {
+  activePreviewUrl.value = null
+}
 
 export const activeFilterCount = computed(() => {
   let count = 0
@@ -261,6 +266,7 @@ export function resetSearchResults(): void {
   searchError.value = null
   selectedResultUrls.value = new Set()
   lastSearchedQuery.value = null
+  activePreviewUrl.value = null
 }
 
 export function resetFilters(): void {
@@ -285,6 +291,7 @@ export function resetSearch(): void {
   searchError.value = null
   selectedResultUrls.value = new Set()
   lastSearchedQuery.value = null
+  activePreviewUrl.value = null
   resetFilters()
 }
 
