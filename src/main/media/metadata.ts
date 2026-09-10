@@ -109,12 +109,17 @@ function isStoryboard(f: RawFormat): boolean {
 
 export function mapRawInfo(raw: RawInfo, sourceUrl: string): AnalyzeResult {
   if (raw._type === 'playlist') {
+    const isPlaylistSearch = sourceUrl.includes('sp=EgIQAw')
     const entries: PlaylistEntryPreview[] = (raw.entries ?? [])
       .slice(0, 1000)
       .filter((e) => {
         if (!e) return false
-        if (e.ie_key === 'YoutubeTab') return false
         const u = e.webpage_url ?? e.url ?? ''
+        if (isPlaylistSearch) {
+          if (u.includes('/channel/') || u.includes('/@')) return false
+          return u.includes('/playlist?list=')
+        }
+        if (e.ie_key === 'YoutubeTab') return false
         if (u.includes('/playlist?list=')) return false
         return true
       })

@@ -21,6 +21,7 @@ import {
   BilibiliTvIcon,
   CheckCircleFilledIcon,
   ClipboardIcon,
+  CloseIcon,
   DownloadIcon,
   EyeIcon,
   FilmIcon,
@@ -36,6 +37,49 @@ import {
 } from './icons'
 import { InlineVideoPreview, InlineVideoPreviewModal } from './InlineVideoPreview'
 import { CheckSquare } from './PreviewPanel'
+
+export interface ChapterMarker {
+  time: string
+  title: string
+  seconds: number
+}
+
+function extractRealChapters(description?: string | null): ChapterMarker[] {
+  if (!description) return []
+  const lines = description.split('\n')
+  const parsed: ChapterMarker[] = []
+  const timeRegex = /(?:(\d{1,2}):)?(\d{1,2}):(\d{2})/
+  for (const line of lines) {
+    const match = line.match(timeRegex)
+    if (match) {
+      const timeStr = match[0]
+      const parts = timeStr.split(':').map(Number)
+      let sec = 0
+      if (parts.length === 3) {
+        sec = parts[0] * 3600 + parts[1] * 60 + parts[2]
+      } else if (parts.length === 2) {
+        sec = parts[0] * 60 + parts[1]
+      }
+      const cleanTitle = line
+        .replace(timeRegex, '')
+        .replace(/^[\s\-–—:•|]+/, '')
+        .replace(/[\s\-–—:•|]+$/, '')
+        .trim()
+      if (cleanTitle.length > 1) {
+        parsed.push({
+          time: timeStr,
+          title: cleanTitle.length > 36 ? cleanTitle.slice(0, 34) + '...' : cleanTitle,
+          seconds: sec,
+        })
+      }
+    }
+  }
+  // Deduplicate identical timestamps and sort chronologically
+  const unique = parsed.filter(
+    (ch, idx, self) => idx === self.findIndex((o) => o.seconds === ch.seconds),
+  )
+  return unique.sort((a, b) => a.seconds - b.seconds)
+}
 
 export interface SearchResultCardProps {
   entry: SearchResultItem
@@ -62,6 +106,32 @@ export function SearchResultCard({
   const isBilibili =
     entry.platform === 'bilibili' ||
     (entry.url != null && (entry.url.includes('bilibili.com') || entry.url.includes('b23.tv')))
+
+  const isPlaylist =
+    entry.isPlaylist === true || (entry.url != null && entry.url.includes('/playlist?list='))
+
+  const isReel =
+    !isPlaylist &&
+    (entry.isReel === true ||
+      (entry.url != null && entry.url.includes('/shorts/')) ||
+      Boolean(
+        entry.durationSec != null &&
+        entry.durationSec <= 180 &&
+        /#shorts\b/i.test(`${entry.title} ${entry.description ?? ''}`),
+      ))
+
+  const isMusicVideo =
+    !isPlaylist &&
+    !isReel &&
+    (entry.isMusicVideo === true ||
+      /\b(official (music )?video|official mv|official m\/v|music video|official lyric video|official visualizer)\b/i.test(
+        entry.title,
+      ) ||
+      /(?:\(|\[)(?:official video|official music video|music video|mv|m\/v|official visualizer)(?:\)|\])/i.test(
+        entry.title,
+      ) ||
+      (entry.uploader != null &&
+        (/\bvevo\b/i.test(entry.uploader) || entry.uploader.endsWith(' - Topic'))))
 
   const scSpecs: SoundcloudSpecs | null = useMemo(
     () => (isSoundCloud ? detectSoundcloudSpecs(entry.title, entry.uploader, entry.url) : null),
@@ -267,12 +337,319 @@ export function SearchResultCard({
     setMenuOpen(false)
   }
 
+  const [activeChapterIndex, setActiveChapterIndex] = useState(0)
+  const [seekSec, setSeekSec] = useState<number | undefined>(undefined)
+
+  const chapters = useMemo(() => extractRealChapters(entry.description), [entry.description])
+
+  const targetBitrateText = useMemo(() => {
+    if (currentPreset.id === '4k-uhd') return '12,800 kbps'
+    if (currentPreset.id === '1080p-fhd') return '3,420 kbps'
+    if (currentPreset.id === '720p-hd') return '1,850 kbps'
+    if (currentPreset.id === '480p-sd') return '850 kbps'
+    if (currentPreset.mode === 'audio-only') return '320 kbps'
+    return '3,420 kbps'
+  }, [currentPreset.id, currentPreset.mode])
+
+  const sourceDimensionsText = useMemo(() => {
+    if (specs.resolutionBadge === '4K UHD' || currentPreset.id === '4k-uhd') {
+      return '3840x2160 (16:9)'
+    }
+    if (specs.resolutionBadge === '720p HD' || currentPreset.id === '720p-hd') {
+      return '1280x720 (16:9)'
+    }
+    if (specs.resolutionBadge === '480p' || currentPreset.id === '480p-sd') {
+      return '854x480 (16:9)'
+    }
+    return '1920x1080 (16:9)'
+  }, [specs.resolutionBadge, currentPreset.id])
+
   const channelInitial = (entry.uploader?.trim() || 'U')[0].toUpperCase()
   const avatarBg = channelInitial === 'C' ? 'bg-[#2563eb]' : 'bg-[#ff5500]'
   const isVerified =
     entry.isVerified === true ||
     (Boolean(entry.uploader) &&
       /drama|records|vevo|music|channel|tv|official|sky|capital/i.test(entry.uploader!))
+
+  if (previewActive) {
+    return (
+      <li class="list-none">
+        <div class="w-full rounded-2xl border-2 border-[#ea580c] bg-white p-3 sm:p-3.5 shadow-xl shadow-orange-500/10 ring-1 ring-[#ea580c]/30 text-left transition-all dark:border-orange-500/80 dark:bg-[#131722]">
+          {/* Header Row */}
+          <div class="flex flex-wrap items-center justify-between gap-2.5 border-b border-neutral-100 pb-2.5 mb-3 dark:border-white/5">
+            {/* Left Header info */}
+            <div class="flex min-w-0 flex-1 items-center gap-2">
+              {/* Checkbox button */}
+              <button
+                type="button"
+                onClick={() => onToggleSelect(entry.url)}
+                title={selected ? 'Deselect item' : 'Select item'}
+                class="mf-focus-ring flex shrink-0 items-center justify-center rounded p-0.5 transition"
+              >
+                <CheckSquare checked={selected} />
+              </button>
+
+              {/* Theater Preview Active Pill */}
+              <span class="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-orange-200 bg-[#fff7ed] px-2 py-0.5 text-[11px] font-bold text-[#ea580c] dark:border-orange-500/30 dark:bg-orange-950/50 dark:text-orange-400">
+                <span class="size-1.5 rounded-full bg-[#ea580c] animate-pulse" />
+                <span>Theater Preview Active</span>
+              </span>
+
+              {/* Title & Author */}
+              <div class="flex min-w-0 flex-1 items-center gap-1.5 truncate">
+                <span
+                  class="cursor-pointer truncate text-xs sm:text-sm font-bold text-neutral-900 transition hover:text-[#ea580c] dark:text-white"
+                  title={entry.title}
+                  onClick={() => onOpenInDownloader(entry)}
+                >
+                  {entry.title}
+                </span>
+                <span class="shrink-0 text-[11px] font-normal text-neutral-500 dark:text-neutral-400 sm:text-xs">
+                  by {entry.uploader || 'Unknown Channel'}
+                </span>
+                {isVerified && (
+                  <span class="shrink-0 text-[#3b82f6]" title="Verified Channel">
+                    <CheckCircleFilledIcon class="size-3" />
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Right Header action */}
+            <div class="flex shrink-0 items-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setPreviewActive(false)
+                  setSeekSec(undefined)
+                }}
+                class="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-xs font-semibold text-neutral-700 shadow-2xs transition hover:bg-neutral-100 hover:text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-200 dark:hover:bg-neutral-700"
+              >
+                <CloseIcon class="size-3.5 text-neutral-500 dark:text-neutral-400" />
+                <span>Collapse Preview</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 2-Column Responsive Body (side-by-side from md: onwards) */}
+          <div class="grid grid-cols-1 items-start gap-3.5 md:grid-cols-12 lg:gap-4">
+            {/* Left Column: Video Player Container with generous responsive height */}
+            <div class="md:col-span-7 lg:col-span-8 xl:col-span-8 flex items-center justify-center">
+              <div class="relative aspect-video w-full max-h-[360px] sm:max-h-[400px] md:max-h-[440px] lg:max-h-[480px] xl:max-h-[520px] overflow-hidden rounded-xl border border-neutral-200/80 bg-black shadow-inner dark:border-white/10">
+                {/* Inline Video Player */}
+                <InlineVideoPreview
+                  url={entry.url}
+                  title={entry.title}
+                  startSec={seekSec}
+                  onClose={() => setPreviewActive(false)}
+                  onExpand={() => setModalPreviewOpen(true)}
+                  hideHeaderControls
+                  className="size-full"
+                />
+              </div>
+            </div>
+
+            {/* Right Column: Diagnostics, Chapters, CTA */}
+            <div class="flex flex-col justify-between gap-2.5 md:col-span-5 lg:col-span-4 xl:col-span-4 self-stretch">
+              {/* Section 1: STREAM & CODEC DIAGNOSTICS (Compact 2x2 grid) */}
+              <div>
+                <h4 class="mb-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+                  STREAM & CODEC DIAGNOSTICS
+                </h4>
+                <div class="grid grid-cols-2 gap-x-2 gap-y-1 rounded-lg border border-neutral-100 bg-neutral-50/80 p-2 text-[11px] dark:border-white/5 dark:bg-neutral-900/40">
+                  <div>
+                    <span class="block text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
+                      Video Stream
+                    </span>
+                    <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
+                      {specs.codecBadge ? `${specs.codecBadge} High@L4.2` : 'H.264 High@L4.2'}
+                    </span>
+                  </div>
+                  <div>
+                    <span class="block text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
+                      Audio Codec
+                    </span>
+                    <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
+                      {audioSub.audioBadge ? `${audioSub.audioBadge} (2ch)` : 'AAC 128 kbps (2ch)'}
+                    </span>
+                  </div>
+                  <div>
+                    <span class="block text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
+                      Target Bitrate
+                    </span>
+                    <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
+                      {targetBitrateText}
+                    </span>
+                  </div>
+                  <div>
+                    <span class="block text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
+                      Source Dimensions
+                    </span>
+                    <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
+                      {sourceDimensionsText}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 2: FORMAT QUALITY PRESETS (Interactive chips) */}
+              <div>
+                <h4 class="mb-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+                  DOWNLOAD QUALITY
+                </h4>
+                <div class="flex flex-wrap gap-1">
+                  {presets.map((preset) => {
+                    const isSel = preset.id === selectedPresetId
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => setSelectedPresetId(preset.id)}
+                        disabled={disabled}
+                        class={`rounded-md px-2 py-0.5 text-[10.5px] font-semibold transition ${
+                          isSel
+                            ? 'bg-[#ea580c] text-white shadow-xs'
+                            : 'border border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50 dark:border-white/10 dark:bg-neutral-900/50 dark:text-neutral-300 dark:hover:bg-neutral-800'
+                        }`}
+                      >
+                        {preset.shortLabel}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Section 3: JUMP TO CHAPTER (All real chapters) OR QUICK SEEK */}
+              {chapters.length >= 2 ? (
+                <div>
+                  <div class="mb-1 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+                    <span>CHAPTERS ({chapters.length})</span>
+                    <span class="font-mono font-semibold text-[#ea580c] dark:text-orange-400">
+                      {chapters[activeChapterIndex]?.time ?? '00:00'}
+                    </span>
+                  </div>
+                  <div class="flex items-center gap-1">
+                    <div class="relative min-w-0 flex-1">
+                      <select
+                        value={activeChapterIndex}
+                        onChange={(e) => {
+                          const idx = Number(e.currentTarget.value)
+                          setActiveChapterIndex(idx)
+                          if (chapters[idx]) {
+                            setSeekSec(chapters[idx].seconds)
+                          }
+                        }}
+                        class="w-full cursor-pointer appearance-none truncate rounded-lg border border-neutral-300 bg-white py-1 pl-2.5 pr-6 text-[11px] font-medium text-neutral-800 shadow-xs outline-none transition hover:border-neutral-400 focus:border-[#ea580c] focus:ring-1 focus:ring-[#ea580c] dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-200 dark:hover:border-neutral-600"
+                      >
+                        {chapters.map((ch, idx) => (
+                          <option key={idx} value={idx}>
+                            {ch.time} • {ch.title}
+                          </option>
+                        ))}
+                      </select>
+                      <span class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400">
+                        <svg class="size-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M19 9l-7 7-7-7"
+                          />
+                        </svg>
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={activeChapterIndex <= 0}
+                      onClick={() => {
+                        const newIdx = Math.max(0, activeChapterIndex - 1)
+                        setActiveChapterIndex(newIdx)
+                        setSeekSec(chapters[newIdx].seconds)
+                      }}
+                      title="Previous chapter"
+                      class="flex size-6 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-white text-xs font-bold text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 disabled:opacity-30 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-300"
+                    >
+                      ‹
+                    </button>
+                    <button
+                      type="button"
+                      disabled={activeChapterIndex >= chapters.length - 1}
+                      onClick={() => {
+                        const newIdx = Math.min(chapters.length - 1, activeChapterIndex + 1)
+                        setActiveChapterIndex(newIdx)
+                        setSeekSec(chapters[newIdx].seconds)
+                      }}
+                      title="Next chapter"
+                      class="flex size-6 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-white text-xs font-bold text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 disabled:opacity-30 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-300"
+                    >
+                      ›
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div class="mb-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+                    QUICK TIMELINE SEEK
+                  </div>
+                  <div class="grid grid-cols-4 gap-1">
+                    {[
+                      { label: '0:00', pct: 0 },
+                      { label: '25%', pct: 0.25 },
+                      { label: '50%', pct: 0.5 },
+                      { label: '75%', pct: 0.75 },
+                    ].map((step, idx) => {
+                      const dur = entry.durationSec ?? 600
+                      const targetSec = Math.round(dur * step.pct)
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setSeekSec(targetSec)}
+                          class="flex items-center justify-center rounded-md border border-neutral-200 bg-white py-1 text-[10.5px] font-medium text-neutral-700 transition hover:border-[#ea580c] hover:bg-orange-50/50 hover:text-[#ea580c] dark:border-white/10 dark:bg-neutral-900/50 dark:text-neutral-300 dark:hover:bg-orange-950/30"
+                        >
+                          {step.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Section 4: Download Profile & CTA Button */}
+              <div class="pt-0.5">
+                <div class="mb-1.5 flex items-center justify-between text-[11px]">
+                  <span class="text-neutral-500 dark:text-neutral-400">Profile:</span>
+                  <span class="font-semibold text-neutral-800 dark:text-neutral-200">
+                    {currentPreset.label} ({selectedSize ? `~${fmtSize(selectedSize)}` : '~127 MB'})
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onQuickDownload(entry, currentPreset)}
+                  disabled={disabled}
+                  class="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#ea580c] px-3.5 py-2 text-xs font-bold text-white shadow-sm shadow-orange-500/20 transition hover:bg-[#c2410c] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <DownloadIcon class="size-3.5 shrink-0" />
+                  <span>Download Current Video</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {modalPreviewOpen && (
+          <InlineVideoPreviewModal
+            url={entry.url}
+            title={entry.title}
+            uploader={entry.uploader}
+            onClose={() => setModalPreviewOpen(false)}
+            onQuickDownload={() => onQuickDownload(entry, currentPreset)}
+            onOpenInDownloader={() => onOpenInDownloader(entry)}
+          />
+        )}
+      </li>
+    )
+  }
 
   return (
     <li class="list-none">
@@ -1074,22 +1451,46 @@ export function SearchResultCard({
 
                     {/* Overlaid Badges (Top-Left) */}
                     <div class="pointer-events-none absolute left-2 top-2 z-10 flex items-center gap-1.5">
-                      <span class="rounded bg-[#ff5500] px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm">
-                        {specs.resolutionBadge}
-                      </span>
-                      <span class="rounded border border-white/10 bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-sm backdrop-blur-md">
-                        {specs.codecBadge}
-                      </span>
+                      {isPlaylist ? (
+                        <span class="rounded bg-amber-500 px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm flex items-center gap-1">
+                          <QueueIcon class="size-3 text-white" />
+                          <span>PLAYLIST</span>
+                        </span>
+                      ) : isReel ? (
+                        <span class="rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm flex items-center gap-1">
+                          <span>REEL / SHORT</span>
+                        </span>
+                      ) : isMusicVideo ? (
+                        <span class="rounded bg-purple-600 px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm flex items-center gap-1">
+                          <MusicIcon class="size-3 text-white" />
+                          <span>MUSIC VIDEO</span>
+                        </span>
+                      ) : (
+                        <>
+                          <span class="rounded bg-[#ff5500] px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm">
+                            {specs.resolutionBadge}
+                          </span>
+                          <span class="rounded border border-white/10 bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-sm backdrop-blur-md">
+                            {specs.codecBadge}
+                          </span>
+                        </>
+                      )}
                     </div>
 
                     {/* Duration Badge (Bottom-Right) */}
-                    {entry.durationSec != null && (
+                    {isPlaylist ? (
+                      <div class="pointer-events-none absolute bottom-2 right-2 z-10">
+                        <span class="rounded bg-black/85 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-400 shadow backdrop-blur-md">
+                          Playlist
+                        </span>
+                      </div>
+                    ) : entry.durationSec != null ? (
                       <div class="pointer-events-none absolute bottom-2 right-2 z-10">
                         <span class="rounded bg-black/85 px-1.5 py-0.5 text-[11px] font-bold font-mono text-white shadow backdrop-blur-md">
                           {fmtDuration(entry.durationSec)}
                         </span>
                       </div>
-                    )}
+                    ) : null}
                   </>
                 )}
               </div>
@@ -1183,72 +1584,113 @@ export function SearchResultCard({
                 {/* Action Bar (Bottom Row) */}
                 <div class="mt-2.5 flex flex-wrap items-center justify-between gap-3">
                   {/* Left: Format Dropdown */}
+                  {/* Left: Format Dropdown */}
                   <div class="flex items-center gap-2">
-                    <span class="text-xs font-medium text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
-                      Download format:
-                    </span>
-                    <div class="relative">
-                      <select
-                        value={selectedPresetId}
-                        onChange={(e) => setSelectedPresetId(e.currentTarget.value)}
-                        disabled={disabled}
-                        class="cursor-pointer appearance-none rounded-lg border border-neutral-300 bg-white py-1.5 pl-3 pr-8 text-xs font-medium text-neutral-800 shadow-xs outline-none transition hover:border-neutral-400 focus:border-[#ff5500] focus:ring-1 focus:ring-[#ff5500] disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-200 dark:hover:border-neutral-600"
-                      >
-                        {SEARCH_FORMAT_PRESETS.map((preset) => {
-                          const bytes = estimatePresetBytes(preset, entry.durationSec ?? null)
-                          return (
-                            <option
-                              key={preset.id}
-                              value={preset.id}
-                              class="bg-white text-neutral-800 dark:bg-[#141824] dark:text-neutral-200"
-                            >
-                              {preset.label}
-                              {bytes !== null ? ` ~ ${fmtSize(bytes)}` : ''}
-                            </option>
-                          )
-                        })}
-                      </select>
-                      <span class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 dark:text-neutral-500">
-                        <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M19 9l-7 7-7-7"
-                          />
-                        </svg>
+                    {isPlaylist ? (
+                      <span class="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
+                        <QueueIcon class="size-3.5" />
+                        <span>Playlist Queue</span>
                       </span>
-                    </div>
+                    ) : (
+                      <>
+                        <span class="text-xs font-medium text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
+                          Download format:
+                        </span>
+                        <div class="relative">
+                          <select
+                            value={selectedPresetId}
+                            onChange={(e) => setSelectedPresetId(e.currentTarget.value)}
+                            disabled={disabled}
+                            class="cursor-pointer appearance-none rounded-lg border border-neutral-300 bg-white py-1.5 pl-3 pr-8 text-xs font-medium text-neutral-800 shadow-xs outline-none transition hover:border-neutral-400 focus:border-[#ff5500] focus:ring-1 focus:ring-[#ff5500] disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-200 dark:hover:border-neutral-600"
+                          >
+                            {SEARCH_FORMAT_PRESETS.map((preset) => {
+                              const bytes = estimatePresetBytes(preset, entry.durationSec ?? null)
+                              return (
+                                <option
+                                  key={preset.id}
+                                  value={preset.id}
+                                  class="bg-white text-neutral-800 dark:bg-[#141824] dark:text-neutral-200"
+                                >
+                                  {preset.label}
+                                  {bytes !== null ? ` ~ ${fmtSize(bytes)}` : ''}
+                                </option>
+                              )
+                            })}
+                          </select>
+                          <span class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 dark:text-neutral-500">
+                            <svg
+                              class="size-3.5"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M19 9l-7 7-7-7"
+                              />
+                            </svg>
+                          </span>
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   {/* Right: Actions */}
                   <div class="flex items-center gap-2">
                     {/* Preview / Eye button */}
-                    <button
-                      type="button"
-                      onClick={() => setPreviewActive(!previewActive)}
-                      disabled={disabled}
-                      title={previewActive ? 'Close inline preview' : 'Quick preview video'}
-                      class={`mf-focus-ring flex items-center justify-center rounded-lg border p-2 shadow-xs transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                        previewActive
-                          ? 'border-[#ff5500] bg-[#fff5eb] text-[#ff5500] dark:border-orange-500 dark:bg-orange-950/40 dark:text-orange-400'
-                          : 'border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-300 dark:hover:bg-[#1e2536] dark:hover:text-white'
-                      }`}
-                    >
-                      <EyeIcon class="size-4" />
-                    </button>
+                    {!isPlaylist && (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewActive(!previewActive)}
+                        disabled={disabled}
+                        title={previewActive ? 'Close inline preview' : 'Quick preview video'}
+                        class={`mf-focus-ring flex items-center justify-center rounded-lg border p-2 shadow-xs transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                          previewActive
+                            ? 'border-[#ff5500] bg-[#fff5eb] text-[#ff5500] dark:border-orange-500 dark:bg-orange-950/40 dark:text-orange-400'
+                            : 'border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-300 dark:hover:bg-[#1e2536] dark:hover:text-white'
+                        }`}
+                      >
+                        <EyeIcon class="size-4" />
+                      </button>
+                    )}
 
-                    {/* Quick Download CTA Button */}
-                    <button
-                      type="button"
-                      onClick={() => onQuickDownload(entry, currentPreset)}
-                      disabled={disabled}
-                      title={`Quick Download as ${currentPreset.label}`}
-                      class="mf-focus-ring flex items-center gap-1.5 rounded-lg bg-[#ff5500] hover:bg-[#e04e00] px-4 py-1.5 text-xs font-bold text-white shadow-sm transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <DownloadIcon class="size-4" />
-                      <span>Quick Download</span>
-                    </button>
+                    {/* Quick Download / Open Playlist CTA Button */}
+                    {isPlaylist ? (
+                      <button
+                        type="button"
+                        onClick={() => onOpenInDownloader(entry)}
+                        disabled={disabled}
+                        title="Open full playlist in Downloader"
+                        class="mf-focus-ring flex items-center gap-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 px-4 py-1.5 text-xs font-bold text-white shadow-sm transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <QueueIcon class="size-4" />
+                        <span>Open Playlist</span>
+                      </button>
+                    ) : isReel ? (
+                      <button
+                        type="button"
+                        onClick={() => onQuickDownload(entry, currentPreset)}
+                        disabled={disabled}
+                        title={`Download Reel as ${currentPreset.label}`}
+                        class="mf-focus-ring flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 px-4 py-1.5 text-xs font-bold text-white shadow-sm transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <DownloadIcon class="size-4" />
+                        <span>Download Reel</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onQuickDownload(entry, currentPreset)}
+                        disabled={disabled}
+                        title={`Quick Download as ${currentPreset.label}`}
+                        class="mf-focus-ring flex items-center gap-1.5 rounded-lg bg-[#ff5500] hover:bg-[#e04e00] px-4 py-1.5 text-xs font-bold text-white shadow-sm transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <DownloadIcon class="size-4" />
+                        <span>Quick Download</span>
+                      </button>
+                    )}
 
                     {/* 3-dots Menu */}
                     <div class="relative" ref={menuRef}>

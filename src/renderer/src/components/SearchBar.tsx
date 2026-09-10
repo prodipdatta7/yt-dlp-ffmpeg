@@ -3,11 +3,13 @@ import type { ComponentChildren } from 'preact'
 import {
   SEARCH_PLATFORMS,
   SEARCH_RESULT_LIMITS,
+  type SearchContentType,
   type SearchSort,
   type UploadRecency,
 } from '../../../shared/models'
 import {
   activeFilterCount,
+  filterContentType,
   filterHas4K,
   filterHasSubtitles,
   filterMaxDurationSec,
@@ -35,6 +37,7 @@ import {
   AlertIcon,
   CheckIcon,
   CloseIcon,
+  InfoIcon,
   RotateCcwIcon,
   SearchIcon,
   SlidersIcon,
@@ -77,9 +80,11 @@ function useDismiss(open: boolean, ref: { current: HTMLElement | null }, onDismi
 export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [platformOpen, setPlatformOpen] = useState(false)
+  const [infoOpen, setInfoOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const filtersRef = useRef<HTMLDivElement>(null)
   const platformRef = useRef<HTMLDivElement>(null)
+  const infoRef = useRef<HTMLDivElement>(null)
   const platform =
     SEARCH_PLATFORMS.find((p) => p.id === searchPlatform.value) ?? SEARCH_PLATFORMS[0]
   const query = searchQuery.value
@@ -110,6 +115,7 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
 
   useDismiss(filtersOpen, filtersRef, () => setFiltersOpen(false))
   useDismiss(platformOpen, platformRef, () => setPlatformOpen(false))
+  useDismiss(infoOpen, infoRef, () => setInfoOpen(false))
 
   return (
     <div class="mf-search-panel flex flex-col gap-2.5">
@@ -263,11 +269,12 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
         )}
 
         {/* far right: advanced filters popover */}
-        <div ref={filtersRef} class="relative my-1 mr-1 ml-0 flex shrink-0 items-center">
+        <div ref={filtersRef} class="relative my-1 mr-0.5 ml-0 flex shrink-0 items-center">
           <button
             type="button"
             onClick={() => {
               setPlatformOpen(false)
+              setInfoOpen(false)
               setFiltersOpen((v) => !v)
             }}
             aria-expanded={filtersOpen}
@@ -301,13 +308,68 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
             />
           )}
         </div>
-      </form>
 
-      <p class="mf-search-note flex items-center gap-1.5 border border-line bg-wash-1 px-3 py-1.5 text-[10px] text-slate-600">
-        <AlertIcon class="size-3 shrink-0 text-amber-500" />
-        In-app search only works for platforms yt-dlp can query directly (YouTube, SoundCloud,
-        Bilibili). Every other supported site still works by pasting a link in the Downloader tab.
-      </p>
+        {/* info popover right after Filters */}
+        <div ref={infoRef} class="relative my-1 mr-1 ml-0.5 flex shrink-0 items-center">
+          <button
+            type="button"
+            onClick={() => {
+              setPlatformOpen(false)
+              setFiltersOpen(false)
+              setInfoOpen((v) => !v)
+            }}
+            aria-expanded={infoOpen}
+            aria-haspopup="dialog"
+            title="Platform search info"
+            aria-label="Platform search info"
+            className={`mf-focus-ring inline-flex size-7 shrink-0 items-center justify-center rounded-md border transition ${
+              infoOpen
+                ? 'border-sky-500/60 bg-sky-500/10 text-sky-400'
+                : 'border-line-strong text-slate-400 hover:border-line hover:text-ink dark:hover:border-slate-500 dark:hover:text-slate-200'
+            }`}
+          >
+            <InfoIcon class="size-3.5" />
+          </button>
+
+          {infoOpen && (
+            <div class="absolute right-0 top-full z-40 mt-2 w-80 max-w-[calc(100vw-2rem)]">
+              <div
+                role="dialog"
+                aria-label="Supported Search Platforms Info"
+                class="mf-card mf-rise flex flex-col gap-2 rounded-xl border border-neutral-200/90 bg-white p-3.5 shadow-2xl text-neutral-800 dark:border-line-strong dark:bg-[#131722] dark:text-slate-100"
+              >
+                <div class="flex items-start justify-between gap-2 border-b border-neutral-100 pb-2 dark:border-line">
+                  <div class="flex items-center gap-1.5">
+                    <span class="flex size-5 shrink-0 items-center justify-center rounded-md bg-amber-500/10 text-amber-500">
+                      <AlertIcon class="size-3" />
+                    </span>
+                    <span class="text-xs font-bold text-neutral-900 dark:text-slate-100">
+                      Search Platform Support
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setInfoOpen(false)}
+                    class="rounded-md p-0.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 dark:text-slate-400 dark:hover:bg-wash-2 dark:hover:text-slate-200 transition"
+                    aria-label="Close"
+                  >
+                    <CloseIcon class="size-3.5" />
+                  </button>
+                </div>
+                <div class="space-y-1.5 text-xs text-neutral-600 dark:text-slate-300 leading-relaxed">
+                  <p>
+                    In-app search only works for platforms yt-dlp can query directly (YouTube,
+                    SoundCloud, Bilibili).
+                  </p>
+                  <p class="text-[11px] text-neutral-500 dark:text-slate-400 border-t border-neutral-100 dark:border-line pt-2">
+                    Every other supported site still works by pasting a link in the Downloader tab.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </form>
 
       {searchResults.value.length > 0 && (
         <div class="mf-search-filter-rail app-no-drag mt-2 flex items-center overflow-x-auto bg-recess px-2 py-1.5">
@@ -425,6 +487,9 @@ function AdvancedFilters({
   onClose: () => void
   onApply: () => void
 }) {
+  const [draftContentType, setDraftContentType] = useState<SearchContentType>(
+    filterContentType.value,
+  )
   const [draftSort, setDraftSort] = useState<SearchSort>(searchSort.value)
   const [draftLimit, setDraftLimit] = useState<number>(searchLimit.value)
   const [draftRecency, setDraftRecency] = useState<UploadRecency>(filterUploadRecency.value)
@@ -450,6 +515,7 @@ function AdvancedFilters({
 
   // Calculate active filter count for the draft
   let draftActiveCount = 0
+  if (draftContentType !== 'all') draftActiveCount++
   if (draftSort !== 'relevance') draftActiveCount++
   if (draftLimit !== 20) draftActiveCount++
   if (draftRecency !== 'all') draftActiveCount++
@@ -462,6 +528,7 @@ function AdvancedFilters({
   if (draftVerified) draftActiveCount++
 
   function handleResetAll() {
+    setDraftContentType('all')
     setDraftSort('relevance')
     setDraftLimit(20)
     setDraftRecency('all')
@@ -476,6 +543,7 @@ function AdvancedFilters({
   }
 
   function commitDraftState() {
+    filterContentType.value = draftContentType
     searchSort.value = draftSort
     searchLimit.value = draftLimit
     filterUploadRecency.value = draftRecency
@@ -503,14 +571,14 @@ function AdvancedFilters({
   }
 
   return (
-    <div class="absolute right-0 top-full z-40 mt-2 w-[340px] max-w-[calc(100vw-2rem)]">
+    <div class="absolute right-0 top-full z-40 mt-2 w-[660px] max-w-[calc(100vw-2rem)]">
       <div
         role="dialog"
         aria-label="Search Filters & Criteria"
-        class="mf-card mf-rise flex flex-col rounded-2xl border border-neutral-200/90 dark:border-line-strong bg-white dark:bg-[#131722] p-3.5 shadow-2xl text-neutral-800 dark:text-slate-100 max-h-[min(85vh,680px)] overflow-y-auto"
+        class="mf-card mf-rise flex flex-col rounded-2xl border border-neutral-200/90 dark:border-line-strong bg-white dark:bg-[#131722] p-4 shadow-2xl text-neutral-800 dark:text-slate-100 max-h-[min(85vh,540px)] overflow-y-auto"
       >
         {/* Header */}
-        <div class="flex items-start justify-between gap-2 pb-2.5 border-b border-neutral-200/70 dark:border-line">
+        <div class="flex items-start justify-between gap-2 pb-3 border-b border-neutral-200/70 dark:border-line">
           <div class="flex items-center gap-2.5">
             <div class="flex size-8.5 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500">
               <svg
@@ -530,7 +598,7 @@ function AdvancedFilters({
                 Search Filters & Criteria
               </h3>
               <p class="text-[10px] text-neutral-500 dark:text-slate-400 mt-0.5">
-                Tune server queries & filter rules
+                Tune server queries & client filter rules
               </p>
             </div>
           </div>
@@ -553,279 +621,359 @@ function AdvancedFilters({
           </div>
         </div>
 
-        {/* Section 1: SERVER-SIDE QUERY */}
-        <div class="pt-2.5 pb-2.5 border-b border-neutral-200/70 dark:border-line">
-          <div class="flex items-center justify-between mb-1.5">
-            <span class="flex items-center gap-1.5 text-[9.5px] font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400">
-              <span>➔</span> SERVER-SIDE QUERY
-            </span>
-            <span class="rounded-md border border-sky-500/20 bg-sky-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-sky-600 dark:text-sky-400">
-              Re-fetches
-            </span>
-          </div>
+        {/* 2-Column Body Layout */}
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 py-3 border-b border-neutral-200/70 dark:border-line">
+          {/* Column 1: Server-Side Query & Recency */}
+          <div class="flex flex-col gap-3 md:border-r md:border-neutral-200/70 dark:md:border-line md:pr-4">
+            {/* Section 1: SERVER-SIDE QUERY */}
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="flex items-center gap-1.5 text-[9.5px] font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400">
+                  <span>➔</span> SERVER-SIDE QUERY
+                </span>
+                <span class="rounded-md border border-sky-500/20 bg-sky-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-sky-600 dark:text-sky-400">
+                  Re-fetches
+                </span>
+              </div>
 
-          <div class="flex flex-col gap-1 mb-2">
-            <span class="text-[11px] font-semibold text-neutral-800 dark:text-slate-200">
-              Sort Algorithm
-            </span>
-            <div class="flex rounded-xl bg-neutral-100 dark:bg-recess p-0.5 gap-0.5 border border-neutral-200/60 dark:border-line">
-              <button
-                type="button"
-                onClick={() => setDraftSort('relevance')}
-                class={`flex-1 rounded-lg py-1 text-[11px] transition ${
-                  draftSort === 'relevance'
-                    ? 'bg-white dark:bg-[#1e2330] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
-                    : 'font-medium text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200'
-                }`}
-              >
-                Relevance
-              </button>
-              <button
-                type="button"
-                onClick={() => setDraftSort('newest')}
-                disabled={!dateSortSupported}
-                title={dateSortSupported ? '' : 'Platform has no date-sort extractor'}
-                class={`flex-1 rounded-lg py-1 text-[11px] transition ${
-                  draftSort === 'newest'
-                    ? 'bg-white dark:bg-[#1e2330] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
-                    : 'font-medium text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200 disabled:opacity-40'
-                }`}
-              >
-                Upload Date
-              </button>
-              <button
-                type="button"
-                onClick={() => setDraftSort('views')}
-                class={`flex-1 rounded-lg py-1 text-[11px] transition ${
-                  draftSort === 'views'
-                    ? 'bg-white dark:bg-[#1e2330] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
-                    : 'font-medium text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200'
-                }`}
-              >
-                View Count
-              </button>
+              {/* Content Type Selector */}
+              <div class="flex flex-col gap-1 mb-2">
+                <div class="flex items-center justify-between">
+                  <span class="text-[11px] font-semibold text-neutral-800 dark:text-slate-200">
+                    Content Type
+                  </span>
+                  <span class="text-[9.5px] text-neutral-400 dark:text-slate-500">
+                    Music, Playlists & Shorts
+                  </span>
+                </div>
+                <div class="grid grid-cols-2 gap-1 bg-neutral-100 dark:bg-recess p-0.5 rounded-xl border border-neutral-200/60 dark:border-line">
+                  <button
+                    type="button"
+                    onClick={() => setDraftContentType('all')}
+                    class={`col-span-2 rounded-lg py-1 px-2 text-[11px] transition text-center ${
+                      draftContentType === 'all'
+                        ? 'bg-white dark:bg-[#1e2330] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
+                        : 'font-medium text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    All Media
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDraftContentType('video')}
+                    class={`rounded-lg py-1 px-2 text-[11px] transition text-center ${
+                      draftContentType === 'video'
+                        ? 'bg-white dark:bg-[#1e2330] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
+                        : 'font-medium text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    Videos Only
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDraftContentType('music')}
+                    class={`rounded-lg py-1 px-2 text-[11px] transition text-center ${
+                      draftContentType === 'music'
+                        ? 'bg-purple-600 text-white font-bold shadow-xs'
+                        : 'font-medium text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    Music Videos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDraftContentType('playlist')}
+                    class={`rounded-lg py-1 px-2 text-[11px] transition text-center ${
+                      draftContentType === 'playlist'
+                        ? 'bg-amber-500 text-white font-bold shadow-xs'
+                        : 'font-medium text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    Playlists Only
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDraftContentType('reel')}
+                    class={`rounded-lg py-1 px-2 text-[11px] transition text-center ${
+                      draftContentType === 'reel'
+                        ? 'bg-red-500 text-white font-bold shadow-xs'
+                        : 'font-medium text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    Reels & Shorts
+                  </button>
+                </div>
+              </div>
+
+              {/* Sort Algorithm */}
+              <div class="flex flex-col gap-1 mb-2">
+                <span class="text-[11px] font-semibold text-neutral-800 dark:text-slate-200">
+                  Sort Algorithm
+                </span>
+                <div class="flex rounded-xl bg-neutral-100 dark:bg-recess p-0.5 gap-0.5 border border-neutral-200/60 dark:border-line">
+                  <button
+                    type="button"
+                    onClick={() => setDraftSort('relevance')}
+                    class={`flex-1 rounded-lg py-1 text-[11px] transition ${
+                      draftSort === 'relevance'
+                        ? 'bg-white dark:bg-[#1e2330] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
+                        : 'font-medium text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    Relevance
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDraftSort('newest')}
+                    disabled={!dateSortSupported}
+                    title={dateSortSupported ? '' : 'Platform has no date-sort extractor'}
+                    class={`flex-1 rounded-lg py-1 text-[11px] transition ${
+                      draftSort === 'newest'
+                        ? 'bg-white dark:bg-[#1e2330] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
+                        : 'font-medium text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200 disabled:opacity-40'
+                    }`}
+                  >
+                    Upload Date
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDraftSort('views')}
+                    class={`flex-1 rounded-lg py-1 text-[11px] transition ${
+                      draftSort === 'views'
+                        ? 'bg-white dark:bg-[#1e2330] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
+                        : 'font-medium text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    View Count
+                  </button>
+                </div>
+              </div>
+
+              {/* Results Limit */}
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-[11px] font-semibold text-neutral-800 dark:text-slate-200">
+                    Results Limit
+                  </span>
+                  <span class="text-[9.5px] text-neutral-400 dark:text-slate-500">
+                    yt-dlp limit cap
+                  </span>
+                </div>
+                <div class="grid grid-cols-4 gap-1.5">
+                  {SEARCH_RESULT_LIMITS.map((lim) => (
+                    <button
+                      key={lim}
+                      type="button"
+                      onClick={() => setDraftLimit(lim)}
+                      class={`rounded-xl py-1 text-xs text-center transition ${
+                        draftLimit === lim
+                          ? 'border-2 border-orange-500 text-orange-600 dark:text-orange-400 font-bold bg-orange-500/5'
+                          : 'border border-neutral-200 dark:border-line bg-neutral-50/50 dark:bg-recess text-neutral-700 dark:text-slate-300 hover:border-neutral-300 dark:hover:border-line-strong'
+                      }`}
+                    >
+                      {lim}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
 
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <span class="text-[11px] font-semibold text-neutral-800 dark:text-slate-200">
-                Results Limit
+            {/* Section 2: UPLOAD RECENCY */}
+            <div class="pt-2 border-t border-neutral-200/60 dark:border-line">
+              <span class="text-[9.5px] font-bold uppercase tracking-wider text-neutral-500 dark:text-slate-400 block mb-1.5">
+                Upload Recency (Hydrated)
               </span>
-              <span class="text-[9.5px] text-neutral-400 dark:text-slate-500">
-                yt-dlp limit cap
-              </span>
-            </div>
-            <div class="grid grid-cols-4 gap-1.5">
-              {SEARCH_RESULT_LIMITS.map((lim) => (
-                <button
-                  key={lim}
-                  type="button"
-                  onClick={() => setDraftLimit(lim)}
-                  class={`rounded-xl py-1 text-xs text-center transition ${
-                    draftLimit === lim
-                      ? 'border-2 border-orange-500 text-orange-600 dark:text-orange-400 font-bold bg-orange-500/5'
-                      : 'border border-neutral-200 dark:border-line bg-neutral-50/50 dark:bg-recess text-neutral-700 dark:text-slate-300 hover:border-neutral-300 dark:hover:border-line-strong'
-                  }`}
-                >
-                  {lim}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Section 2: UPLOAD RECENCY (HYDRATED) */}
-        <div class="pt-2.5 pb-2.5 border-b border-neutral-200/70 dark:border-line">
-          <span class="text-[9.5px] font-bold uppercase tracking-wider text-neutral-500 dark:text-slate-400 block mb-1.5">
-            Upload Recency (Hydrated)
-          </span>
-          <div class="flex flex-wrap gap-1.5">
-            {[
-              { id: 'all', label: 'Any time' },
-              { id: '24h', label: 'Last 24 hours' },
-              { id: 'week', label: 'This week' },
-              { id: 'month', label: 'This month' },
-              { id: 'year', label: 'This year' },
-            ].map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setDraftRecency(item.id as UploadRecency)}
-                class={`rounded-xl px-2.5 py-1 text-[11px] transition ${
-                  draftRecency === item.id
-                    ? 'border-2 border-orange-500 text-orange-600 dark:text-orange-400 font-bold bg-orange-500/5'
-                    : 'border border-neutral-200 dark:border-line bg-neutral-50/50 dark:bg-recess text-neutral-700 dark:text-slate-300 hover:border-neutral-300 dark:hover:border-line-strong'
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Section 3: DURATION & METRICS */}
-        <div class="pt-2.5 pb-2.5 border-b border-neutral-200/70 dark:border-line">
-          <span class="text-[9.5px] font-bold uppercase tracking-wider text-neutral-500 dark:text-slate-400 block mb-1.5">
-            Duration & Metrics
-          </span>
-
-          <div class="flex items-center gap-2 mb-1.5">
-            <label class="flex-1 flex flex-col gap-0.5">
-              <span class="text-[9.5px] font-semibold text-neutral-600 dark:text-slate-400">
-                Min Duration (mins)
-              </span>
-              <input
-                type="number"
-                min="0"
-                value={draftMinMins}
-                onInput={(e) => setDraftMinMins((e.target as HTMLInputElement).value)}
-                class="w-full rounded-xl border border-neutral-200 dark:border-line bg-neutral-50/50 dark:bg-recess px-2.5 py-1 text-xs text-neutral-900 dark:text-slate-100 outline-none focus:border-orange-500"
-              />
-            </label>
-            <label class="flex-1 flex flex-col gap-0.5">
-              <span class="text-[9.5px] font-semibold text-neutral-600 dark:text-slate-400">
-                Max Duration (mins)
-              </span>
-              <input
-                type="text"
-                placeholder="Unlimited"
-                value={draftMaxMins}
-                onInput={(e) => {
-                  const val = (e.target as HTMLInputElement).value
-                  setDraftMaxMins(val)
-                  if (val === '' || Number.isNaN(Number(val))) {
-                    setSliderVal(120)
-                  } else {
-                    setSliderVal(Math.min(120, Math.max(0, Number(val))))
-                  }
-                }}
-                class="w-full rounded-xl border border-neutral-200 dark:border-line bg-neutral-50/50 dark:bg-recess px-2.5 py-1 text-xs text-neutral-900 dark:text-slate-100 outline-none focus:border-orange-500"
-              />
-            </label>
-          </div>
-
-          <div class="my-2 px-0.5">
-            <input
-              type="range"
-              min="0"
-              max="120"
-              step="1"
-              value={sliderVal}
-              onInput={(e) => {
-                const val = Number((e.target as HTMLInputElement).value)
-                setSliderVal(val)
-                if (val >= 120) {
-                  setDraftMaxMins('')
-                } else {
-                  setDraftMaxMins(String(val))
-                }
-              }}
-              class="w-full h-1.5 rounded-lg appearance-none cursor-pointer bg-neutral-200 dark:bg-neutral-700 accent-orange-500"
-            />
-          </div>
-
-          <div class="flex items-end gap-2">
-            <label class="flex-1 flex flex-col gap-0.5">
-              <span class="text-[9.5px] font-semibold text-neutral-600 dark:text-slate-400">
-                Min Views Threshold
-              </span>
-              <input
-                type="text"
-                placeholder="e.g. 10,000+"
-                value={draftMinViews}
-                onInput={(e) => setDraftMinViews((e.target as HTMLInputElement).value)}
-                class="w-full rounded-xl border border-neutral-200 dark:border-line bg-neutral-50/50 dark:bg-recess px-2.5 py-1 text-xs text-neutral-900 dark:text-slate-100 outline-none focus:border-orange-500"
-              />
-            </label>
-            <div class="flex-1 flex flex-col gap-0.5">
-              <span class="text-[9.5px] font-semibold text-neutral-600 dark:text-slate-400">
-                Min Framerate
-              </span>
-              <div class="flex rounded-xl bg-neutral-100 dark:bg-recess p-0.5 gap-0.5 border border-neutral-200/60 dark:border-line">
-                <button
-                  type="button"
-                  onClick={() => setDraftFps(null)}
-                  class={`flex-1 rounded-lg py-1 text-[11px] transition ${
-                    draftFps === null
-                      ? 'bg-white dark:bg-[#1e2330] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
-                      : 'font-medium text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200'
-                  }`}
-                >
-                  Any
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDraftFps(60)}
-                  class={`flex-1 rounded-lg py-1 text-[11px] transition ${
-                    draftFps === 60
-                      ? 'bg-white dark:bg-[#1e2330] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
-                      : 'font-medium text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200'
-                  }`}
-                >
-                  60 FPS
-                </button>
+              <div class="flex flex-wrap gap-1.5">
+                {[
+                  { id: 'all', label: 'Any time' },
+                  { id: '24h', label: 'Last 24 hours' },
+                  { id: 'week', label: 'This week' },
+                  { id: 'month', label: 'This month' },
+                  { id: 'year', label: 'This year' },
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setDraftRecency(item.id as UploadRecency)}
+                    class={`rounded-xl px-2.5 py-1 text-[11px] transition ${
+                      draftRecency === item.id
+                        ? 'border-2 border-orange-500 text-orange-600 dark:text-orange-400 font-bold bg-orange-500/5'
+                        : 'border border-neutral-200 dark:border-line bg-neutral-50/50 dark:bg-recess text-neutral-700 dark:text-slate-300 hover:border-neutral-300 dark:hover:border-line-strong'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Section 4: CONTENT & STREAMS */}
-        <div class="pt-2.5 pb-2.5 border-b border-neutral-200/70 dark:border-line">
-          <span class="text-[9.5px] font-bold uppercase tracking-wider text-neutral-500 dark:text-slate-400 block mb-2">
-            Content & Streams
-          </span>
-          <div class="flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={() => setDraftSubtitles((v) => !v)}
-              class="flex items-center gap-2 text-left text-[11px] font-medium text-neutral-800 dark:text-slate-200 hover:text-ink transition cursor-pointer"
-            >
-              <span
-                class={`flex size-4 shrink-0 items-center justify-center rounded transition ${
-                  draftSubtitles
-                    ? 'bg-orange-500 text-white'
-                    : 'border border-neutral-300 dark:border-line-strong bg-white dark:bg-[#1a202c]'
-                }`}
-              >
-                {draftSubtitles && <CheckIcon class="size-3 stroke-[3]" />}
+          {/* Column 2: Duration, Metrics & Content Filters */}
+          <div class="flex flex-col gap-3">
+            {/* Section 3: DURATION & METRICS */}
+            <div>
+              <span class="text-[9.5px] font-bold uppercase tracking-wider text-neutral-500 dark:text-slate-400 block mb-1.5">
+                Duration & Metrics
               </span>
-              <span>Has Subtitles / Closed Captions</span>
-            </button>
 
-            <button
-              type="button"
-              onClick={() => setDraft4K((v) => !v)}
-              class="flex items-center gap-2 text-left text-[11px] font-medium text-neutral-800 dark:text-slate-200 hover:text-ink transition cursor-pointer"
-            >
-              <span
-                class={`flex size-4 shrink-0 items-center justify-center rounded transition ${
-                  draft4K
-                    ? 'bg-orange-500 text-white'
-                    : 'border border-neutral-300 dark:border-line-strong bg-white dark:bg-[#1a202c]'
-                }`}
-              >
-                {draft4K && <CheckIcon class="size-3 stroke-[3]" />}
-              </span>
-              <span>Has 4K / Ultra-HD stream (2160p)</span>
-            </button>
+              <div class="flex items-center gap-2 mb-1.5">
+                <label class="flex-1 flex flex-col gap-0.5">
+                  <span class="text-[9.5px] font-semibold text-neutral-600 dark:text-slate-400">
+                    Min Duration (mins)
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={draftMinMins}
+                    onInput={(e) => setDraftMinMins((e.target as HTMLInputElement).value)}
+                    class="w-full rounded-xl border border-neutral-200 dark:border-line bg-neutral-50/50 dark:bg-recess px-2.5 py-1 text-xs text-neutral-900 dark:text-slate-100 outline-none focus:border-orange-500"
+                  />
+                </label>
+                <label class="flex-1 flex flex-col gap-0.5">
+                  <span class="text-[9.5px] font-semibold text-neutral-600 dark:text-slate-400">
+                    Max Duration (mins)
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="Unlimited"
+                    value={draftMaxMins}
+                    onInput={(e) => {
+                      const val = (e.target as HTMLInputElement).value
+                      setDraftMaxMins(val)
+                      if (val === '' || Number.isNaN(Number(val))) {
+                        setSliderVal(120)
+                      } else {
+                        setSliderVal(Math.min(120, Math.max(0, Number(val))))
+                      }
+                    }}
+                    class="w-full rounded-xl border border-neutral-200 dark:border-line bg-neutral-50/50 dark:bg-recess px-2.5 py-1 text-xs text-neutral-900 dark:text-slate-100 outline-none focus:border-orange-500"
+                  />
+                </label>
+              </div>
 
-            <button
-              type="button"
-              onClick={() => setDraftVerified((v) => !v)}
-              class="flex items-center gap-2 text-left text-[11px] font-medium text-neutral-800 dark:text-slate-200 hover:text-ink transition cursor-pointer"
-            >
-              <span
-                class={`flex size-4 shrink-0 items-center justify-center rounded transition ${
-                  draftVerified
-                    ? 'bg-orange-500 text-white'
-                    : 'border border-neutral-300 dark:border-line-strong bg-white dark:bg-[#1a202c]'
-                }`}
-              >
-                {draftVerified && <CheckIcon class="size-3 stroke-[3]" />}
+              <div class="my-2 px-0.5">
+                <input
+                  type="range"
+                  min="0"
+                  max="120"
+                  step="1"
+                  value={sliderVal}
+                  onInput={(e) => {
+                    const val = Number((e.target as HTMLInputElement).value)
+                    setSliderVal(val)
+                    if (val >= 120) {
+                      setDraftMaxMins('')
+                    } else {
+                      setDraftMaxMins(String(val))
+                    }
+                  }}
+                  class="w-full h-1.5 rounded-lg appearance-none cursor-pointer bg-neutral-200 dark:bg-neutral-700 accent-orange-500"
+                />
+              </div>
+
+              <div class="flex items-end gap-2">
+                <label class="flex-1 flex flex-col gap-0.5">
+                  <span class="text-[9.5px] font-semibold text-neutral-600 dark:text-slate-400">
+                    Min Views Threshold
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="e.g. 10,000+"
+                    value={draftMinViews}
+                    onInput={(e) => setDraftMinViews((e.target as HTMLInputElement).value)}
+                    class="w-full rounded-xl border border-neutral-200 dark:border-line bg-neutral-50/50 dark:bg-recess px-2.5 py-1 text-xs text-neutral-900 dark:text-slate-100 outline-none focus:border-orange-500"
+                  />
+                </label>
+                <div class="flex-1 flex flex-col gap-0.5">
+                  <span class="text-[9.5px] font-semibold text-neutral-600 dark:text-slate-400">
+                    Min Framerate
+                  </span>
+                  <div class="flex rounded-xl bg-neutral-100 dark:bg-recess p-0.5 gap-0.5 border border-neutral-200/60 dark:border-line">
+                    <button
+                      type="button"
+                      onClick={() => setDraftFps(null)}
+                      class={`flex-1 rounded-lg py-1 text-[11px] transition ${
+                        draftFps === null
+                          ? 'bg-white dark:bg-[#1e2330] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
+                          : 'font-medium text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      Any
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDraftFps(60)}
+                      class={`flex-1 rounded-lg py-1 text-[11px] transition ${
+                        draftFps === 60
+                          ? 'bg-white dark:bg-[#1e2330] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
+                          : 'font-medium text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      60 FPS
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 4: CONTENT & STREAMS */}
+            <div class="pt-2 border-t border-neutral-200/60 dark:border-line">
+              <span class="text-[9.5px] font-bold uppercase tracking-wider text-neutral-500 dark:text-slate-400 block mb-2">
+                Content & Streams
               </span>
-              <span>Verified Channels Only</span>
-            </button>
+              <div class="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDraftSubtitles((v) => !v)}
+                  class="flex items-center gap-2 text-left text-[11px] font-medium text-neutral-800 dark:text-slate-200 hover:text-ink transition cursor-pointer"
+                >
+                  <span
+                    class={`flex size-4 shrink-0 items-center justify-center rounded transition ${
+                      draftSubtitles
+                        ? 'bg-orange-500 text-white'
+                        : 'border border-neutral-300 dark:border-line-strong bg-white dark:bg-[#1a202c]'
+                    }`}
+                  >
+                    {draftSubtitles && <CheckIcon class="size-3 stroke-[3]" />}
+                  </span>
+                  <span>Has Subtitles / Closed Captions</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDraft4K((v) => !v)}
+                  class="flex items-center gap-2 text-left text-[11px] font-medium text-neutral-800 dark:text-slate-200 hover:text-ink transition cursor-pointer"
+                >
+                  <span
+                    class={`flex size-4 shrink-0 items-center justify-center rounded transition ${
+                      draft4K
+                        ? 'bg-orange-500 text-white'
+                        : 'border border-neutral-300 dark:border-line-strong bg-white dark:bg-[#1a202c]'
+                    }`}
+                  >
+                    {draft4K && <CheckIcon class="size-3 stroke-[3]" />}
+                  </span>
+                  <span>Has 4K / Ultra-HD stream (2160p)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDraftVerified((v) => !v)}
+                  class="flex items-center gap-2 text-left text-[11px] font-medium text-neutral-800 dark:text-slate-200 hover:text-ink transition cursor-pointer"
+                >
+                  <span
+                    class={`flex size-4 shrink-0 items-center justify-center rounded transition ${
+                      draftVerified
+                        ? 'bg-orange-500 text-white'
+                        : 'border border-neutral-300 dark:border-line-strong bg-white dark:bg-[#1a202c]'
+                    }`}
+                  >
+                    {draftVerified && <CheckIcon class="size-3 stroke-[3]" />}
+                  </span>
+                  <span>Verified Channels Only</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 

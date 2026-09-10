@@ -490,5 +490,99 @@ describe('Search Filters & Server Criteria (Option 2)', () => {
     )
     expect(scFilteredTarget.urlOrQuery).toBe('scsearch50:chillhop')
     expect(scFilteredTarget.candidateLimit).toBe(50)
+
+    // 5. YouTube Playlists Only Target
+    const playlistTarget = buildSearchTarget('youtube', 'ytsearch', 'lofi beats', 20, 'relevance', {
+      contentType: 'playlist',
+    })
+    expect(playlistTarget.urlOrQuery).toBe(
+      'https://www.youtube.com/results?search_query=lofi%20beats&sp=EgIQAw%253D%253D',
+    )
+    expect(playlistTarget.extraFlags).toContain('--playlist-items')
+    expect(playlistTarget.candidateLimit).toBeGreaterThanOrEqual(50)
+
+    // 6. YouTube Reels & Shorts Target (routes to native short video filter)
+    const reelTarget = buildSearchTarget('youtube', 'ytsearch', 'funny cats', 20, 'relevance', {
+      contentType: 'reel',
+    })
+    expect(reelTarget.urlOrQuery).toBe(
+      'https://www.youtube.com/results?search_query=funny%20cats%20%23shorts&sp=EgQQARgB',
+    )
+    expect(reelTarget.extraFlags).toContain('--playlist-items')
+
+    const reelViewsTarget = buildSearchTarget('youtube', 'ytsearch', 'funny cats', 20, 'views', {
+      contentType: 'reel',
+    })
+    expect(reelViewsTarget.urlOrQuery).toBe(
+      'https://www.youtube.com/results?search_query=funny%20cats%20%23shorts&sp=CAMSAhAB',
+    )
+
+    // 7. YouTube Music Videos Only Target
+    const musicTarget = buildSearchTarget(
+      'youtube',
+      'ytsearch',
+      'coldplay yellow',
+      20,
+      'relevance',
+      {
+        contentType: 'music',
+      },
+    )
+    expect(musicTarget.urlOrQuery).toBe('ytsearch50:coldplay yellow official music video')
+
+    const musicViewsTarget = buildSearchTarget(
+      'youtube',
+      'ytsearch',
+      'coldplay yellow',
+      20,
+      'views',
+      {
+        contentType: 'music',
+      },
+    )
+    expect(musicViewsTarget.urlOrQuery).toBe(
+      'https://www.youtube.com/results?search_query=coldplay%20yellow%20official%20music%20video&sp=CAM%3D',
+    )
+  })
+
+  it('mapRawInfo preserves playlist entries when sourceUrl is a playlist search', async () => {
+    const { mapRawInfo } = await import('../../src/main/media/metadata')
+
+    const rawPlaylistData = {
+      _type: 'playlist',
+      id: 'lofi hip hop',
+      title: 'lofi hip hop',
+      entries: [
+        {
+          _type: 'url',
+          id: 'PLXIclLvfETS3AgCnZg4N6QqHu_T27XKIq',
+          title: 'Lofi Hip Hop Study Beats',
+          url: 'https://www.youtube.com/playlist?list=PLXIclLvfETS3AgCnZg4N6QqHu_T27XKIq',
+          ie_key: 'YoutubeTab',
+          uploader: 'Mimi Lofi Chill',
+        },
+        {
+          _type: 'url',
+          id: 'UCq9J_CUURRfbP7vm4VN_3xg',
+          title: 'Mimi Lofi Channel',
+          url: 'https://www.youtube.com/channel/UCq9J_CUURRfbP7vm4VN_3xg',
+          ie_key: 'YoutubeTab',
+        },
+      ],
+    }
+
+    // When sourceUrl is a playlist search: keeps playlist URL, filters out channel URL
+    const searchUrl = 'https://www.youtube.com/results?search_query=lofi&sp=EgIQAw%253D%253D'
+    const result = mapRawInfo(rawPlaylistData, searchUrl)
+    expect(result.playlistEntries).toHaveLength(1)
+    expect(result.playlistEntries?.[0].url).toContain(
+      'playlist?list=PLXIclLvfETS3AgCnZg4N6QqHu_T27XKIq',
+    )
+    expect(result.playlistEntries?.[0].title).toBe('Lofi Hip Hop Study Beats')
+
+    // When sourceUrl is a regular video search: filters out playlist URLs from video search
+    const regularSearchUrl = 'https://www.youtube.com/results?search_query=lofi&sp=CAM%3D'
+    const regularResult = mapRawInfo(rawPlaylistData, regularSearchUrl)
+    expect(regularResult.playlistEntries).toHaveLength(0)
   })
 })

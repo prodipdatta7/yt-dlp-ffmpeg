@@ -5,19 +5,23 @@ import { CloseIcon, DownloadIcon, FilmIcon, LinkIcon, MaximizeIcon } from './ico
 export interface InlineVideoPreviewProps {
   url?: string | null
   title?: string
+  startSec?: number
   onClose?: () => void
   onExpand?: () => void
   className?: string
+  hideHeaderControls?: boolean
 }
 
 export function InlineVideoPreview({
   url,
   title,
+  startSec,
   onClose,
   onExpand,
   className = '',
+  hideHeaderControls = false,
 }: InlineVideoPreviewProps) {
-  const embed = getEmbedInfo(url)
+  const embed = getEmbedInfo(url, startSec)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -81,34 +85,36 @@ export function InlineVideoPreview({
       )}
 
       {/* Floating Header Controls */}
-      <div class="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center justify-between p-2">
-        <span class="rounded-md border border-white/15 bg-black/80 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm backdrop-blur-md">
-          {embed.platform} Preview
-        </span>
+      {!hideHeaderControls && (
+        <div class="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center justify-between p-2">
+          <span class="rounded-md border border-white/15 bg-black/80 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm backdrop-blur-md">
+            {embed.platform} Preview
+          </span>
 
-        <div class="pointer-events-auto flex items-center gap-1.5">
-          {onExpand && (
-            <button
-              type="button"
-              onClick={onExpand}
-              title="Expand to Full Preview"
-              class="flex size-6 items-center justify-center rounded-md border border-white/10 bg-black/80 text-white shadow transition hover:bg-black hover:scale-105 active:scale-95"
-            >
-              <MaximizeIcon class="size-3.5" />
-            </button>
-          )}
-          {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              title="Close preview"
-              class="flex size-6 items-center justify-center rounded-md border border-white/10 bg-black/80 text-white shadow transition hover:bg-black hover:scale-105 active:scale-95"
-            >
-              <CloseIcon class="size-3.5" />
-            </button>
-          )}
+          <div class="pointer-events-auto flex items-center gap-1.5">
+            {onExpand && (
+              <button
+                type="button"
+                onClick={onExpand}
+                title="Expand to Full Preview"
+                class="flex size-6 items-center justify-center rounded-md border border-white/10 bg-black/80 text-white shadow transition hover:bg-black hover:scale-105 active:scale-95"
+              >
+                <MaximizeIcon class="size-3.5" />
+              </button>
+            )}
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                title="Close preview"
+                class="flex size-6 items-center justify-center rounded-md border border-white/10 bg-black/80 text-white shadow transition hover:bg-black hover:scale-105 active:scale-95"
+              >
+                <CloseIcon class="size-3.5" />
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

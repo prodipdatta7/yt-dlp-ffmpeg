@@ -120,11 +120,56 @@ export class SearchService {
     const mapped = mapRawInfo(raw, urlOrQuery)
     let entries: SearchResultItem[] = (
       mapped.kind === 'playlist' ? (mapped.playlistEntries ?? []) : []
-    ).map((entry) => ({ ...entry, platform: platformId }))
+    ).map((entry) => {
+      const isPl = entry.url.includes('/playlist?list=')
+      const isRl =
+        !isPl &&
+        (filters?.contentType === 'reel' ||
+          entry.url.includes('/shorts/') ||
+          Boolean(
+            entry.durationSec != null &&
+            entry.durationSec <= 180 &&
+            /#shorts\b/i.test(`${entry.title} ${entry.description ?? ''}`),
+          ))
+      const isMv =
+        !isPl &&
+        !isRl &&
+        (filters?.contentType === 'music' ||
+          /\b(official (music )?video|official mv|official m\/v|music video|official lyric video|official visualizer)\b/i.test(
+            entry.title,
+          ) ||
+          /(?:\(|\[)(?:official video|official music video|music video|mv|m\/v|official visualizer)(?:\)|\])/i.test(
+            entry.title,
+          ) ||
+          (entry.uploader != null &&
+            (/\bvevo\b/i.test(entry.uploader) || entry.uploader.endsWith(' - Topic'))))
+      return {
+        ...entry,
+        platform: platformId,
+        isPlaylist: isPl,
+        isReel: isRl,
+        isMusicVideo: isMv,
+      }
+    })
 
     // Server-side filtering for all popover criteria
     if (filters) {
       entries = entries.filter((r) => {
+        if (filters.contentType === 'playlist') {
+          return Boolean(r.isPlaylist || r.url.includes('/playlist?list='))
+        }
+        if (filters.contentType === 'reel') {
+          if (r.isPlaylist || r.url.includes('/playlist?list=')) return false
+          if (r.durationSec != null && r.durationSec > 180) return false
+          return true
+        } else if (filters.contentType === 'music') {
+          if (r.isPlaylist || r.url.includes('/playlist?list=')) return false
+          if (r.isReel) return false
+          return Boolean(r.isMusicVideo)
+        } else if (filters.contentType === 'video') {
+          if (r.isPlaylist || r.url.includes('/playlist?list=')) return false
+        }
+
         if (
           filters.minDurationSec != null &&
           (r.durationSec == null || r.durationSec < filters.minDurationSec)
@@ -201,7 +246,9 @@ export class SearchService {
     const worker = async (): Promise<void> => {
       while (nextChunk < chunks.length && !this.cancelRequested) {
         const chunk = chunks[nextChunk++]
-        const urls = chunk.map((e) => e.url).filter((u) => u.startsWith('http'))
+        const urls = chunk
+          .map((e) => e.url)
+          .filter((u) => u.startsWith('http') && !u.includes('/playlist?list='))
         if (urls.length === 0) continue
 
         const args = [

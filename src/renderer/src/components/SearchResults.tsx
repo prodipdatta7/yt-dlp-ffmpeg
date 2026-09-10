@@ -1,10 +1,8 @@
-import { SEARCH_PLATFORMS, type SearchResultItem } from '../../../shared/models'
+import type { SearchResultItem } from '../../../shared/models'
 import { CheckSquare } from './PreviewPanel'
-import { FilmIcon, LayersIcon, LinkIcon, QueueIcon, RotateCcwIcon } from './icons'
-import { Pill } from './ui'
+import { LinkIcon, QueueIcon, RotateCcwIcon } from './icons'
 import {
   filteredResults,
-  lastSearchedQuery,
   resetSearch,
   searchResults,
   selectedResultUrls,
@@ -75,28 +73,6 @@ export function SearchResults({
         </span>
       </div>
 
-      <div class="flex items-center justify-between px-3 pt-1.5">
-        {lastSearchedQuery.value ? (
-          <p class="text-[11px] text-neutral-500 dark:text-slate-400">
-            Results for{' '}
-            <span class="font-medium text-neutral-800 dark:text-slate-200">
-              “{lastSearchedQuery.value.query}”
-            </span>
-          </p>
-        ) : (
-          <div />
-        )}
-        <button
-          type="button"
-          onClick={() => resetSearch()}
-          class="mf-focus-ring flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-neutral-500 hover:text-neutral-900 dark:text-slate-400 dark:hover:text-slate-200 transition"
-          title="Reset search and clear results"
-        >
-          <RotateCcwIcon class="size-3" />
-          <span>Reset search</span>
-        </button>
-      </div>
-
       {results.length > 0 ? (
         <ol class="mt-2 flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto p-2.5">
           {results.map((entry) => (
@@ -131,20 +107,6 @@ export function SearchResults({
           </button>
         </div>
       )}
-
-      <div class="mt-2 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-line bg-wash-1 px-3 py-2 text-[10px] text-slate-500">
-        <span class="inline-flex items-center gap-1.5">
-          <LayersIcon class="size-3" />
-          Flat search results — open one in the Downloader tab for full stream details.
-        </span>
-        {lastSearchedQuery.value && (
-          <Pill>
-            <FilmIcon class="size-3" />
-            {SEARCH_PLATFORMS.find((p) => p.id === lastSearchedQuery.value?.platform)?.label ??
-              lastSearchedQuery.value.platform}
-          </Pill>
-        )}
-      </div>
     </div>
   )
 }

@@ -51,6 +51,7 @@ import {
   type SearchResponse,
 } from '../../shared/ipcContract'
 import type {
+  SearchContentType,
   SearchFilterCriteria,
   SearchSort,
   UpdaterDriverKind,
@@ -317,7 +318,15 @@ function parseSearchRequest(payload: unknown): {
   let filters: SearchFilterCriteria | undefined
   if (raw.filters && typeof raw.filters === 'object') {
     const rf = raw.filters as Record<string, unknown>
+    const validContentTypes: SearchContentType[] = ['all', 'video', 'playlist', 'reel', 'music']
+    const contentType: SearchContentType | undefined =
+      typeof rf.contentType === 'string' &&
+      validContentTypes.includes(rf.contentType as SearchContentType)
+        ? (rf.contentType as SearchContentType)
+        : undefined
+
     filters = {
+      contentType,
       sort,
       limit,
       uploadRecency: ['all', '24h', 'week', 'month', 'year'].includes(rf.uploadRecency as string)

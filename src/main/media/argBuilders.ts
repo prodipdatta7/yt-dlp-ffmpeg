@@ -13,7 +13,7 @@ export function buildAnalyzeArgs(
 }
 
 export function buildFilterFlags(filters?: SearchFilterCriteria): string[] {
-  if (!filters) return []
+  if (!filters || filters.contentType === 'playlist') return []
   const flags: string[] = []
 
   if (filters.uploadRecency && filters.uploadRecency !== 'all') {
@@ -28,6 +28,7 @@ export function buildFilterFlags(filters?: SearchFilterCriteria): string[] {
   }
 
   const matchConditions: string[] = []
+
   if (filters.minDurationSec != null && filters.maxDurationSec != null) {
     matchConditions.push(
       `duration >= ${filters.minDurationSec} & duration <= ${filters.maxDurationSec}`,
@@ -97,6 +98,8 @@ export interface ResolvedSearchTarget {
  * - Native search operator `after:YYYY-MM-DD` is injected directly into the query for upload recency
  *   and date sorting because YouTube deprecated `sp=CAI=` and does not expose dates in flat-playlist JSON.
  * - `sp=CAM%3D` is used for view-count sorting.
+ * - `sp=EgIQAw%253D%253D` is used for playlists-only search.
+ * - `#shorts` and `duration <= 60` are used for Reels & Shorts search.
  * Over-fetches candidate entries when filters/sorts are active so that yt-dlp's
  * match-filters and sorting retain a full page of results up to the requested limit.
  */
@@ -116,6 +119,7 @@ export function buildSearchTarget(
     Boolean(
       filters &&
       ((filters.uploadRecency && filters.uploadRecency !== 'all') ||
+        (filters.contentType && filters.contentType !== 'all') ||
         filters.minDurationSec != null ||
         filters.maxDurationSec != null ||
         filters.minViews != null ||
@@ -150,7 +154,53 @@ export function buildSearchTarget(
       }
     }
 
-    // 1. Sort by View Count
+    // 1. Playlists Only Search
+    if (filters?.contentType === 'playlist') {
+      const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAw%253D%253D`
+      return {
+        urlOrQuery: url,
+        extraFlags: ['--playlist-items', `1-${candidateLimit}`],
+        candidateLimit,
+      }
+    }
+
+    // 2. Reels & Shorts Search
+    if (filters?.contentType === 'reel') {
+      let reelQuery = effectiveQuery
+      if (!/\b#shorts\b/i.test(reelQuery)) {
+        reelQuery = `${reelQuery} #shorts`
+      }
+      const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(reelQuery)}&sp=${sort === 'views' ? 'CAMSAhAB' : 'EgQQARgB'}`
+      return {
+        urlOrQuery: url,
+        extraFlags: ['--playlist-items', `1-${candidateLimit}`, ...extraFlags],
+        candidateLimit,
+      }
+    }
+
+    // 3. Music Videos Only Search
+    if (filters?.contentType === 'music') {
+      let musicQuery = effectiveQuery
+      if (!/\b(music video|official video|official music video|mv|m\/v)\b/i.test(musicQuery)) {
+        musicQuery = `${musicQuery} official music video`
+      }
+      if (sort === 'views') {
+        const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(musicQuery)}&sp=CAM%3D`
+        return {
+          urlOrQuery: url,
+          extraFlags: ['--playlist-items', `1-${candidateLimit}`, ...extraFlags],
+          candidateLimit,
+        }
+      }
+      const pseudoUrl = buildSearchQuery(prefix, musicQuery, candidateLimit)
+      return {
+        urlOrQuery: pseudoUrl,
+        extraFlags,
+        candidateLimit,
+      }
+    }
+
+    // 4. Sort by View Count
     if (sort === 'views') {
       const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(effectiveQuery)}&sp=CAM%3D`
       return {
@@ -160,7 +210,7 @@ export function buildSearchTarget(
       }
     }
 
-    // 2. Sort by Upload Date or Recency Filter via pseudo-url
+    // 5. Sort by Upload Date or Recency Filter via pseudo-url
     const pseudoUrl = buildSearchQuery(prefix, effectiveQuery, candidateLimit)
     return {
       urlOrQuery: pseudoUrl,
@@ -170,7 +220,13 @@ export function buildSearchTarget(
   }
 
   // Default prefix extractor query (SoundCloud, Bilibili)
-  const pseudoUrl = buildSearchQuery(prefix, query, candidateLimit)
+  let fallbackQuery = query
+  if (platformId === 'bilibili' && filters?.contentType === 'music') {
+    if (!/\b(mv|music video|音乐)\b/i.test(fallbackQuery)) {
+      fallbackQuery = `${fallbackQuery} MV`
+    }
+  }
+  const pseudoUrl = buildSearchQuery(prefix, fallbackQuery, candidateLimit)
   return {
     urlOrQuery: pseudoUrl,
     extraFlags,

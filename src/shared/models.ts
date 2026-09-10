@@ -118,8 +118,10 @@ export const SEARCH_PLATFORMS: readonly SearchPlatform[] = [
 
 export type SearchSort = 'relevance' | 'newest' | 'views'
 export type UploadRecency = 'all' | '24h' | 'week' | 'month' | 'year'
+export type SearchContentType = 'all' | 'video' | 'playlist' | 'reel' | 'music'
 
 export interface SearchFilterCriteria {
+  contentType?: SearchContentType
   sort?: SearchSort
   limit?: number
   uploadRecency?: UploadRecency
@@ -140,6 +142,9 @@ export const MAX_SEARCH_QUERY_LENGTH = 200
 /** One search hit — the flat-playlist row yt-dlp's search extractor returned, tagged with its platform. */
 export interface SearchResultItem extends PlaylistEntryPreview {
   platform: string
+  isPlaylist?: boolean
+  isReel?: boolean
+  isMusicVideo?: boolean
 }
 
 export type DownloadMode = 'video-audio' | 'audio-only' | 'advanced'

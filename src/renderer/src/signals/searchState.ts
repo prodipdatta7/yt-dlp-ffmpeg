@@ -2,6 +2,7 @@ import { computed, signal } from '@preact/signals'
 import {
   DEFAULT_SEARCH_LIMIT,
   SEARCH_PLATFORMS,
+  type SearchContentType,
   type SearchFilterCriteria,
   type SearchResultItem,
   type SearchSort,
@@ -13,6 +14,9 @@ export const searchPlatform = signal<string>(SEARCH_PLATFORMS[0].id)
 export const searchQuery = signal('')
 export const searchLimit = signal<number>(DEFAULT_SEARCH_LIMIT)
 export const searchSort = signal<SearchSort>('relevance')
+
+/** Content type server-side & client-side filter */
+export const filterContentType = signal<SearchContentType>('all')
 
 /** Option-1 filter rail signals */
 export const filterRailDuration = signal<'all' | 'short' | 'medium' | 'long'>('all')
@@ -37,6 +41,7 @@ export const selectedResultUrls = signal<ReadonlySet<string>>(new Set())
 
 export const activeFilterCount = computed(() => {
   let count = 0
+  if (filterContentType.value !== 'all') count++
   if (filterMinDurationSec.value !== null) count++
   if (filterMaxDurationSec.value !== null) count++
   if (filterMinViews.value !== null) count++
@@ -54,6 +59,7 @@ export const activeFilterCount = computed(() => {
 
 export function getActiveSearchFilters(): SearchFilterCriteria {
   return {
+    contentType: filterContentType.value,
     sort: searchSort.value,
     limit: searchLimit.value,
     uploadRecency: filterUploadRecency.value,
@@ -75,6 +81,7 @@ export function saveDefaultSearchFilters(): void {
   if (typeof window === 'undefined') return
   try {
     const defaults = {
+      contentType: filterContentType.value,
       sort: searchSort.value,
       limit: searchLimit.value,
       uploadRecency: filterUploadRecency.value,
@@ -98,6 +105,7 @@ export function loadDefaultSearchFilters(): void {
     const raw = localStorage.getItem(SEARCH_DEFAULTS_STORAGE_KEY)
     if (!raw) return
     const d = JSON.parse(raw) as Partial<SearchFilterCriteria>
+    if (d.contentType) filterContentType.value = d.contentType
     if (d.sort) searchSort.value = d.sort
     if (d.limit) searchLimit.value = d.limit
     if (d.uploadRecency) filterUploadRecency.value = d.uploadRecency
@@ -118,6 +126,7 @@ if (typeof window !== 'undefined') {
 }
 
 export const filteredResults = computed(() => {
+  const contentType = filterContentType.value
   const type = filterType.value
   const quality = filterQuality.value
   const railDuration = filterRailDuration.value
@@ -126,8 +135,44 @@ export const filteredResults = computed(() => {
 
   let items = searchResults.value
 
-  // 1. Duration / Type / Quality quick rail filters
-  if (type !== 'all' || quality !== 'any' || railDuration !== 'all') {
+  // Content type filter (server-side & client-side defense in depth)
+  if (contentType === 'playlist') {
+    items = items.filter((r) => r.isPlaylist || r.url.includes('/playlist?list='))
+  } else if (contentType === 'reel') {
+    items = items.filter(
+      (r) =>
+        !r.isPlaylist &&
+        !r.url.includes('/playlist?list=') &&
+        (r.isReel ||
+          r.url.includes('/shorts/') ||
+          /#shorts\b/i.test(r.title) ||
+          r.durationSec == null ||
+          r.durationSec <= 180),
+    )
+  } else if (contentType === 'music') {
+    items = items.filter(
+      (r) =>
+        !r.isPlaylist &&
+        !r.isReel &&
+        (r.isMusicVideo ||
+          /\b(official (music )?video|official mv|music video|lyric video|official audio|visualizer)\b/i.test(
+            r.title,
+          ) ||
+          /(?:\(|\[)(?:official video|official music video|music video|mv|m\/v)(?:\)|\])/i.test(
+            r.title,
+          ) ||
+          (r.uploader != null &&
+            (/\bvevo\b/i.test(r.uploader) || r.uploader.endsWith(' - Topic')))),
+    )
+  } else if (contentType === 'video') {
+    items = items.filter((r) => !r.isPlaylist && !r.url.includes('/playlist?list='))
+  }
+
+  // 1. Duration / Type / Quality quick rail filters (do not apply to playlist searches)
+  if (
+    contentType !== 'playlist' &&
+    (type !== 'all' || quality !== 'any' || railDuration !== 'all')
+  ) {
     const hasAnyExplicitHighRes = items.some((item) =>
       /\b(1080p?|fhd|full hd|1440p?|2k|2160p?|4k|uhd|ultra hd|8k|60fps|hdr)\b/i.test(item.title),
     )
@@ -219,6 +264,7 @@ export function resetSearchResults(): void {
 }
 
 export function resetFilters(): void {
+  filterContentType.value = 'all'
   filterMinDurationSec.value = null
   filterMaxDurationSec.value = null
   filterMinViews.value = null

@@ -72,16 +72,18 @@ export interface EmbedInfo {
  * Resolves an embeddable preview player URL for supported media sources.
  * Supports YouTube (watch, shorts, embed, bare ID), SoundCloud, Bilibili, Vimeo, and direct video files.
  */
-export function getEmbedInfo(url: string | null | undefined): EmbedInfo | null {
+export function getEmbedInfo(url: string | null | undefined, startSec?: number): EmbedInfo | null {
   if (!url) return null
   const trimmed = url.trim()
   if (!trimmed) return null
+
+  const startParam = startSec && startSec > 0 ? `&start=${Math.floor(startSec)}` : ''
 
   // Bare 11-char YouTube ID support
   if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
     return {
       type: 'iframe',
-      src: `https://www.youtube-nocookie.com/embed/${trimmed}?autoplay=1&rel=0&playsinline=1&modestbranding=1`,
+      src: `https://www.youtube-nocookie.com/embed/${trimmed}?autoplay=1&rel=0&playsinline=1&modestbranding=1${startParam}`,
       platform: 'YouTube',
     }
   }
@@ -126,7 +128,7 @@ export function getEmbedInfo(url: string | null | undefined): EmbedInfo | null {
       if (videoId && /^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
         return {
           type: 'iframe',
-          src: `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1&modestbranding=1`,
+          src: `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1&modestbranding=1${startParam}`,
           platform: 'YouTube',
         }
       }
