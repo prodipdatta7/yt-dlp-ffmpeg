@@ -27,7 +27,7 @@ import type {
   MfSettingsView,
   SearchResponse,
 } from '../shared/ipcContract'
-import type { SearchSort } from '../shared/models'
+import type { SearchFilterCriteria, SearchSort } from '../shared/models'
 import {
   MF_LOG_LINE,
   MF_UPDATER_PHASE,
@@ -490,9 +490,10 @@ app.whenReady().then(() => {
         query: string,
         limit: number,
         sort: SearchSort,
+        filters?: SearchFilterCriteria,
       ): Promise<SearchResponse> => {
         try {
-          const results = await searchService.search(platform, query, limit, sort)
+          const results = await searchService.search(platform, query, limit, sort, filters)
           return { kind: 'ok', results }
         } catch (error) {
           const code = error instanceof MfError ? error.code : 'MF_UNKNOWN'

@@ -60,6 +60,7 @@ export interface RawInfo {
     id?: string
     title?: string
     url?: string
+    ie_key?: string | null
     webpage_url?: string | null
     duration?: number | null
     view_count?: number | null
@@ -110,6 +111,13 @@ export function mapRawInfo(raw: RawInfo, sourceUrl: string): AnalyzeResult {
   if (raw._type === 'playlist') {
     const entries: PlaylistEntryPreview[] = (raw.entries ?? [])
       .slice(0, 1000)
+      .filter((e) => {
+        if (!e) return false
+        if (e.ie_key === 'YoutubeTab') return false
+        const u = e.webpage_url ?? e.url ?? ''
+        if (u.includes('/playlist?list=')) return false
+        return true
+      })
       .map((e, i) => {
         const rawTs =
           typeof e.timestamp === 'number'

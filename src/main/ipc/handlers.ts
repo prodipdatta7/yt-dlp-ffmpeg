@@ -50,7 +50,12 @@ import {
   type PingResult,
   type SearchResponse,
 } from '../../shared/ipcContract'
-import type { SearchSort, UpdaterDriverKind } from '../../shared/models'
+import type {
+  SearchFilterCriteria,
+  SearchSort,
+  UpdaterDriverKind,
+  UploadRecency,
+} from '../../shared/models'
 import {
   BITRATE_TIERS,
   CONTAINERS,
@@ -122,6 +127,7 @@ export interface IpcDeps {
     query: string,
     limit: number,
     sort: SearchSort,
+    filters?: SearchFilterCriteria,
   ) => Promise<SearchResponse>
   cancelSearch: () => { ok: boolean }
   getAppVersion: () => string
@@ -272,7 +278,7 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
       return { kind: 'error', code: 'MF_INVALID_QUERY', message: ERROR_MESSAGES.MF_INVALID_QUERY }
     }
     try {
-      return await deps.search(req.platform, req.query, req.limit, req.sort)
+      return await deps.search(req.platform, req.query, req.limit, req.sort, req.filters)
     } catch (error) {
       const code = error instanceof MfError ? error.code : 'MF_UNKNOWN'
       logger?.warn('search failed', { code })
@@ -282,9 +288,13 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
   ipcMain.handle(MF_SEARCH_CANCEL, () => deps.cancelSearch())
 }
 
-function parseSearchRequest(
-  payload: unknown,
-): { platform: string; query: string; limit: number; sort: SearchSort } | null {
+function parseSearchRequest(payload: unknown): {
+  platform: string
+  query: string
+  limit: number
+  sort: SearchSort
+  filters?: SearchFilterCriteria
+} | null {
   if (!payload || typeof payload !== 'object') return null
   const raw = payload as Record<string, unknown>
 
@@ -301,9 +311,39 @@ function parseSearchRequest(
     limit = Math.min(MAX_SEARCH_LIMIT, Math.max(1, Math.trunc(raw.limit)))
   }
 
-  const sort: SearchSort = raw.sort === 'newest' ? 'newest' : 'relevance'
+  const sort: SearchSort =
+    raw.sort === 'newest' ? 'newest' : raw.sort === 'views' ? 'views' : 'relevance'
 
-  return { platform: raw.platform, query, limit, sort }
+  let filters: SearchFilterCriteria | undefined
+  if (raw.filters && typeof raw.filters === 'object') {
+    const rf = raw.filters as Record<string, unknown>
+    filters = {
+      sort,
+      limit,
+      uploadRecency: ['all', '24h', 'week', 'month', 'year'].includes(rf.uploadRecency as string)
+        ? (rf.uploadRecency as UploadRecency)
+        : undefined,
+      minDurationSec:
+        typeof rf.minDurationSec === 'number' && Number.isFinite(rf.minDurationSec)
+          ? Math.max(0, rf.minDurationSec)
+          : null,
+      maxDurationSec:
+        typeof rf.maxDurationSec === 'number' && Number.isFinite(rf.maxDurationSec)
+          ? Math.max(0, rf.maxDurationSec)
+          : null,
+      minViews:
+        typeof rf.minViews === 'number' && Number.isFinite(rf.minViews)
+          ? Math.max(0, rf.minViews)
+          : null,
+      minFps:
+        typeof rf.minFps === 'number' && Number.isFinite(rf.minFps) ? Math.max(0, rf.minFps) : null,
+      hasSubtitles: Boolean(rf.hasSubtitles),
+      has4K: Boolean(rf.has4K),
+      verifiedOnly: Boolean(rf.verifiedOnly),
+    }
+  }
+
+  return { platform: raw.platform, query, limit, sort, filters }
 }
 
 function extractUrl(payload: unknown): string | null {

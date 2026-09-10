@@ -116,7 +116,22 @@ export const SEARCH_PLATFORMS: readonly SearchPlatform[] = [
   { id: 'bilibili', label: 'Bilibili', prefix: 'bilisearch' },
 ]
 
-export type SearchSort = 'relevance' | 'newest'
+export type SearchSort = 'relevance' | 'newest' | 'views'
+export type UploadRecency = 'all' | '24h' | 'week' | 'month' | 'year'
+
+export interface SearchFilterCriteria {
+  sort?: SearchSort
+  limit?: number
+  uploadRecency?: UploadRecency
+  minDurationSec?: number | null
+  maxDurationSec?: number | null
+  minViews?: number | null
+  minFps?: number | null
+  hasSubtitles?: boolean
+  has4K?: boolean
+  verifiedOnly?: boolean
+}
+
 export const SEARCH_RESULT_LIMITS = [10, 20, 30, 50] as const
 export const DEFAULT_SEARCH_LIMIT = 20
 export const MAX_SEARCH_LIMIT = 50

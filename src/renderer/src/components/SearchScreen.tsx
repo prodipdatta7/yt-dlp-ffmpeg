@@ -3,6 +3,10 @@ import { SearchBar } from './SearchBar'
 import { SearchResults } from './SearchResults'
 import { AlertIcon, CookieIcon, RefreshIcon, SearchIcon } from './icons'
 import {
+  filterQuality,
+  filterRailDuration,
+  filterType,
+  getActiveSearchFilters,
   lastSearchedQuery,
   searchError,
   searchLimit,
@@ -78,15 +82,27 @@ export function SearchScreen({
   async function runSearch() {
     const platform = searchPlatform.value
     const query = searchQuery.value.trim()
-    if (!query || searching.value) return
+    if (!query) return
+    if (searching.value) {
+      try {
+        await window.mf.searchCancel()
+      } catch {
+        /* best effort */
+      }
+    }
     searching.value = true
     searchError.value = null
+    searchResults.value = []
+    filterRailDuration.value = 'all'
+    filterType.value = 'all'
+    filterQuality.value = 'any'
     try {
       const response = await window.mf.searchStart({
         platform,
         query,
         limit: searchLimit.value,
         sort: searchSort.value,
+        filters: getActiveSearchFilters(),
       })
       if (response.kind === 'ok') {
         searchResults.value = response.results

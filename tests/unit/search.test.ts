@@ -128,6 +128,51 @@ describe('Search Card helpers and intelligence (Rich Video Search Cards)', () =>
     expect(sub2.audioBadge).toContain('5.1')
   })
 
+  it('accurately distinguishes subtitled, audio, and quality criteria for quick rail chips', async () => {
+    const { hasExplicitSubtitles, isAudioOrMusicTrack, matchesQualityTier } =
+      await import('../../src/renderer/src/utils/estimate')
+
+    // Subtitle detection
+    expect(hasExplicitSubtitles('Attack on Titan [Eng Sub]')).toBe(true)
+    expect(hasExplicitSubtitles('Movie Trailer with Subtitles', 'Official')).toBe(true)
+    expect(hasExplicitSubtitles('Lecture with [CC]')).toBe(true)
+    expect(hasExplicitSubtitles('MrBeast $10,000 Challenge')).toBe(false)
+    expect(hasExplicitSubtitles('Minecraft Gameplay Episode 5')).toBe(false)
+
+    // Audio / music detection
+    expect(isAudioOrMusicTrack('Blinding Lights (Official Audio)', 'The Weeknd', 'youtube')).toBe(
+      true,
+    )
+    expect(isAudioOrMusicTrack('Track 01', 'Artist', 'soundcloud')).toBe(true)
+    expect(isAudioOrMusicTrack('Lofi Hip Hop Mix', 'ChilledCow', 'youtube')).toBe(true)
+    expect(isAudioOrMusicTrack('Song', 'Eminem - Topic', 'youtube')).toBe(true)
+    expect(isAudioOrMusicTrack('How to Build a Gaming PC in 2024', 'Tech Channel', 'youtube')).toBe(
+      false,
+    )
+
+    // Quality matching
+    expect(matchesQualityTier('1080p', 'Gameplay 4K 60FPS', 'Gamer', 'youtube', 120, true)).toBe(
+      true,
+    )
+    expect(matchesQualityTier('1080p', 'Old Clip (480p)', 'User', 'youtube', 120, false)).toBe(
+      false,
+    )
+    expect(
+      matchesQualityTier('1080p', 'Music on Soundcloud', 'Artist', 'soundcloud', 120, false),
+    ).toBe(false)
+
+    expect(matchesQualityTier('720p', 'Cyberpunk 4K Ultra HD', 'Gamer', 'youtube', 120, true)).toBe(
+      false,
+    )
+    expect(
+      matchesQualityTier('720p', 'Standard HD Video 720p', 'User', 'youtube', 120, false),
+    ).toBe(true)
+
+    expect(
+      matchesQualityTier('audio', 'Blinding Lights (Audio)', 'The Weeknd', 'youtube', 180),
+    ).toBe(true)
+  })
+
   it('formats relative upload age and likes percentage using real data', async () => {
     const { fmtUploadedAgo, fmtLikes } = await import('../../src/renderer/src/utils/format')
     const twoWeeksAgo = Date.now() - 14 * 24 * 3600 * 1000
@@ -335,5 +380,115 @@ describe('Search Card helpers and intelligence (Rich Video Search Cards)', () =>
     const multiBatchBytes = estimatePresetBytes(BILIBILI_MULTI_P_PRESETS[0], 15480)
     expect(multiBatchBytes).toBeGreaterThan(3.5 * 1024 * 1024 * 1024)
     expect(multiBatchBytes).toBeLessThan(4.5 * 1024 * 1024 * 1024)
+  })
+})
+
+describe('Search Filters & Server Criteria (Option 2)', () => {
+  it('buildFilterFlags translates criteria into yt-dlp CLI arguments', async () => {
+    const { buildFilterFlags } = await import('../../src/main/media/argBuilders')
+
+    // Empty / default criteria produce no flags
+    expect(buildFilterFlags()).toEqual([])
+    expect(buildFilterFlags({})).toEqual([])
+    expect(buildFilterFlags({ uploadRecency: 'all' })).toEqual([])
+
+    // Recency mapping
+    expect(buildFilterFlags({ uploadRecency: '24h' })).toEqual(['--dateafter', 'today-1day'])
+    expect(buildFilterFlags({ uploadRecency: 'week' })).toEqual(['--dateafter', 'today-7days'])
+    expect(buildFilterFlags({ uploadRecency: 'month' })).toEqual(['--dateafter', 'today-1month'])
+    expect(buildFilterFlags({ uploadRecency: 'year' })).toEqual(['--dateafter', 'today-1year'])
+
+    // Duration range
+    expect(buildFilterFlags({ minDurationSec: 60, maxDurationSec: 300 })).toEqual([
+      '--match-filters',
+      'duration >= 60 & duration <= 300',
+    ])
+    expect(buildFilterFlags({ minDurationSec: 120 })).toEqual([
+      '--match-filters',
+      'duration >= 120',
+    ])
+    expect(buildFilterFlags({ maxDurationSec: 600 })).toEqual([
+      '--match-filters',
+      'duration <= 600',
+    ])
+
+    // Views, verified, fps combined
+    const combined = buildFilterFlags({
+      uploadRecency: 'week',
+      minViews: 50000,
+      verifiedOnly: true,
+      minFps: 60,
+    })
+    expect(combined).toContain('--dateafter')
+    expect(combined).toContain('today-7days')
+    expect(combined).toContain('view_count >= 50000')
+    expect(combined).toContain('channel_is_verified')
+    expect(combined).toContain('fps >= 60')
+  })
+
+  it('parseViewCountInput parses various user input formats correctly', async () => {
+    const { parseViewCountInput } = await import('../../src/renderer/src/utils/estimate')
+
+    expect(parseViewCountInput('10,000+')).toBe(10000)
+    expect(parseViewCountInput('10k')).toBe(10000)
+    expect(parseViewCountInput('10K')).toBe(10000)
+    expect(parseViewCountInput('1.5M')).toBe(1500000)
+    expect(parseViewCountInput('2b')).toBe(2000000000)
+    expect(parseViewCountInput('500')).toBe(500)
+    expect(parseViewCountInput(' 50,000 ')).toBe(50000)
+    expect(parseViewCountInput('100000+')).toBe(100000)
+
+    expect(parseViewCountInput('')).toBeNull()
+    expect(parseViewCountInput('   ')).toBeNull()
+    expect(parseViewCountInput('unlimited')).toBeNull()
+    expect(parseViewCountInput('abc')).toBeNull()
+  })
+
+  it('buildSearchTarget correctly constructs YouTube search URLs, recency queries, and candidate limits', async () => {
+    const { buildSearchTarget, getIsoDateDaysAgo } =
+      await import('../../src/main/media/argBuilders')
+
+    // 1. YouTube Sort by Views
+    const viewsTarget = buildSearchTarget('youtube', 'ytsearch', 'elden ring', 20, 'views')
+    expect(viewsTarget.urlOrQuery).toContain(
+      'https://www.youtube.com/results?search_query=elden%20ring&sp=CAM%3D',
+    )
+    expect(viewsTarget.extraFlags).toContain('--playlist-items')
+    expect(viewsTarget.candidateLimit).toBeGreaterThanOrEqual(50)
+
+    // 2. YouTube Sort by Upload Date (newest)
+    const dateTarget = buildSearchTarget('youtube', 'ytsearch', 'elden ring', 20, 'newest')
+    expect(dateTarget.urlOrQuery).toContain('ytsearch50:elden ring after:')
+    expect(dateTarget.candidateLimit).toBeGreaterThanOrEqual(50)
+
+    // 3. YouTube Upload Recency (uses after:YYYY-MM-DD query syntax)
+    const weekTarget = buildSearchTarget('youtube', 'ytsearch', 'nodejs', 20, 'relevance', {
+      uploadRecency: 'week',
+    })
+    expect(weekTarget.urlOrQuery).toBe(`ytsearch50:nodejs after:${getIsoDateDaysAgo(7)}`)
+
+    const dayTarget = buildSearchTarget('youtube', 'ytsearch', 'nodejs', 20, 'relevance', {
+      uploadRecency: '24h',
+    })
+    expect(dayTarget.urlOrQuery).toBe(`ytsearch50:nodejs after:${getIsoDateDaysAgo(1)}`)
+
+    // 4. Fallback on standard prefix (SoundCloud, Bilibili, standard YouTube relevance)
+    const scTarget = buildSearchTarget('soundcloud', 'scsearch', 'chillhop', 10, 'relevance')
+    expect(scTarget.urlOrQuery).toBe('scsearch10:chillhop')
+    expect(scTarget.candidateLimit).toBe(10)
+
+    // With filters, candidate limit increases to prevent depleting results
+    const scFilteredTarget = buildSearchTarget(
+      'soundcloud',
+      'scsearch',
+      'chillhop',
+      10,
+      'relevance',
+      {
+        minDurationSec: 180,
+      },
+    )
+    expect(scFilteredTarget.urlOrQuery).toBe('scsearch50:chillhop')
+    expect(scFilteredTarget.candidateLimit).toBe(50)
   })
 })

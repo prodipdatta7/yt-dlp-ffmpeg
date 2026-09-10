@@ -1,8 +1,60 @@
-export function buildAnalyzeArgs(url: string, cookiesPath?: string | null): string[] {
+import type { SearchFilterCriteria } from '../../shared/models'
+
+export function buildAnalyzeArgs(
+  url: string,
+  cookiesPath?: string | null,
+  extraFlags?: readonly string[],
+): string[] {
   const args: string[] = ['-J', '--no-warnings', '--flat-playlist']
   if (cookiesPath) args.push('--cookies', cookiesPath)
+  if (extraFlags && extraFlags.length > 0) args.push(...extraFlags)
   args.push(url)
   return args
+}
+
+export function buildFilterFlags(filters?: SearchFilterCriteria): string[] {
+  if (!filters) return []
+  const flags: string[] = []
+
+  if (filters.uploadRecency && filters.uploadRecency !== 'all') {
+    const recencyMap: Record<string, string> = {
+      '24h': 'today-1day',
+      week: 'today-7days',
+      month: 'today-1month',
+      year: 'today-1year',
+    }
+    const val = recencyMap[filters.uploadRecency]
+    if (val) flags.push('--dateafter', val)
+  }
+
+  const matchConditions: string[] = []
+  if (filters.minDurationSec != null && filters.maxDurationSec != null) {
+    matchConditions.push(
+      `duration >= ${filters.minDurationSec} & duration <= ${filters.maxDurationSec}`,
+    )
+  } else if (filters.minDurationSec != null) {
+    matchConditions.push(`duration >= ${filters.minDurationSec}`)
+  } else if (filters.maxDurationSec != null) {
+    matchConditions.push(`duration <= ${filters.maxDurationSec}`)
+  }
+
+  if (filters.minViews != null && filters.minViews > 0) {
+    matchConditions.push(`view_count >= ${filters.minViews}`)
+  }
+
+  if (filters.verifiedOnly) {
+    matchConditions.push('channel_is_verified')
+  }
+
+  if (filters.minFps != null && filters.minFps > 0) {
+    matchConditions.push(`fps >= ${filters.minFps}`)
+  }
+
+  for (const cond of matchConditions) {
+    flags.push('--match-filters', cond)
+  }
+
+  return flags
 }
 
 export function buildEntryInfoArgs(url: string, cookiesPath?: string | null): string[] {
@@ -26,4 +78,102 @@ export function buildSearchQuery(prefix: string, query: string, limit: number): 
   const n = Number.isFinite(limit) ? Math.trunc(limit) : SEARCH_LIMIT_DEFAULT
   const safeLimit = Math.min(SEARCH_LIMIT_MAX, Math.max(SEARCH_LIMIT_MIN, n))
   return `${prefix}${safeLimit}:${query}`
+}
+
+export function getIsoDateDaysAgo(days: number): string {
+  const d = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+  return d.toISOString().slice(0, 10)
+}
+
+export interface ResolvedSearchTarget {
+  urlOrQuery: string
+  extraFlags: string[]
+  candidateLimit: number
+}
+
+/**
+ * Resolves the primary URL/pseudo-URL and CLI flags for a search operation.
+ * For YouTube:
+ * - Native search operator `after:YYYY-MM-DD` is injected directly into the query for upload recency
+ *   and date sorting because YouTube deprecated `sp=CAI=` and does not expose dates in flat-playlist JSON.
+ * - `sp=CAM%3D` is used for view-count sorting.
+ * Over-fetches candidate entries when filters/sorts are active so that yt-dlp's
+ * match-filters and sorting retain a full page of results up to the requested limit.
+ */
+export function buildSearchTarget(
+  platformId: string,
+  prefix: string,
+  query: string,
+  limit: number,
+  sort: string,
+  filters?: SearchFilterCriteria,
+): ResolvedSearchTarget {
+  const safeLimit = Number.isFinite(limit) ? Math.trunc(limit) : SEARCH_LIMIT_DEFAULT
+  const userLimit = Math.min(SEARCH_LIMIT_MAX, Math.max(SEARCH_LIMIT_MIN, safeLimit))
+
+  const hasCriteria =
+    sort !== 'relevance' ||
+    Boolean(
+      filters &&
+      ((filters.uploadRecency && filters.uploadRecency !== 'all') ||
+        filters.minDurationSec != null ||
+        filters.maxDurationSec != null ||
+        filters.minViews != null ||
+        filters.verifiedOnly ||
+        filters.minFps != null ||
+        filters.has4K ||
+        filters.hasSubtitles),
+    )
+
+  const candidateLimit = hasCriteria ? Math.min(100, Math.max(userLimit * 3, 50)) : userLimit
+
+  const extraFlags = buildFilterFlags(filters)
+
+  if (platformId === 'youtube') {
+    let effectiveQuery = query
+    const recencyDaysMap: Record<string, number> = {
+      '24h': 1,
+      week: 7,
+      month: 30,
+      year: 365,
+    }
+
+    if (filters?.uploadRecency && filters.uploadRecency !== 'all') {
+      const days = recencyDaysMap[filters.uploadRecency]
+      if (days && !/\bafter:\d{4}-\d{2}-\d{2}\b/i.test(effectiveQuery)) {
+        effectiveQuery = `${effectiveQuery} after:${getIsoDateDaysAgo(days)}`
+      }
+    } else if (sort === 'newest') {
+      // Scope to recent uploads (last 90 days) so YouTube returns genuine recent videos
+      if (!/\bafter:\d{4}-\d{2}-\d{2}\b/i.test(effectiveQuery)) {
+        effectiveQuery = `${effectiveQuery} after:${getIsoDateDaysAgo(90)}`
+      }
+    }
+
+    // 1. Sort by View Count
+    if (sort === 'views') {
+      const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(effectiveQuery)}&sp=CAM%3D`
+      return {
+        urlOrQuery: url,
+        extraFlags: ['--playlist-items', `1-${candidateLimit}`, ...extraFlags],
+        candidateLimit,
+      }
+    }
+
+    // 2. Sort by Upload Date or Recency Filter via pseudo-url
+    const pseudoUrl = buildSearchQuery(prefix, effectiveQuery, candidateLimit)
+    return {
+      urlOrQuery: pseudoUrl,
+      extraFlags,
+      candidateLimit,
+    }
+  }
+
+  // Default prefix extractor query (SoundCloud, Bilibili)
+  const pseudoUrl = buildSearchQuery(prefix, query, candidateLimit)
+  return {
+    urlOrQuery: pseudoUrl,
+    extraFlags,
+    candidateLimit,
+  }
 }

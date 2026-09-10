@@ -6,6 +6,7 @@ import type {
   JobEvent,
   MfErrorCode,
   PlaylistEntryPreview,
+  SearchFilterCriteria,
   SearchResultItem,
   SearchSort,
   UpdaterDriverKind,
@@ -181,6 +182,7 @@ export interface SearchRequest {
   query: string
   limit: number
   sort: SearchSort
+  filters?: SearchFilterCriteria
 }
 
 export type SearchResponse =
@@ -242,7 +244,9 @@ export type {
   JobDonePayload,
   JobEvent,
   PlaylistEntryPreview,
+  SearchFilterCriteria,
   SearchPlatform,
   SearchResultItem,
   SearchSort,
+  UploadRecency,
 } from './models'

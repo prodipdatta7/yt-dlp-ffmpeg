@@ -290,6 +290,97 @@ export function detectAudioSubtitleSpecs(
   return { audioBadge, subtitleBadge }
 }
 
+/**
+ * Detects if a search result title/channel explicitly mentions closed captions or subtitles.
+ */
+export function hasExplicitSubtitles(title: string, uploader?: string | null): boolean {
+  const combined = `${title} ${uploader ?? ''}`
+  return (
+    /\[(cc|sub|subs|subbed|eng\s*sub)\]|\((cc|sub|subs|subbed|eng\s*sub)\)|【(cc|sub|字幕)】/i.test(
+      combined,
+    ) ||
+    /\b(sub|subs|subbed|subtitle|subtitles|closed captions?|eng sub|english sub|sub español|sub ita|sub rus|sub indo|bangla sub|日本語字幕|中文字幕|字幕)\b/i.test(
+      combined,
+    )
+  )
+}
+
+/**
+ * Detects if a search result represents audio content (music, track, album, podcast, DJ set).
+ */
+export function isAudioOrMusicTrack(
+  title: string,
+  uploader?: string | null,
+  platform?: string,
+  durationSec?: number | null,
+): boolean {
+  if (platform === 'soundcloud') return true
+  const uploaderStr = (uploader ?? '').trim()
+  const combined = `${title} ${uploaderStr}`
+  if (
+    uploaderStr.endsWith(' - Topic') ||
+    /\b(vevo|records|audio|sounds|radio|soundtrack|music)\b/i.test(uploaderStr)
+  ) {
+    return true
+  }
+  if (
+    /\b(audio|official audio|lyrics?|lyric video|ost|soundtrack|song|songs|music video|remix|dj mix|album|full album|podcast|lofi|lo-fi|chillhop|instrumental|acoustic|cover|live session|ep|track|tracks|bgm|beats?)\b/i.test(
+      combined,
+    )
+  ) {
+    return true
+  }
+  if ((durationSec ?? 0) >= 1200 && /\b(mix|set|compilation|session|beats)\b/i.test(title)) {
+    return true
+  }
+  return false
+}
+
+/**
+ * Evaluates whether a video entry matches a selected quality tier.
+ * @param quality '1080p' | '720p' | 'audio'
+ * @param hasAnyExplicitHighRes whether ANY item in the result list explicitly advertises 1080p/4K/FHD/60fps
+ */
+export function matchesQualityTier(
+  quality: 'any' | '1080p' | '720p' | 'audio',
+  title: string,
+  uploader?: string | null,
+  platform?: string,
+  durationSec?: number | null,
+  hasAnyExplicitHighRes = false,
+): boolean {
+  if (quality === 'any') return true
+
+  if (quality === 'audio') {
+    return isAudioOrMusicTrack(title, uploader, platform, durationSec)
+  }
+
+  // Video quality tiers exclude soundcloud
+  if (platform === 'soundcloud') return false
+
+  const isExplicitLowRes = /\b(720p?|480p?|360p?|240p?|144p?|sd|dvdrip|camrip|vhs)\b/i.test(title)
+  const isExplicitHighRes =
+    /\b(1080p?|fhd|full hd|1440p?|2k|2160p?|4k|uhd|ultra hd|8k|4320p?|60fps|120fps|hdr|hdr10|dolby|blu-?ray|remastered)\b/i.test(
+      title,
+    )
+
+  if (quality === '1080p') {
+    if (isExplicitLowRes) return false
+    if (hasAnyExplicitHighRes) {
+      return isExplicitHighRes
+    }
+    return true
+  }
+
+  if (quality === '720p') {
+    const isExplicit4K = /\b(4k|2160p?|8k|uhd)\b/i.test(title)
+    if (isExplicit4K) return false
+    return isExplicitLowRes || /\bhd\b/i.test(title) || !isExplicitHighRes
+  }
+
+  return true
+}
+
 export const SOUNDCLOUD_FORMAT_PRESETS: readonly FormatPresetOption[] = [
   {
     id: 'sc-flac-lossless',
@@ -745,4 +836,23 @@ export function detectBilibiliSpecs(
     ctaText,
     partCount: 1,
   }
+}
+
+/**
+ * Parses a user-entered view count string (e.g. "10,000+", "10k", "1.5M", "500") into a clean number.
+ */
+export function parseViewCountInput(raw: string): number | null {
+  const trimmed = raw.trim().toLowerCase()
+  if (!trimmed) return null
+  const match = trimmed.match(/^([\d.,]+)\s*([kmbt])?\+?$/)
+  if (!match) {
+    const digitsOnly = trimmed.replace(/[^\d.]/g, '')
+    const n = parseFloat(digitsOnly)
+    return Number.isFinite(n) && n > 0 ? Math.round(n) : null
+  }
+  const base = parseFloat(match[1].replace(/,/g, ''))
+  if (!Number.isFinite(base) || base <= 0) return null
+  const unit = match[2]
+  const mult = unit === 'k' ? 1_000 : unit === 'm' ? 1_000_000 : unit === 'b' ? 1_000_000_000 : 1
+  return Math.round(base * mult)
 }

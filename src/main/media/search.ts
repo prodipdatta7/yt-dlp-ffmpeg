@@ -1,10 +1,15 @@
-import { SEARCH_PLATFORMS, type SearchResultItem, type SearchSort } from '../../shared/models'
+import {
+  SEARCH_PLATFORMS,
+  type SearchFilterCriteria,
+  type SearchResultItem,
+  type SearchSort,
+} from '../../shared/models'
 import type { SearchHydratePayload } from '../../shared/ipcContract'
 import type { LocatedBinary } from '../binaries/locator'
 import { spawnProcess, type SpawnHandle } from '../binaries/runner'
 import type { Logger } from '../store/logger'
 import { classifyStderr } from './classifyStderr'
-import { buildAnalyzeArgs, buildSearchQuery } from './argBuilders'
+import { buildAnalyzeArgs, buildSearchTarget } from './argBuilders'
 import { mapRawInfo, MfError, type RawInfo } from './metadata'
 
 export interface SearchServiceOptions {
@@ -53,6 +58,7 @@ export class SearchService {
     query: string,
     limit: number,
     sort: SearchSort,
+    filters?: SearchFilterCriteria,
   ): Promise<SearchResultItem[]> {
     const platform = SEARCH_PLATFORMS.find((p) => p.id === platformId)
     const trimmed = query.trim()
@@ -62,14 +68,19 @@ export class SearchService {
     if (!binary) throw new MfError('MF_UNKNOWN')
 
     this.cancelRequested = false
-    const prefix =
-      sort === 'newest' && platform.dateSortPrefix ? platform.dateSortPrefix : platform.prefix
-    const pseudoUrl = buildSearchQuery(prefix, trimmed, limit)
-    const args = buildAnalyzeArgs(pseudoUrl, this.opts.getCookiesPath?.() ?? null)
+    const { urlOrQuery, extraFlags } = buildSearchTarget(
+      platformId,
+      platform.prefix,
+      trimmed,
+      limit,
+      sort,
+      filters,
+    )
+    const args = buildAnalyzeArgs(urlOrQuery, this.opts.getCookiesPath?.() ?? null, extraFlags)
 
     const stdoutLines: string[] = []
     const stderrLines: string[] = []
-    this.opts.logger?.debug('search spawn started', { platform: platformId, limit, sort })
+    this.opts.logger?.debug('search spawn started', { platform: platformId, limit, sort, filters })
     this.opts.onProcessLine?.(`$ yt-dlp ${args.join(' ')}`, 'out')
     const handle = spawnProcess(binary.path, args, {
       onStdoutLine: (line) => {
@@ -106,10 +117,68 @@ export class SearchService {
       throw new MfError('MF_EXTRACTOR_STALE')
     }
 
-    const mapped = mapRawInfo(raw, pseudoUrl)
-    const entries: SearchResultItem[] = (
+    const mapped = mapRawInfo(raw, urlOrQuery)
+    let entries: SearchResultItem[] = (
       mapped.kind === 'playlist' ? (mapped.playlistEntries ?? []) : []
     ).map((entry) => ({ ...entry, platform: platformId }))
+
+    // Server-side filtering for all popover criteria
+    if (filters) {
+      entries = entries.filter((r) => {
+        if (
+          filters.minDurationSec != null &&
+          (r.durationSec == null || r.durationSec < filters.minDurationSec)
+        )
+          return false
+        if (
+          filters.maxDurationSec != null &&
+          (r.durationSec == null || r.durationSec > filters.maxDurationSec)
+        )
+          return false
+        if (filters.minViews != null && (r.viewCount == null || r.viewCount < filters.minViews))
+          return false
+        if (filters.verifiedOnly && !r.isVerified) return false
+        if (filters.has4K && !/\b(4k|2160p|uhd)\b/i.test(r.title)) return false
+        if (
+          filters.hasSubtitles &&
+          !/\b(sub|subtitle|subtitles|cc|caption|captions|bn|en|hi|es|ja|ko)\b/i.test(
+            `${r.title} ${r.uploader ?? ''}`,
+          )
+        )
+          return false
+        if (filters.minFps && filters.minFps >= 60 && !/\b(60fps|60p|120fps)\b/i.test(r.title))
+          return false
+        if (filters.uploadRecency && filters.uploadRecency !== 'all') {
+          const t = r.timestamp ?? (r.uploadDate ? new Date(r.uploadDate).getTime() : null)
+          if (t != null) {
+            const now = Date.now()
+            const msMap: Record<string, number> = {
+              '24h': 24 * 60 * 60 * 1000,
+              week: 7 * 24 * 60 * 60 * 1000,
+              month: 31 * 24 * 60 * 60 * 1000,
+              year: 366 * 24 * 60 * 60 * 1000,
+            }
+            const maxAge = msMap[filters.uploadRecency]
+            if (maxAge && now - t > maxAge) return false
+          }
+        }
+        return true
+      })
+    }
+
+    // Server-side sort application
+    if (sort === 'views') {
+      entries.sort((a, b) => (b.viewCount ?? 0) - (a.viewCount ?? 0))
+    } else if (sort === 'newest') {
+      entries.sort((a, b) => {
+        const aT = a.timestamp ?? (a.uploadDate ? new Date(a.uploadDate).getTime() : 0)
+        const bT = b.timestamp ?? (b.uploadDate ? new Date(b.uploadDate).getTime() : 0)
+        return bT - aT
+      })
+    }
+
+    // Slice to the requested user limit
+    entries = entries.slice(0, limit)
 
     // Kick off progressive background hydration of real upload date and likes
     if (this.opts.onEntryHydrated && entries.length > 0) {
@@ -122,7 +191,7 @@ export class SearchService {
   private async hydrateEntries(binaryPath: string, entries: SearchResultItem[]): Promise<void> {
     if (!this.opts.onEntryHydrated || entries.length === 0 || this.cancelRequested) return
 
-    const chunkSize = 4
+    const chunkSize = 10
     const chunks: SearchResultItem[][] = []
     for (let i = 0; i < entries.length; i += chunkSize) {
       chunks.push(entries.slice(i, i + chunkSize))
