@@ -409,7 +409,7 @@ AC: updater against mocked release API (vitest, no network) · tampered-binary t
 
 ### M7 — Package, measure, ship (PRD §5.2–5.3, §6)
 Scope: electron-builder NSIS config bundling binaries, icon/licensing page (§14), memory profiling harness (AM-10 methodology), installer size report, clean-VM smoke matrix.
-AC: installer builds and installs on clean Win10 + Win11 VM · happy-path download works there · idle RSS ≤120MB and peak Electron RSS ≤450MB recorded in `specs/perf-report.md` (or deviations approved) · installer size reported vs ≤180MB budget.
+AC: installer builds and installs on clean Win10 + Win11 VM · happy-path download works there · idle and peak memory recorded in `specs/perf-report.md` against **AM-16** (AM-10's ≤120MB idle figure is withdrawn; peak ≤450MB is retained) · installer size reported vs ≤180MB budget. Measure with `npm run perf`, which records a bare-Electron-window baseline in the same run so AM-16's marginal figure is computed rather than assumed.
 
 ### M8 — In-app platform search (AM-14, new — not in the original PRD)
 Scope: a dedicated **Search** tab (own nav item, alongside Downloader/Queue/Settings) for
