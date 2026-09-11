@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { getEmbedInfo } from '../utils/source'
-import { CloseIcon, DownloadIcon, FilmIcon, LinkIcon, MaximizeIcon } from './icons'
+import { CloseIcon, DownloadIcon, FilmIcon, LinkIcon, MaximizeIcon, VolumeIcon } from './icons'
 
 export interface InlineVideoPreviewProps {
   url?: string | null
   title?: string
   startSec?: number
+  volumeBoost?: number
   onClose?: () => void
   onExpand?: () => void
   className?: string
@@ -18,6 +19,7 @@ export function InlineVideoPreview({
   url,
   title,
   startSec,
+  volumeBoost = 1,
   onClose,
   onExpand,
   className = '',
@@ -29,10 +31,72 @@ export function InlineVideoPreview({
   const [loading, setLoading] = useState(true)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const gainNodeRef = useRef<GainNode | null>(null)
+  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null)
 
   useEffect(() => {
     setLoading(true)
   }, [embed?.src])
+
+  // Cleanup Web Audio graph on unmount or src change to prevent leaks
+  useEffect(() => {
+    return () => {
+      try {
+        sourceNodeRef.current?.disconnect()
+        gainNodeRef.current?.disconnect()
+        if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+          void audioCtxRef.current.close()
+        }
+      } catch {
+        /* ignore */
+      }
+      sourceNodeRef.current = null
+      gainNodeRef.current = null
+      audioCtxRef.current = null
+    }
+  }, [embed?.src])
+
+  const applyGainBoost = (boost: number) => {
+    if (embed?.type === 'video' && videoRef.current) {
+      try {
+        if (!audioCtxRef.current) {
+          const AudioContextClass =
+            window.AudioContext ||
+            (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+          if (AudioContextClass) {
+            const ctx = new AudioContextClass()
+            const source = ctx.createMediaElementSource(videoRef.current)
+            const gain = ctx.createGain()
+            gain.gain.value = boost
+            source.connect(gain)
+            gain.connect(ctx.destination)
+
+            audioCtxRef.current = ctx
+            sourceNodeRef.current = source
+            gainNodeRef.current = gain
+          }
+        } else if (gainNodeRef.current) {
+          gainNodeRef.current.gain.value = boost
+          if (audioCtxRef.current.state === 'suspended') {
+            void audioCtxRef.current.resume()
+          }
+        }
+      } catch (err) {
+        console.warn('[InlineVideoPreview] Web Audio gain boost error:', err)
+      }
+    } else if (embed?.type === 'iframe') {
+      // Un-mute and ensure maximum player volume
+      sendIframeCommand('unMute')
+      sendIframeCommand('setVolume', [100])
+    }
+    // Broadcast boost to Electron child frames (iframes)
+    void window.mf.setPreviewVolumeBoost(boost)
+  }
+
+  useEffect(() => {
+    applyGainBoost(volumeBoost)
+  }, [volumeBoost, embed?.type])
 
   // Send command to iframe safely via postMessage
   const sendIframeCommand = (func: string, args: unknown[] = []) => {
@@ -88,7 +152,11 @@ export function InlineVideoPreview({
         }
         if (typeof info.playerState === 'number') {
           // 1 = playing, 2 = paused
-          onPlayingChange?.(info.playerState === 1)
+          const isPlaying = info.playerState === 1
+          onPlayingChange?.(isPlaying)
+          if (isPlaying && volumeBoost > 1) {
+            void window.mf.setPreviewVolumeBoost(volumeBoost)
+          }
         }
       }
       if (msg.event === 'onStateChange' && typeof msg.info === 'number') {
@@ -189,6 +257,9 @@ export function InlineVideoPreview({
               } catch {
                 /* cross-origin ignore */
               }
+              if (volumeBoost > 1) {
+                void window.mf.setPreviewVolumeBoost(volumeBoost)
+              }
             }}
           />
         </>
@@ -205,7 +276,7 @@ export function InlineVideoPreview({
         />
       )}
 
-      {/* Floating Header Controls */}
+      {/* Floating Header Controls: only badge and close/expand, never obstructing player controls */}
       {!hideHeaderControls && (
         <div class="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center justify-between p-2">
           <span class="rounded-md border border-white/15 bg-black/80 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm backdrop-blur-md">
@@ -240,11 +311,64 @@ export function InlineVideoPreview({
   )
 }
 
+export function VolumeBoosterControl({
+  volumeBoost = 1,
+  onChange,
+  isIframe = false,
+  className = '',
+}: {
+  volumeBoost?: number
+  onChange?: (boost: number) => void
+  isIframe?: boolean
+  className?: string
+}) {
+  return (
+    <div
+      class={`inline-flex items-center rounded-md border border-line bg-wash-1 p-0.5 text-xs ${className}`}
+      title={
+        isIframe
+          ? 'Volume Booster: Sets embed player to 100% volume. (For +6 dB boost, download with Smart Loudness or Volume Boost).'
+          : 'Volume Booster: Amplify preview audio (100%, 150%, or 200% / +6 dB)'
+      }
+    >
+      <span class="flex items-center gap-1 px-1.5 font-medium text-slate-400">
+        <VolumeIcon class="size-3 text-amber-400" />
+        <span class="text-[10px] font-bold uppercase tracking-wider">Boost</span>
+      </span>
+      {([1, 1.5, 2] as const).map((level) => {
+        const active = volumeBoost === level
+        return (
+          <button
+            key={level}
+            type="button"
+            onClick={() => onChange?.(level)}
+            title={
+              level === 1
+                ? 'Standard Volume (100%)'
+                : level === 1.5
+                  ? 'Boost Volume to 150%'
+                  : 'Maximum Boost (200% / +6 dB)'
+            }
+            class={`rounded px-1.5 py-0.5 text-[10.5px] font-semibold transition ${
+              active
+                ? 'bg-amber-500 font-bold text-white shadow-sm'
+                : 'text-slate-400 hover:bg-wash-2 hover:text-ink'
+            }`}
+          >
+            {level === 1 ? '100%' : level === 1.5 ? '150%' : '200%'}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export interface InlineVideoPreviewModalProps {
   url?: string | null
   title: string
   uploader?: string | null
-  onClose: () => void
+  startSec?: number
+  onClose: (lastTimeSec?: number) => void
   onQuickDownload?: () => void
   onOpenInDownloader?: () => void
 }
@@ -253,23 +377,31 @@ export function InlineVideoPreviewModal({
   url,
   title,
   uploader,
+  startSec,
   onClose,
   onQuickDownload,
   onOpenInDownloader,
 }: InlineVideoPreviewModalProps) {
+  const [modalVolumeBoost, setModalVolumeBoost] = useState<number>(1)
+  const lastTimeRef = useRef<number | undefined>(startSec)
+
+  const handleClose = () => {
+    onClose(lastTimeRef.current)
+  }
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') handleClose()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
+  }, [])
 
   return (
     <div
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-in fade-in duration-150"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
+        if (e.target === e.currentTarget) handleClose()
       }}
     >
       <div class="flex w-full max-w-[96vw] xl:max-w-6xl 2xl:max-w-7xl max-h-[95vh] flex-col overflow-hidden rounded-2xl border border-white/10 bg-neutral-900 shadow-2xl">
@@ -283,7 +415,7 @@ export function InlineVideoPreviewModal({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             title="Close modal (Esc)"
             class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-neutral-300 transition hover:bg-white/15 hover:text-white"
           >
@@ -293,17 +425,33 @@ export function InlineVideoPreviewModal({
 
         {/* 16:9 Video Player Container with responsive max height */}
         <div class="relative flex aspect-video w-full max-h-[78vh] items-center justify-center bg-black">
-          <InlineVideoPreview url={url} title={title} className="rounded-none size-full" />
+          <InlineVideoPreview
+            url={url}
+            title={title}
+            startSec={startSec}
+            volumeBoost={modalVolumeBoost}
+            onTimeUpdate={(sec) => {
+              lastTimeRef.current = sec
+            }}
+            hideHeaderControls
+            className="rounded-none size-full"
+          />
         </div>
 
         {/* Modal Footer Actions */}
         <div class="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-neutral-950/60 px-4 py-3">
-          <div class="flex items-center gap-2 text-xs text-neutral-400">
+          <div class="flex items-center gap-3 text-xs text-neutral-400">
             <span>
               {getEmbedInfo(url)?.platform === 'SoundCloud'
                 ? 'Audio Preview Mode'
                 : 'Video Preview Mode'}
             </span>
+            <VolumeBoosterControl
+              volumeBoost={modalVolumeBoost}
+              onChange={setModalVolumeBoost}
+              isIframe={getEmbedInfo(url)?.type === 'iframe'}
+              className="border-white/15 bg-black/60 text-slate-200"
+            />
           </div>
           <div class="flex items-center gap-2">
             {onOpenInDownloader && (

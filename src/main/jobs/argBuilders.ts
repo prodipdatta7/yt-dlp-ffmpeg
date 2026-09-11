@@ -70,6 +70,35 @@ export function buildAdvancedArgs(
   return args
 }
 
+export function buildAudioBoostArgs(config: JobConfig): string[] {
+  if (!config.audioBoost || config.audioBoost === 'none') {
+    return []
+  }
+
+  let filter: string
+  switch (config.audioBoost) {
+    case 'normalize':
+      filter = 'loudnorm=I=-16:TP=-1.5:LRA=11'
+      break
+    case 'dynamic':
+      filter = 'dynaudnorm'
+      break
+    case 'boost-6db':
+      filter = 'volume=6dB'
+      break
+  }
+
+  if (config.mode === 'audio-only') {
+    return ['--postprocessor-args', `ExtractAudio+ffmpeg:-af ${filter}`]
+  }
+
+  if (config.container === 'webm') {
+    return ['--postprocessor-args', `Merger+ffmpeg:-c:a libopus -b:a 160k -af ${filter}`]
+  }
+
+  return ['--postprocessor-args', `Merger+ffmpeg:-c:a aac -b:a 192k -af ${filter}`]
+}
+
 export function buildDownloadArgs(
   config: JobConfig,
   ffmpegPath: string,
@@ -94,5 +123,6 @@ export function buildDownloadArgs(
   }
   const base = buildBaseDownloadArgs(ffmpegPath, outputTemplate)
   if (cookiesPath) base.push('--cookies', cookiesPath)
-  return [...modeArgs, ...base, config.url]
+  const boost = buildAudioBoostArgs(config)
+  return [...modeArgs, ...base, ...boost, config.url]
 }

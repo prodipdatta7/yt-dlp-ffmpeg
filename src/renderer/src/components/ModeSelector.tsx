@@ -3,6 +3,7 @@ import {
   CONTAINERS,
   LOSSLESS_AUDIO_FORMATS,
   RESOLUTION_TIERS,
+  type AudioBoostOption,
   type AudioFormat,
   type BitrateTier,
   type Container,
@@ -10,7 +11,15 @@ import {
   type FormatRow,
 } from '../../../shared/models'
 import { estimateJobBytes } from '../utils/estimate'
-import { FilmIcon, FolderIcon, HardDriveIcon, MusicIcon, SlidersIcon } from './icons'
+import {
+  FilmIcon,
+  FolderIcon,
+  HardDriveIcon,
+  InfoIcon,
+  MusicIcon,
+  SlidersIcon,
+  VolumeIcon,
+} from './icons'
 import { Chip, SectionLabel } from './ui'
 
 export interface JobSelection {
@@ -23,6 +32,7 @@ export interface JobSelection {
   audioFormatId: string
   destDir: string
   estimatedBytes: number | null
+  audioBoost?: AudioBoostOption
 }
 
 export interface AdvancedPick {
@@ -49,6 +59,43 @@ const AUDIO_FORMAT_OPTIONS: Array<{ id: AudioFormat; label: string; kind: 'lossy
     { id: 'flac', label: 'FLAC', kind: 'lossless' },
     { id: 'wav', label: 'WAV', kind: 'lossless' },
   ]
+
+const AUDIO_BOOST_SETTINGS: Array<{
+  id: AudioBoostOption
+  label: string
+  description: string
+  tooltip: string
+}> = [
+  {
+    id: 'none',
+    label: 'Original',
+    description: 'Preserves original audio levels without modification.',
+    tooltip: 'No volume adjustment. Source audio is untouched.',
+  },
+  {
+    id: 'normalize',
+    label: 'Normalize',
+    description:
+      'EBU R128 loudness normalization. Evens out quiet and loud sections to standard broadcast volume.',
+    tooltip:
+      'Standardizes loudness to broadcast level (EBU R128). Best for videos with uneven audio.',
+  },
+  {
+    id: 'dynamic',
+    label: 'Speech',
+    description:
+      'Dynamic speech compressor (dynaudnorm). Amplifies quiet dialogue while preventing loud spikes.',
+    tooltip: 'Intelligently raises quiet dialogue while preventing loud audio spikes.',
+  },
+  {
+    id: 'boost-6db',
+    label: '+6 dB (2x)',
+    description:
+      '2x linear volume boost (+6 dB). Ideal for videos recorded with low microphone levels.',
+    tooltip:
+      'Doubles audio amplitude (+6 dB). Ideal for videos recorded with very low microphone volume.',
+  },
+]
 
 function tierLabel(t: number): string {
   return t === 4320 ? '8K' : t === 2160 ? '4K' : `${t}p`
@@ -78,6 +125,7 @@ export function ModeSelector({
   const [videoFormatId, setVideoFormatId] = useState('')
   const [audioFormatId, setAudioFormatId] = useState('')
   const [destDir, setDestDir] = useState('')
+  const [audioBoost, setAudioBoost] = useState<AudioBoostOption>('none')
 
   useEffect(() => {
     window.mf
@@ -126,6 +174,7 @@ export function ModeSelector({
         audioFormatId,
         destDir,
         estimatedBytes,
+        audioBoost,
       })
     }
   }, [
@@ -138,6 +187,7 @@ export function ModeSelector({
     audioFormatId,
     destDir,
     estimatedBytes,
+    audioBoost,
   ])
 
   async function browse() {
@@ -349,6 +399,46 @@ export function ModeSelector({
           </div>
         </div>
       )}
+
+      {/* Audio Volume & Processing */}
+      <div class="flex flex-col gap-1.5 border-t border-line pt-3">
+        <div class="flex items-center justify-between">
+          <SectionLabel
+            title="Audio Volume Boost"
+            icon={<VolumeIcon class="size-3.5 text-sky-400" />}
+          />
+          <span
+            class="flex cursor-help items-center gap-1 text-[10px] text-slate-500 transition hover:text-slate-400"
+            title="FFmpeg filters adjust volume during muxing. Video stream is copied directly without re-encoding (zero quality loss)."
+          >
+            <InfoIcon class="size-3 text-slate-500" />
+            <span>Lossless Video Copy</span>
+          </span>
+        </div>
+
+        <div class="grid grid-cols-4 gap-1">
+          {AUDIO_BOOST_SETTINGS.map((opt) => (
+            <Chip
+              key={opt.id}
+              active={audioBoost === opt.id}
+              onClick={() => setAudioBoost(opt.id)}
+              disabled={disabled}
+              title={opt.tooltip}
+            >
+              <span class="block w-full text-center truncate">{opt.label}</span>
+            </Chip>
+          ))}
+        </div>
+
+        {audioBoost !== 'none' && (
+          <p class="text-[11px] leading-tight text-slate-400">
+            <span class="font-medium text-slate-300">
+              {AUDIO_BOOST_SETTINGS.find((o) => o.id === audioBoost)?.label}:
+            </span>{' '}
+            {AUDIO_BOOST_SETTINGS.find((o) => o.id === audioBoost)?.description}
+          </p>
+        )}
+      </div>
 
       <label class="flex flex-col gap-1.5 border-t border-line pt-3">
         <SectionLabel title="Destination" />

@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, type WebFrameMain } from 'electron'
 import {
   MF_ANALYZE_CANCEL,
   MF_ANALYZE_ENTRY,
@@ -30,6 +30,7 @@ import {
   MF_FETCH_CHAPTERS,
   MF_FETCH_TRANSCRIPT,
   MF_SAVE_TEXT_FILE,
+  MF_PREVIEW_SET_VOLUME_BOOST,
   MF_UPDATER_APPLY,
   MF_UPDATER_CHECK,
   MF_APP_VERSION,
@@ -341,6 +342,90 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
       }
     },
   )
+
+  ipcMain.handle(MF_PREVIEW_SET_VOLUME_BOOST, async (event, payload: unknown): Promise<boolean> => {
+    if (
+      typeof payload !== 'number' ||
+      !Number.isFinite(payload) ||
+      payload < 0.1 ||
+      payload > 5.0
+    ) {
+      return false
+    }
+    const boost = payload
+    const webContents = event.sender
+    const allFrames: WebFrameMain[] = []
+    const collectFrames = (frame: WebFrameMain) => {
+      for (const child of frame.frames) {
+        allFrames.push(child)
+        collectFrames(child)
+      }
+    }
+    try {
+      collectFrames(webContents.mainFrame)
+    } catch {
+      return false
+    }
+
+    const script = `
+        (() => {
+          try {
+            window.__mf_target_boost = ${Number(boost)};
+            const apply = () => {
+              try {
+                const video = document.querySelector('video') || document.querySelector('audio');
+                if (!video) return;
+                if (video.muted && window.__mf_target_boost > 1) video.muted = false;
+                if (window.__mf_target_boost > 1 && video.volume < 1) video.volume = 1;
+
+                if (!video.__mf_connected) {
+                  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                  if (!AudioCtx) return;
+                  if (!window.__mf_audio_ctx) {
+                    window.__mf_audio_ctx = new AudioCtx();
+                  }
+                  const ctx = window.__mf_audio_ctx;
+                  const source = ctx.createMediaElementSource(video);
+                  const gain = ctx.createGain();
+                  source.connect(gain);
+                  gain.connect(ctx.destination);
+                  window.__mf_gain_node = gain;
+                  video.__mf_connected = true;
+                }
+
+                if (window.__mf_gain_node) {
+                  window.__mf_gain_node.gain.value = window.__mf_target_boost;
+                }
+                if (window.__mf_audio_ctx && window.__mf_audio_ctx.state === 'suspended') {
+                  window.__mf_audio_ctx.resume().catch(() => {});
+                }
+              } catch (err) {
+                // ignore
+              }
+            };
+            apply();
+            if (!window.__mf_hooked) {
+              window.__mf_hooked = true;
+              document.addEventListener('play', apply, true);
+              document.addEventListener('playing', apply, true);
+              document.addEventListener('loadeddata', apply, true);
+            }
+            return true;
+          } catch (e) {
+            return false;
+          }
+        })()
+      `
+
+    for (const frame of allFrames) {
+      try {
+        await frame.executeJavaScript(script, true)
+      } catch {
+        // ignore frame errors if navigated
+      }
+    }
+    return true
+  })
 }
 
 function parseSearchRequest(payload: unknown): {

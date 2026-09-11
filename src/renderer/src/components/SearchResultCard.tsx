@@ -56,7 +56,7 @@ import {
   SoundcloudIcon,
   ThumbsUpIcon,
 } from './icons'
-import { InlineVideoPreview } from './InlineVideoPreview'
+import { InlineVideoPreview, VolumeBoosterControl } from './InlineVideoPreview'
 import { CheckSquare } from './PreviewPanel'
 
 export type { ChapterMarker, TranscriptCue }
@@ -242,6 +242,7 @@ export function SearchResultCard({
   }, [isSoundCloud, scSpecs, isBilibili, biliSpecs, entry.title])
 
   const [selectedPresetId, setSelectedPresetId] = useState(defaultPresetId)
+  const [previewVolumeBoost, setPreviewVolumeBoost] = useState<number>(1)
   const previewActive = activePreviewUrl.value === entry.url
   const setPreviewActive = (active: boolean) => {
     if (active) {
@@ -1966,6 +1967,7 @@ export function SearchResultCard({
                     url={entry.url}
                     title={entry.title}
                     startSec={seekSec}
+                    volumeBoost={previewVolumeBoost}
                     onClose={() => setPreviewActive(false)}
                     hideHeaderControls
                     onTimeUpdate={(t) => {
@@ -1981,44 +1983,54 @@ export function SearchResultCard({
 
                 {/* Video Quick Navigation Bar below player */}
                 <div class="mt-2.5 flex w-full flex-wrap items-center justify-between gap-2 px-1">
-                  {/* Quick Seek Scrubbing */}
-                  <div class="flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const target = Math.max(0, currentTimeSec - 10)
-                        setSeekSec(target)
-                        setCurrentTimeSec(target)
-                      }}
-                      title="Jump 10 seconds backward"
-                      class="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:border-orange-400 hover:bg-orange-50 hover:text-[#ea580c] transition dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-300 dark:hover:bg-orange-950/40"
-                    >
-                      <RotateCcwIcon class="size-3 text-neutral-400" />
-                      <span>-10s</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const target = Math.min(entry.durationSec ?? 999999, currentTimeSec + 10)
-                        setSeekSec(target)
-                        setCurrentTimeSec(target)
-                      }}
-                      title="Jump 10 seconds forward"
-                      class="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:border-orange-400 hover:bg-orange-50 hover:text-[#ea580c] transition dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-300 dark:hover:bg-orange-950/40"
-                    >
-                      <span>+10s</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSeekSec(0)
-                        setCurrentTimeSec(0)
-                      }}
-                      title="Restart from beginning"
-                      class="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:border-orange-400 hover:bg-orange-50 hover:text-[#ea580c] transition dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-300 dark:hover:bg-orange-950/40"
-                    >
-                      <span>Restart (0:00)</span>
-                    </button>
+                  {/* Quick Seek Scrubbing & Volume Booster */}
+                  <div class="flex flex-wrap items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
+                    <div class="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const target = Math.max(0, currentTimeSec - 10)
+                          setSeekSec(target)
+                          setCurrentTimeSec(target)
+                        }}
+                        title="Jump 10 seconds backward"
+                        class="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:border-orange-400 hover:bg-orange-50 hover:text-[#ea580c] transition dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-300 dark:hover:bg-orange-950/40"
+                      >
+                        <RotateCcwIcon class="size-3 text-neutral-400" />
+                        <span>-10s</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const target = Math.min(entry.durationSec ?? 999999, currentTimeSec + 10)
+                          setSeekSec(target)
+                          setCurrentTimeSec(target)
+                        }}
+                        title="Jump 10 seconds forward"
+                        class="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:border-orange-400 hover:bg-orange-50 hover:text-[#ea580c] transition dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-300 dark:hover:bg-orange-950/40"
+                      >
+                        <span>+10s</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSeekSec(0)
+                          setCurrentTimeSec(0)
+                        }}
+                        title="Restart from beginning"
+                        class="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:border-orange-400 hover:bg-orange-50 hover:text-[#ea580c] transition dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-300 dark:hover:bg-orange-950/40"
+                      >
+                        <span>Restart (0:00)</span>
+                      </button>
+                    </div>
+
+                    <div class="hidden h-3.5 w-px bg-neutral-300 sm:block dark:bg-neutral-700" />
+
+                    <VolumeBoosterControl
+                      volumeBoost={previewVolumeBoost}
+                      onChange={setPreviewVolumeBoost}
+                      isIframe={true}
+                    />
                   </div>
 
                   {/* Shortcuts & Webpage link */}

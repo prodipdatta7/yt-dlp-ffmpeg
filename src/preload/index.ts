@@ -27,6 +27,7 @@ import {
   MF_FETCH_CHAPTERS,
   MF_FETCH_TRANSCRIPT,
   MF_SAVE_TEXT_FILE,
+  MF_PREVIEW_SET_VOLUME_BOOST,
   MF_SETTINGS_CLEAR_COOKIES,
   MF_SETTINGS_GET,
   MF_SETTINGS_IMPORT_COOKIES,
@@ -161,6 +162,8 @@ const api: MfApi = {
     ipcRenderer.invoke(MF_FETCH_TRANSCRIPT, url),
   saveTextFile: (defaultFilename: string, content: string): Promise<SaveTextFileResult> =>
     ipcRenderer.invoke(MF_SAVE_TEXT_FILE, defaultFilename, content),
+  setPreviewVolumeBoost: (boost: number): Promise<boolean> =>
+    ipcRenderer.invoke(MF_PREVIEW_SET_VOLUME_BOOST, boost),
 }
 
 contextBridge.exposeInMainWorld('mf', api)

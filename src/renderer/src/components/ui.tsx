@@ -72,11 +72,13 @@ export function Chip({
   active,
   onClick,
   disabled = false,
+  title,
   children,
 }: {
   active: boolean
   onClick: () => void
   disabled?: boolean
+  title?: string
   children: ComponentChildren
 }) {
   return (
@@ -84,6 +86,7 @@ export function Chip({
       type="button"
       onClick={onClick}
       disabled={disabled}
+      title={title}
       aria-pressed={active}
       class={`mf-focus-ring mf-num rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${
         active

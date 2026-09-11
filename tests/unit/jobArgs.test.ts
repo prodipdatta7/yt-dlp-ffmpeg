@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildAdvancedArgs,
+  buildAudioBoostArgs,
   buildAudioOnlyArgs,
   buildBaseDownloadArgs,
   buildDownloadArgs,
@@ -155,5 +156,104 @@ describe('buildDownloadArgs unified choke point', () => {
     expect(args[0]).toBe('-f')
     expect(args[1]).toBe('137+140/b')
     expect(args.at(-1)).toBe('u')
+  })
+})
+
+describe('buildAudioBoostArgs and download integration', () => {
+  const ff = 'C:/bin/ffmpeg.exe'
+  const tpl = outputTemplateFor('C:/tmp')
+
+  it('returns empty array when audioBoost is none or omitted', () => {
+    expect(buildAudioBoostArgs({ url: 'u', mode: 'video-audio', destDir: 'd' })).toEqual([])
+    expect(
+      buildAudioBoostArgs({ url: 'u', mode: 'video-audio', audioBoost: 'none', destDir: 'd' }),
+    ).toEqual([])
+  })
+
+  it('builds ExtractAudio postprocessor args for audio-only mode', () => {
+    const norm = buildAudioBoostArgs({
+      url: 'u',
+      mode: 'audio-only',
+      audioFormat: 'mp3',
+      audioBoost: 'normalize',
+      destDir: 'd',
+    })
+    expect(norm).toEqual([
+      '--postprocessor-args',
+      'ExtractAudio+ffmpeg:-af loudnorm=I=-16:TP=-1.5:LRA=11',
+    ])
+
+    const dyn = buildAudioBoostArgs({
+      url: 'u',
+      mode: 'audio-only',
+      audioFormat: 'flac',
+      audioBoost: 'dynamic',
+      destDir: 'd',
+    })
+    expect(dyn).toEqual(['--postprocessor-args', 'ExtractAudio+ffmpeg:-af dynaudnorm'])
+
+    const boost6 = buildAudioBoostArgs({
+      url: 'u',
+      mode: 'audio-only',
+      audioFormat: 'wav',
+      audioBoost: 'boost-6db',
+      destDir: 'd',
+    })
+    expect(boost6).toEqual(['--postprocessor-args', 'ExtractAudio+ffmpeg:-af volume=6dB'])
+  })
+
+  it('builds Merger postprocessor args with aac for mp4/mkv video-audio', () => {
+    const mp4 = buildAudioBoostArgs({
+      url: 'u',
+      mode: 'video-audio',
+      container: 'mp4',
+      audioBoost: 'normalize',
+      destDir: 'd',
+    })
+    expect(mp4).toEqual([
+      '--postprocessor-args',
+      'Merger+ffmpeg:-c:a aac -b:a 192k -af loudnorm=I=-16:TP=-1.5:LRA=11',
+    ])
+
+    const mkv = buildAudioBoostArgs({
+      url: 'u',
+      mode: 'video-audio',
+      container: 'mkv',
+      audioBoost: 'boost-6db',
+      destDir: 'd',
+    })
+    expect(mkv).toEqual(['--postprocessor-args', 'Merger+ffmpeg:-c:a aac -b:a 192k -af volume=6dB'])
+  })
+
+  it('builds Merger postprocessor args with libopus for webm container', () => {
+    const webm = buildAudioBoostArgs({
+      url: 'u',
+      mode: 'video-audio',
+      container: 'webm',
+      audioBoost: 'normalize',
+      destDir: 'd',
+    })
+    expect(webm).toEqual([
+      '--postprocessor-args',
+      'Merger+ffmpeg:-c:a libopus -b:a 160k -af loudnorm=I=-16:TP=-1.5:LRA=11',
+    ])
+  })
+
+  it('integrates cleanly into buildDownloadArgs with URL remaining terminal', () => {
+    const args = buildDownloadArgs(
+      {
+        url: 'https://example.com/video',
+        mode: 'video-audio',
+        tier: 1080,
+        container: 'mp4',
+        audioBoost: 'normalize',
+        destDir: 'd',
+      },
+      ff,
+      tpl,
+    )
+    expect(args).toContain('--postprocessor-args')
+    expect(args).toContain('Merger+ffmpeg:-c:a aac -b:a 192k -af loudnorm=I=-16:TP=-1.5:LRA=11')
+    expect(args.at(-1)).toBe('https://example.com/video')
   })
 })

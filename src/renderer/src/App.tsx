@@ -9,6 +9,7 @@ import {
   PlaylistBanner,
   PlaylistEntries,
   VideoBanner,
+  VideoPreviewTab,
 } from './components/PreviewPanel'
 import { QueueList } from './components/QueueList'
 import { UrlBar } from './components/UrlBar'
@@ -244,6 +245,7 @@ function configFor(
     estimatedBytes: selection.estimatedBytes ?? undefined,
     isLive,
     playlistTitle: playlistTitle || undefined,
+    audioBoost: selection.audioBoost,
   }
   switch (selection.mode) {
     case 'video-audio':
@@ -266,7 +268,7 @@ function configFor(
   }
 }
 
-type StreamTab = 'entries' | 'streams' | 'details'
+type StreamTab = 'preview' | 'entries' | 'streams' | 'details'
 
 interface PausedQueueRun {
   entries: Array<{ url: string; title: string }>
@@ -548,7 +550,7 @@ export function App() {
       setStreamTab('entries')
       scrollRef.current?.scrollTo({ top: 0 })
     } else {
-      setStreamTab('streams')
+      setStreamTab('preview')
     }
   }, [analysis.value?.metadata.id])
 
@@ -975,7 +977,11 @@ export function App() {
                   {isPlaylist ? (
                     <PlaylistBanner result={result!} hydration={playlistHydration.value} />
                   ) : (
-                    <VideoBanner result={result!} />
+                    <VideoBanner
+                      result={result!}
+                      onOpenPreviewTab={() => setStreamTab('preview')}
+                      isPreviewActive={streamTab === 'preview'}
+                    />
                   )}
 
                   {(() => {
@@ -986,6 +992,7 @@ export function App() {
                           { id: 'details', label: 'Details' },
                         ]
                       : [
+                          { id: 'preview', label: 'Preview' },
                           { id: 'streams', label: `Streams (${result!.formats.length})` },
                           { id: 'details', label: 'Details' },
                         ]
@@ -1015,6 +1022,7 @@ export function App() {
                   })()}
 
                   <div class="flex min-h-0 flex-1 flex-col">
+                    {streamTab === 'preview' && !isPlaylist && <VideoPreviewTab result={result!} />}
                     {streamTab === 'entries' && isPlaylist && (
                       <PlaylistEntries
                         result={result!}

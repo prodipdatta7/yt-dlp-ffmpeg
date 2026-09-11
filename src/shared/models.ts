@@ -112,6 +112,14 @@ export const LOSSLESS_AUDIO_FORMATS: readonly AudioFormat[] = ['flac', 'wav']
 export type BitrateTier = '320K' | '192K' | '128K'
 export const BITRATE_TIERS: readonly BitrateTier[] = ['320K', '192K', '128K']
 
+export type AudioBoostOption = 'none' | 'normalize' | 'dynamic' | 'boost-6db'
+export const AUDIO_BOOST_OPTIONS: readonly AudioBoostOption[] = [
+  'none',
+  'normalize',
+  'dynamic',
+  'boost-6db',
+]
+
 export type SearchSort = 'relevance' | 'newest' | 'views'
 export type UploadRecency = 'all' | '24h' | 'week' | 'month' | 'year'
 export type SearchContentType = 'all' | 'video' | 'playlist' | 'reel' | 'music'
@@ -246,6 +254,7 @@ export interface JobConfig {
   videoFormatId?: string
   audioFormatId?: string
   destDir: string
+  audioBoost?: AudioBoostOption
   estimatedBytes?: number
   isLive?: boolean
   /** Playlist downloads nest into a sanitized subfolder named after this title. */

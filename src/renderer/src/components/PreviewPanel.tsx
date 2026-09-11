@@ -24,6 +24,7 @@ import {
   HardDriveIcon,
   InfoIcon,
   LayersIcon,
+  MaximizeIcon,
   PauseIcon,
   PlayIcon,
   QueueIcon,
@@ -31,7 +32,11 @@ import {
   Spinner,
 } from './icons'
 import { Pill, StatTile } from './ui'
-import { InlineVideoPreview, InlineVideoPreviewModal } from './InlineVideoPreview'
+import {
+  InlineVideoPreview,
+  InlineVideoPreviewModal,
+  VolumeBoosterControl,
+} from './InlineVideoPreview'
 
 function LiveBadge() {
   return (
@@ -107,10 +112,27 @@ export function LoadingSkeleton() {
 }
 
 /** Horizontal banner for a single video — pairs with the tabbed panel below it. */
-export function VideoBanner({ result }: { result: AnalyzeResult }) {
+export function VideoBanner({
+  result,
+  onOpenPreviewTab,
+  isPreviewActive = false,
+}: {
+  result: AnalyzeResult
+  onOpenPreviewTab?: () => void
+  isPreviewActive?: boolean
+}) {
   const { metadata } = result
   const [previewActive, setPreviewActive] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
+  const [previewVolumeBoost, setPreviewVolumeBoost] = useState<number>(1)
+
+  const handlePreviewClick = () => {
+    if (onOpenPreviewTab) {
+      onOpenPreviewTab()
+    } else {
+      setPreviewActive(!previewActive)
+    }
+  }
 
   const source = sourceLabel(metadata.webpageUrl)
   const chips: Array<{ Icon: typeof ClockIcon; text: string }> = []
@@ -123,11 +145,12 @@ export function VideoBanner({ result }: { result: AnalyzeResult }) {
 
   return (
     <div class="mf-card mf-card-hover flex shrink-0 items-stretch gap-4 p-3.5">
-      {previewActive ? (
+      {previewActive && !onOpenPreviewTab ? (
         <ThumbFrame className="w-52 sm:w-60 aspect-video">
           <InlineVideoPreview
             url={metadata.webpageUrl}
             title={metadata.title}
+            volumeBoost={previewVolumeBoost}
             onClose={() => setPreviewActive(false)}
             onExpand={() => setModalOpen(true)}
             className="size-full"
@@ -143,13 +166,13 @@ export function VideoBanner({ result }: { result: AnalyzeResult }) {
           <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-scrim/45 via-transparent to-transparent" />
           <button
             type="button"
-            onClick={() => setPreviewActive(true)}
-            title="Play inline video preview"
+            onClick={handlePreviewClick}
+            title={onOpenPreviewTab ? 'Open video preview player' : 'Play inline video preview'}
             class="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity duration-200 group-hover:opacity-100 hover:bg-black/45"
           >
             <span class="flex items-center gap-1.5 rounded-full bg-sky-600 px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-md transition-transform duration-150 hover:scale-105 active:scale-95">
               <PlayIcon class="size-3.5 fill-white" />
-              <span>Preview</span>
+              <span>{onOpenPreviewTab && isPreviewActive ? 'Viewing Preview' : 'Preview'}</span>
             </span>
           </button>
           {metadata.isLive ? <LiveBadge /> : <DurationBadge seconds={metadata.durationSec} />}
@@ -161,13 +184,13 @@ export function VideoBanner({ result }: { result: AnalyzeResult }) {
           </span>
           <button
             type="button"
-            onClick={() => setPreviewActive(true)}
-            title="Play inline video preview"
+            onClick={handlePreviewClick}
+            title={onOpenPreviewTab ? 'Open video preview player' : 'Play inline video preview'}
             class="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity duration-200 group-hover:opacity-100 hover:bg-black/45"
           >
             <span class="flex items-center gap-1.5 rounded-full bg-sky-600 px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-md transition-transform duration-150 hover:scale-105 active:scale-95">
               <PlayIcon class="size-3.5 fill-white" />
-              <span>Preview</span>
+              <span>{onOpenPreviewTab && isPreviewActive ? 'Viewing Preview' : 'Preview'}</span>
             </span>
           </button>
           {metadata.isLive ? <LiveBadge /> : <DurationBadge seconds={metadata.durationSec} />}
@@ -199,17 +222,40 @@ export function VideoBanner({ result }: { result: AnalyzeResult }) {
           ))}
           <button
             type="button"
-            onClick={() => setPreviewActive(!previewActive)}
-            title={previewActive ? 'Close inline preview' : 'Preview video'}
+            onClick={handlePreviewClick}
+            title={
+              onOpenPreviewTab
+                ? isPreviewActive
+                  ? 'Preview tab is currently active'
+                  : 'Open preview player tab'
+                : previewActive
+                  ? 'Close inline preview'
+                  : 'Preview video'
+            }
             class={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-semibold transition ${
-              previewActive
+              (onOpenPreviewTab ? isPreviewActive : previewActive)
                 ? 'border-sky-500 bg-sky-500/15 text-sky-400'
                 : 'border-line-strong bg-recess/60 text-ink hover:bg-wash-1 hover:text-sky-400'
             }`}
           >
             <EyeIcon class="size-3" />
-            <span>{previewActive ? 'Close Preview' : 'Preview Video'}</span>
+            <span>
+              {onOpenPreviewTab
+                ? isPreviewActive
+                  ? 'Preview Active'
+                  : 'Preview Video'
+                : previewActive
+                  ? 'Close Preview'
+                  : 'Preview Video'}
+            </span>
           </button>
+          {!onOpenPreviewTab && previewActive && (
+            <VolumeBoosterControl
+              volumeBoost={previewVolumeBoost}
+              onChange={setPreviewVolumeBoost}
+              isIframe={true}
+            />
+          )}
           {metadata.isLive && (
             <Pill tone="rose">
               <span class="mf-breathe size-1.5 rounded-full bg-current" />
@@ -225,6 +271,123 @@ export function VideoBanner({ result }: { result: AnalyzeResult }) {
           title={metadata.title}
           uploader={metadata.uploader}
           onClose={() => setModalOpen(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+/** Dedicated preview tab content for the downloader screen */
+export function VideoPreviewTab({ result }: { result: AnalyzeResult }) {
+  const { metadata } = result
+  const [modalOpen, setModalOpen] = useState(false)
+  const [previewVolumeBoost, setPreviewVolumeBoost] = useState<number>(1)
+  const [currentTime, setCurrentTime] = useState<number>(0)
+  const [targetSec, setTargetSec] = useState<number | undefined>(undefined)
+
+  const seekBy = (delta: number) => {
+    const next = Math.max(0, currentTime + delta)
+    setCurrentTime(next)
+    setTargetSec(next)
+  }
+
+  const restart = () => {
+    setCurrentTime(0)
+    setTargetSec(0)
+  }
+
+  return (
+    <div class="mf-card flex min-h-0 flex-1 flex-col overflow-hidden p-3.5">
+      {/* 16:9 Video Player Container */}
+      <div class="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-xl border border-line-strong bg-black shadow-inner">
+        {!modalOpen ? (
+          <InlineVideoPreview
+            url={metadata.webpageUrl}
+            title={metadata.title}
+            startSec={targetSec}
+            volumeBoost={previewVolumeBoost}
+            onExpand={() => setModalOpen(true)}
+            onTimeUpdate={setCurrentTime}
+            hideHeaderControls={true}
+            className="size-full"
+          />
+        ) : (
+          <div class="flex size-full flex-col items-center justify-center gap-2.5 bg-neutral-950 p-4 text-center">
+            <span class="flex size-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-sky-400">
+              <MaximizeIcon class="size-6" />
+            </span>
+            <p class="text-sm font-semibold text-slate-200">Playing in Expanded Preview</p>
+            <p class="text-xs text-slate-500">Close the modal window (Esc) to return here</p>
+          </div>
+        )}
+      </div>
+
+      {/* Control bar below player */}
+      <div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-2.5">
+        <div class="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => seekBy(-10)}
+            title="Seek back 10 seconds"
+            class="mf-focus-ring flex items-center gap-1 rounded-lg border border-line bg-wash-1 px-2.5 py-1 text-xs font-semibold text-slate-300 transition hover:border-line-strong hover:text-ink active:scale-95"
+          >
+            <span>-10s</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => seekBy(10)}
+            title="Seek forward 10 seconds"
+            class="mf-focus-ring flex items-center gap-1 rounded-lg border border-line bg-wash-1 px-2.5 py-1 text-xs font-semibold text-slate-300 transition hover:border-line-strong hover:text-ink active:scale-95"
+          >
+            <span>+10s</span>
+          </button>
+          <button
+            type="button"
+            onClick={restart}
+            title="Restart from beginning (0:00)"
+            class="mf-focus-ring flex items-center gap-1 rounded-lg border border-line bg-wash-1 px-2.5 py-1 text-xs font-semibold text-slate-300 transition hover:border-line-strong hover:text-ink active:scale-95"
+          >
+            <span>Restart</span>
+          </button>
+          {currentTime > 0 && (
+            <span class="mf-num pl-1.5 text-[11px] font-medium text-slate-400">
+              {fmtDuration(Math.round(currentTime))}
+              {metadata.durationSec ? ` / ${fmtDuration(metadata.durationSec)}` : ''}
+            </span>
+          )}
+        </div>
+
+        <div class="flex items-center gap-2">
+          <VolumeBoosterControl
+            volumeBoost={previewVolumeBoost}
+            onChange={setPreviewVolumeBoost}
+            isIframe={true}
+          />
+          <button
+            type="button"
+            onClick={() => setModalOpen(true)}
+            title="Expand to Fullscreen Modal Preview (Esc to close)"
+            class="mf-focus-ring flex items-center gap-1.5 rounded-lg border border-line bg-wash-1 px-2.5 py-1 text-xs font-semibold text-slate-300 transition hover:border-line-strong hover:text-ink active:scale-95"
+          >
+            <MaximizeIcon class="size-3.5" />
+            <span>Expand</span>
+          </button>
+        </div>
+      </div>
+
+      {modalOpen && (
+        <InlineVideoPreviewModal
+          url={metadata.webpageUrl}
+          title={metadata.title}
+          uploader={metadata.uploader}
+          startSec={currentTime}
+          onClose={(lastTime) => {
+            setModalOpen(false)
+            if (lastTime !== undefined && Number.isFinite(lastTime)) {
+              setCurrentTime(lastTime)
+              setTargetSec(lastTime)
+            }
+          }}
         />
       )}
     </div>
