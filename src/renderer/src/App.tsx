@@ -928,7 +928,7 @@ export function App() {
     <div class="flex h-full flex-col">
       <TitleBar />
 
-      <div class="flex min-h-0 flex-1">
+      <div class="flex min-h-0 min-w-0 flex-1">
         <NavRail
           working={busy}
           onShowNotice={() => setShowNotice(true)}
@@ -936,11 +936,11 @@ export function App() {
         />
 
         {activeView.value === 'settings' ? (
-          <main class="mf-rise min-h-0 flex-1 overflow-y-auto px-6 py-8">
+          <main class="mf-rise min-h-0 min-w-0 flex-1 overflow-y-auto px-6 py-8">
             <SettingsScreen />
           </main>
         ) : activeView.value === 'search' ? (
-          <main class="mf-rise flex min-h-0 flex-1 flex-col gap-3 px-4 pb-3 pt-3.5">
+          <main class="mf-rise flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pb-3 pt-3.5">
             <SearchScreen
               onOpenInDownloader={openSearchResultInDownloader}
               onAddToQueue={(items) => setQueueDraft(items)}
@@ -949,7 +949,7 @@ export function App() {
             />
           </main>
         ) : activeView.value === 'queue' ? (
-          <main class="mf-rise min-h-0 flex-1 overflow-y-auto px-6 py-8">
+          <main class="mf-rise min-h-0 min-w-0 flex-1 overflow-y-auto px-6 py-8">
             <QueueList
               onStopAfterCurrent={
                 queueRunMode.value === 'sequential' ? stopAfterCurrent : undefined
@@ -960,7 +960,7 @@ export function App() {
             />
           </main>
         ) : (
-          <main ref={scrollRef} class="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-3 pt-3.5">
+          <main ref={scrollRef} class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pb-3 pt-3.5">
             <UrlBar />
 
             {!analyzing.value && !result ? (

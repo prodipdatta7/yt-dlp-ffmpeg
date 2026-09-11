@@ -39,7 +39,7 @@ export function SearchResults({
   )
 
   return (
-    <div class="mf-card flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div class="mf-card flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div class="flex flex-wrap items-center justify-between gap-3 px-3 pt-2.5">
         <button
           onClick={() => setAllResultsSelected(!allSelected)}
@@ -49,7 +49,7 @@ export function SearchResults({
           <CheckSquare checked={allSelected} partial={someSelected} />
           {allSelected ? 'Deselect all' : 'Select all'}
         </button>
-        <span class="flex items-center gap-2">
+        <span class="flex flex-wrap items-center gap-2">
           <span class="mf-num text-[11px] font-medium text-neutral-500 dark:text-slate-400">
             {selectedCount}/{results.length} selected
             {results.length !== total ? ` · ${total} fetched` : ''}
@@ -83,7 +83,7 @@ export function SearchResults({
 
       {results.length > 0 ? (
         <ol
-          class={`mt-2 flex min-h-0 flex-1 flex-col gap-3.5 ${
+          class={`mt-2 flex min-h-0 min-w-0 flex-1 flex-col gap-3.5 ${
             activePreviewUrl.value !== null ? 'overflow-y-hidden' : 'overflow-y-auto'
           } p-2.5`}
         >

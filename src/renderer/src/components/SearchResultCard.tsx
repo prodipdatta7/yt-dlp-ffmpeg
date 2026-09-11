@@ -403,9 +403,31 @@ export function SearchResultCard({
   const [isPlaying, setIsPlaying] = useState(true)
   const lastRealUpdateRef = useRef<number>(Date.now())
   const activeChapterRef = useRef<HTMLButtonElement>(null)
+  const leftColRef = useRef<HTMLDivElement>(null)
+  const [leftColHeight, setLeftColHeight] = useState<number | null>(null)
   const [seekSec, setSeekSec] = useState<number | undefined>(undefined)
   const [copiedLink, setCopiedLink] = useState(false)
   const [chapterFilter, setChapterFilter] = useState('')
+
+  // Sync right-column height to video column on md+ screens to eliminate empty space and tab height jumps
+  useEffect(() => {
+    if (!previewActive) {
+      setLeftColHeight(null)
+      return
+    }
+    const el = leftColRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const h = Math.round(entry.contentRect.height)
+        if (h > 100) {
+          setLeftColHeight(h)
+        }
+      }
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [previewActive])
 
   const [fetchedData, setFetchedData] = useState<VideoChaptersResult | null>(() => {
     return entry.url ? (chaptersCache.get(entry.url) ?? null) : null
@@ -683,9 +705,9 @@ export function SearchResultCard({
       /drama|records|vevo|music|channel|tv|official|sky|capital/i.test(entry.uploader!))
 
   return (
-    <li class="list-none">
+    <li class="list-none min-w-0">
       <div
-        class={`w-full rounded-2xl border p-3.5 transition-all duration-150 sm:p-4 text-left ${
+        class={`w-full min-w-0 rounded-2xl border p-3.5 transition-all duration-150 sm:p-4 text-left ${
           selected
             ? 'border-[#ff5500]/70 bg-orange-50/40 shadow-md shadow-orange-500/10 dark:border-sky-500/50 dark:bg-[#161d2d]'
             : previewActive
@@ -693,7 +715,7 @@ export function SearchResultCard({
               : 'border-neutral-200 bg-white shadow-xs hover:border-neutral-300 hover:shadow-sm dark:border-white/10 dark:bg-[#131722]/95 dark:hover:border-neutral-700'
         }`}
       >
-        <div class="flex flex-col gap-3.5 sm:flex-row sm:items-start">
+        <div class="flex min-w-0 flex-col gap-3.5 sm:flex-row sm:items-start">
           {/* Checkbox column */}
           <div class="pt-0.5 sm:pt-1 shrink-0">
             <button
@@ -710,7 +732,7 @@ export function SearchResultCard({
           {isSoundCloud && scSpecs ? (
             <>
               {/* Artwork column (Square aspect-square) */}
-              <div class="relative aspect-square w-full shrink-0 overflow-hidden rounded-xl border border-neutral-200/80 bg-neutral-100 shadow-inner sm:w-44 md:w-52 dark:border-white/5 dark:bg-neutral-900">
+              <div class="relative aspect-square w-full shrink-0 overflow-hidden rounded-xl border border-neutral-200/80 bg-neutral-100 shadow-inner sm:w-40 md:w-44 xl:w-52 dark:border-white/5 dark:bg-neutral-900">
                 {entry.thumbnailUrl && !imgError ? (
                   <img
                     src={entry.thumbnailUrl}
@@ -921,16 +943,16 @@ export function SearchResultCard({
                 {/* Action Bar (Bottom Row) */}
                 <div class="mt-2.5 flex flex-wrap items-center justify-between gap-3">
                   {/* Left: Format Dropdown */}
-                  <div class="flex items-center gap-2">
-                    <span class="text-xs font-medium text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
+                  <div class="flex min-w-0 flex-wrap items-center gap-2">
+                    <span class="shrink-0 text-xs font-medium text-neutral-500 dark:text-neutral-400">
                       Download format:
                     </span>
-                    <div class="relative">
+                    <div class="relative min-w-0 max-w-full">
                       <select
                         value={selectedPresetId}
                         onChange={(e) => setSelectedPresetId(e.currentTarget.value)}
                         disabled={disabled}
-                        class="cursor-pointer appearance-none rounded-lg border border-neutral-300 bg-white py-1.5 pl-3 pr-8 text-xs font-medium text-neutral-800 shadow-xs outline-none transition hover:border-neutral-400 focus:border-[#ff5500] focus:ring-1 focus:ring-[#ff5500] disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-200 dark:hover:border-neutral-600"
+                        class="max-w-full cursor-pointer appearance-none rounded-lg border border-neutral-300 bg-white py-1.5 pl-3 pr-8 text-xs font-medium text-neutral-800 shadow-xs outline-none transition hover:border-neutral-400 focus:border-[#ff5500] focus:ring-1 focus:ring-[#ff5500] disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-200 dark:hover:border-neutral-600 truncate"
                       >
                         {presets.map((preset) => {
                           const bytes = estimatePresetBytes(preset, entry.durationSec ?? null)
@@ -970,7 +992,7 @@ export function SearchResultCard({
                   </div>
 
                   {/* Right: Actions */}
-                  <div class="flex items-center gap-2">
+                  <div class="flex shrink-0 items-center gap-2 sm:ml-auto">
                     {/* Preview / Play button */}
                     <button
                       type="button"
@@ -1094,7 +1116,7 @@ export function SearchResultCard({
             <>
               {/* Dedicated Bilibili Layout (Single 4K / Multi-P Course Series) */}
               {/* Thumbnail column with Bilibili Badges */}
-              <div class="relative aspect-[16/9] w-full shrink-0 overflow-hidden rounded-xl border border-neutral-200/80 bg-neutral-100 shadow-inner sm:w-56 md:w-64 dark:border-white/5 dark:bg-neutral-900">
+              <div class="relative aspect-[16/9] w-full shrink-0 overflow-hidden rounded-xl border border-neutral-200/80 bg-neutral-100 shadow-inner sm:w-48 md:w-56 xl:w-64 dark:border-white/5 dark:bg-neutral-900">
                 {entry.thumbnailUrl && !imgError ? (
                   <img
                     src={entry.thumbnailUrl}
@@ -1267,16 +1289,16 @@ export function SearchResultCard({
                 {/* Action Bar Row */}
                 <div class="mt-2.5 flex flex-wrap items-center justify-between gap-3">
                   {/* Left: Format Dropdown */}
-                  <div class="flex items-center gap-2">
-                    <span class="whitespace-nowrap text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                  <div class="flex min-w-0 flex-wrap items-center gap-2">
+                    <span class="shrink-0 text-xs font-medium text-neutral-500 dark:text-neutral-400">
                       Download format:
                     </span>
-                    <div class="relative">
+                    <div class="relative min-w-0 max-w-full">
                       <select
                         value={selectedPresetId}
                         onChange={(e) => setSelectedPresetId(e.currentTarget.value)}
                         disabled={disabled}
-                        class="cursor-pointer appearance-none rounded-lg border border-neutral-300 bg-white py-1.5 pl-3 pr-8 text-xs font-medium text-neutral-800 shadow-xs outline-none transition hover:border-neutral-400 focus:border-[#00aeec] focus:ring-1 focus:ring-[#00aeec] disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-200 dark:hover:border-neutral-600"
+                        class="max-w-full cursor-pointer appearance-none rounded-lg border border-neutral-300 bg-white py-1.5 pl-3 pr-8 text-xs font-medium text-neutral-800 shadow-xs outline-none transition hover:border-neutral-400 focus:border-[#00aeec] focus:ring-1 focus:ring-[#00aeec] disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-200 dark:hover:border-neutral-600 truncate"
                       >
                         {presets.map((preset) => {
                           const bytes = estimatePresetBytes(preset, entry.durationSec ?? null)
@@ -1306,7 +1328,7 @@ export function SearchResultCard({
                   </div>
 
                   {/* Right: Actions */}
-                  <div class="flex items-center gap-2">
+                  <div class="flex shrink-0 items-center gap-2 sm:ml-auto">
                     {/* Eye Preview button */}
                     <button
                       type="button"
@@ -1415,7 +1437,7 @@ export function SearchResultCard({
             <>
               {/* Standard 16:9 Video Layout (YouTube, Bilibili) */}
               {/* Thumbnail column with Badges */}
-              <div class="relative aspect-[16/9] w-full shrink-0 overflow-hidden rounded-xl border border-neutral-200/80 bg-neutral-100 shadow-inner sm:w-56 md:w-64 dark:border-white/5 dark:bg-neutral-900">
+              <div class="relative aspect-[16/9] w-full shrink-0 overflow-hidden rounded-xl border border-neutral-200/80 bg-neutral-100 shadow-inner sm:w-48 md:w-56 xl:w-64 dark:border-white/5 dark:bg-neutral-900">
                 {entry.thumbnailUrl && !imgError ? (
                   <img
                     src={entry.thumbnailUrl}
@@ -1609,8 +1631,7 @@ export function SearchResultCard({
                 {/* Action Bar (Bottom Row) */}
                 <div class="mt-2.5 flex flex-wrap items-center justify-between gap-3">
                   {/* Left: Format Dropdown */}
-                  {/* Left: Format Dropdown */}
-                  <div class="flex items-center gap-2">
+                  <div class="flex min-w-0 flex-wrap items-center gap-2">
                     {isPlaylist ? (
                       <span class="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
                         <QueueIcon class="size-3.5" />
@@ -1618,15 +1639,15 @@ export function SearchResultCard({
                       </span>
                     ) : (
                       <>
-                        <span class="text-xs font-medium text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
+                        <span class="shrink-0 text-xs font-medium text-neutral-500 dark:text-neutral-400">
                           Download format:
                         </span>
-                        <div class="relative">
+                        <div class="relative min-w-0 max-w-full">
                           <select
                             value={selectedPresetId}
                             onChange={(e) => setSelectedPresetId(e.currentTarget.value)}
                             disabled={disabled || downloadDisabled}
-                            class="cursor-pointer appearance-none rounded-lg border border-neutral-300 bg-white py-1.5 pl-3 pr-8 text-xs font-medium text-neutral-800 shadow-xs outline-none transition hover:border-neutral-400 focus:border-[#ff5500] focus:ring-1 focus:ring-[#ff5500] disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-200 dark:hover:border-neutral-600"
+                            class="max-w-full cursor-pointer appearance-none rounded-lg border border-neutral-300 bg-white py-1.5 pl-3 pr-8 text-xs font-medium text-neutral-800 shadow-xs outline-none transition hover:border-neutral-400 focus:border-[#ff5500] focus:ring-1 focus:ring-[#ff5500] disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-200 dark:hover:border-neutral-600 truncate"
                           >
                             {SEARCH_FORMAT_PRESETS.map((preset) => {
                               const bytes = estimatePresetBytes(preset, entry.durationSec ?? null)
@@ -1663,7 +1684,7 @@ export function SearchResultCard({
                   </div>
 
                   {/* Right: Actions */}
-                  <div class="flex items-center gap-2">
+                  <div class="flex shrink-0 items-center gap-2 sm:ml-auto">
                     {/* Preview / Eye button */}
                     {!isPlaylist && (
                       <button
@@ -1907,7 +1928,10 @@ export function SearchResultCard({
             {/* Responsive Body: Side-by-side on md+ screens, stacked on small screens */}
             <div class="flex flex-col md:flex-row items-start gap-4 lg:gap-6 flex-1 min-h-0">
               {/* Main/Left Column: Video Player Container scaled dynamically */}
-              <div class="flex-1 min-w-0 w-full flex flex-col items-center justify-center self-stretch">
+              <div
+                ref={leftColRef}
+                class="flex-1 min-w-0 w-full flex flex-col items-center justify-start"
+              >
                 <div class="relative aspect-video w-full max-h-[48vh] sm:max-h-[54vh] md:max-h-[60vh] lg:max-h-[66vh] xl:max-h-[72vh] overflow-hidden rounded-xl border border-neutral-200/80 bg-black shadow-inner dark:border-white/10">
                   {/* Inline Video Player */}
                   <InlineVideoPreview
@@ -1991,11 +2015,18 @@ export function SearchResultCard({
               </div>
 
               {/* Side/Right Column: Video Info & Chapters Navigation Hub */}
-              <div class="w-full md:w-80 lg:w-[350px] xl:w-96 shrink-0 flex flex-col justify-between gap-3 self-stretch min-h-0">
+              <div
+                style={
+                  leftColHeight && typeof window !== 'undefined' && window.innerWidth >= 768
+                    ? { height: `${leftColHeight}px`, maxHeight: `${leftColHeight}px` }
+                    : undefined
+                }
+                class="w-full md:w-80 lg:w-[350px] xl:w-96 shrink-0 flex flex-col justify-between gap-2.5 min-h-0"
+              >
                 {/* Top Section: Tab switcher & Content */}
                 <div class="flex flex-col flex-1 min-h-0">
                   {/* Segmented Switch */}
-                  <div class="flex items-center gap-1 rounded-lg border border-neutral-200/80 bg-neutral-100/80 p-0.5 dark:border-white/10 dark:bg-neutral-800/60 mb-2.5">
+                  <div class="shrink-0 flex items-center gap-1 rounded-lg border border-neutral-200/80 bg-neutral-100/80 p-0.5 dark:border-white/10 dark:bg-neutral-800/60 mb-2.5">
                     <button
                       type="button"
                       onClick={() => setPreviewTab('chapters')}
@@ -2050,10 +2081,10 @@ export function SearchResultCard({
                   {previewTab === 'chapters' && !loadingChapters && chapters.length > 0 && (
                     <div class="flex flex-col flex-1 min-h-0">
                       {/* Chapter Header & Prev/Next */}
-                      <div class="mb-2 flex items-center justify-between">
+                      <div class="mb-2 flex items-center justify-between shrink-0">
                         <div class="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
                           <span>Chapters</span>
-                          <span class="rounded bg-orange-50 px-1.5 py-0.5 font-mono text-[10.5px] font-bold text-[#ea580c] border border-orange-200/60 dark:border-orange-900/40 dark:bg-orange-950/60 dark:text-orange-400">
+                          <span class="rounded bg-orange-50 px-1.5 py-0.5 font-mono text-[10.5px] font-bold text-[#ea580c] border border-orange-200/60 dark:border-orange-900/40 dark:bg-orange-950/60 dark:text-orange-400 normal-case tracking-normal">
                             {chapters[activeChapterIndex]?.time ?? '00:00'}
                           </span>
                         </div>
@@ -2098,7 +2129,7 @@ export function SearchResultCard({
 
                       {/* Filter chapters search if > 6 chapters */}
                       {chapters.length > 6 && (
-                        <div class="mb-2">
+                        <div class="mb-2 shrink-0">
                           <input
                             type="text"
                             value={chapterFilter}
@@ -2110,7 +2141,7 @@ export function SearchResultCard({
                       )}
 
                       {/* Scrollable list of chapters */}
-                      <div class="flex-1 min-h-0 overflow-y-auto space-y-1 max-h-[46vh] pr-1">
+                      <div class="flex-1 min-h-0 overflow-y-auto space-y-1 pr-1">
                         {filteredChapters.map((ch, idx) => {
                           const isCurrent = ch.seconds === chapters[activeChapterIndex]?.seconds
                           return (
@@ -2231,22 +2262,22 @@ export function SearchResultCard({
                   {previewTab === 'transcript' && !loadingTranscript && cues.length > 0 && (
                     <div class="flex flex-col flex-1 min-h-0">
                       {/* Header with search and auto-scroll switch */}
-                      <div class="mb-2 flex items-center justify-between gap-2">
-                        <div class="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
-                          <span>Live Transcript ({cues.length})</span>
+                      <div class="mb-2 flex items-center justify-between gap-2 shrink-0">
+                        <div class="flex min-w-0 flex-1 items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
+                          <span class="truncate">Live Transcript ({cues.length})</span>
                           {activeCueIndex >= 0 && cues[activeCueIndex] && (
-                            <span class="font-mono text-[11px] font-semibold text-[#ea580c] dark:text-orange-400">
+                            <span class="shrink-0 rounded bg-orange-50 px-1.5 py-0.5 font-mono text-[10.5px] font-bold text-[#ea580c] border border-orange-200/60 dark:border-orange-900/40 dark:bg-orange-950/60 dark:text-orange-400 normal-case tracking-normal">
                               {cues[activeCueIndex].time}
                             </span>
                           )}
                         </div>
-                        <div class="flex items-center gap-1.5">
+                        <div class="flex shrink-0 items-center gap-1.5">
                           <button
                             type="button"
                             onClick={handleDownloadTranscriptTxt}
                             disabled={downloadingTxt}
                             title="Download full transcript as formatted .txt file"
-                            class="flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-0.5 text-[10.5px] font-semibold text-neutral-700 shadow-xs transition hover:border-[#ea580c] hover:bg-orange-50/50 hover:text-[#ea580c] disabled:opacity-40 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:border-orange-500 dark:hover:bg-orange-950/30"
+                            class="flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-neutral-200 bg-white px-2 text-[10.5px] font-semibold text-neutral-700 shadow-xs transition hover:border-[#ea580c] hover:bg-orange-50/50 hover:text-[#ea580c] disabled:opacity-40 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:border-orange-500 dark:hover:bg-orange-950/30"
                           >
                             {downloadedTxt ? (
                               <>
@@ -2267,26 +2298,28 @@ export function SearchResultCard({
                             title={
                               autoScrollTranscript ? 'Auto-scroll is ON' : 'Auto-scroll is OFF'
                             }
-                            class={`flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[10.5px] font-semibold transition ${
+                            aria-label={
+                              autoScrollTranscript ? 'Auto-scroll is ON' : 'Auto-scroll is OFF'
+                            }
+                            class={`flex size-6 shrink-0 items-center justify-center rounded-md border transition ${
                               autoScrollTranscript
-                                ? 'bg-orange-100 text-[#ea580c] dark:bg-orange-950/60 dark:text-orange-300 border border-orange-200 dark:border-orange-800/40'
-                                : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 border border-neutral-200 dark:border-neutral-700'
+                                ? 'border-orange-200 bg-orange-100 text-[#ea580c] hover:bg-orange-200/80 dark:border-orange-800/40 dark:bg-orange-950/60 dark:text-orange-300 dark:hover:bg-orange-900/60'
+                                : 'border-neutral-200 bg-neutral-100 text-neutral-500 hover:bg-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700'
                             }`}
                           >
                             <span
-                              class={`size-1.5 rounded-full ${
+                              class={`size-2 rounded-full ${
                                 autoScrollTranscript
                                   ? 'bg-[#ea580c] animate-pulse'
                                   : 'bg-neutral-400'
                               }`}
                             />
-                            <span>Auto-scroll</span>
                           </button>
                         </div>
                       </div>
 
                       {/* Filter Search */}
-                      <div class="mb-2">
+                      <div class="mb-2 shrink-0">
                         <input
                           type="text"
                           value={transcriptFilter}
@@ -2297,7 +2330,7 @@ export function SearchResultCard({
                       </div>
 
                       {/* Scrollable list of cues */}
-                      <div class="flex-1 min-h-0 overflow-y-auto space-y-1 max-h-[46vh] pr-1">
+                      <div class="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-1">
                         {filteredCues.map((cue) => {
                           const isCurrent = cue.id === cues[activeCueIndex]?.id
                           return (
@@ -2375,15 +2408,15 @@ export function SearchResultCard({
 
                   {/* Tab 3: Details & Specs */}
                   {previewTab === 'info' && (
-                    <div class="flex flex-col flex-1 min-h-0 gap-2.5">
+                    <div class="flex flex-col flex-1 min-h-0 gap-2 overflow-y-auto pr-1">
                       {/* Video Metrics Grid */}
                       <div class="shrink-0">
-                        <h4 class="mb-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+                        <h4 class="mb-0.5 text-[9.5px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
                           VIDEO OVERVIEW & METRICS
                         </h4>
-                        <div class="grid grid-cols-2 gap-2 rounded-lg border border-neutral-100 bg-neutral-50/80 p-2 text-[11px] dark:border-white/5 dark:bg-neutral-900/40">
+                        <div class="grid grid-cols-2 gap-1.5 rounded-lg border border-neutral-100 bg-neutral-50/80 p-1.5 sm:p-2 text-[10.5px] sm:text-[11px] dark:border-white/5 dark:bg-neutral-900/40">
                           <div>
-                            <span class="block text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
+                            <span class="block text-[9px] font-medium text-neutral-400 dark:text-neutral-500">
                               Duration
                             </span>
                             <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
@@ -2391,7 +2424,7 @@ export function SearchResultCard({
                             </span>
                           </div>
                           <div>
-                            <span class="block text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
+                            <span class="block text-[9px] font-medium text-neutral-400 dark:text-neutral-500">
                               Total Views
                             </span>
                             <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
@@ -2399,7 +2432,7 @@ export function SearchResultCard({
                             </span>
                           </div>
                           <div>
-                            <span class="flex items-center gap-1 text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
+                            <span class="flex items-center gap-1 text-[9px] font-medium text-neutral-400 dark:text-neutral-500">
                               <CalendarIcon class="size-2.5" />
                               <span>Upload Date</span>
                             </span>
@@ -2408,7 +2441,7 @@ export function SearchResultCard({
                             </span>
                           </div>
                           <div>
-                            <span class="block text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
+                            <span class="block text-[9px] font-medium text-neutral-400 dark:text-neutral-500">
                               Likes
                             </span>
                             <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
@@ -2420,12 +2453,12 @@ export function SearchResultCard({
 
                       {/* Stream & Codec Specifications */}
                       <div class="shrink-0">
-                        <h4 class="mb-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+                        <h4 class="mb-0.5 text-[9.5px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
                           STREAM & CODEC SPECS
                         </h4>
-                        <div class="grid grid-cols-2 gap-2 rounded-lg border border-neutral-100 bg-neutral-50/80 p-2 text-[11px] dark:border-white/5 dark:bg-neutral-900/40">
+                        <div class="grid grid-cols-2 gap-1.5 rounded-lg border border-neutral-100 bg-neutral-50/80 p-1.5 sm:p-2 text-[10.5px] sm:text-[11px] dark:border-white/5 dark:bg-neutral-900/40">
                           <div>
-                            <span class="block text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
+                            <span class="block text-[9px] font-medium text-neutral-400 dark:text-neutral-500">
                               Video Codec
                             </span>
                             <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
@@ -2433,7 +2466,7 @@ export function SearchResultCard({
                             </span>
                           </div>
                           <div>
-                            <span class="block text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
+                            <span class="block text-[9px] font-medium text-neutral-400 dark:text-neutral-500">
                               Audio Codec
                             </span>
                             <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
@@ -2443,7 +2476,7 @@ export function SearchResultCard({
                             </span>
                           </div>
                           <div>
-                            <span class="block text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
+                            <span class="block text-[9px] font-medium text-neutral-400 dark:text-neutral-500">
                               Resolution
                             </span>
                             <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
@@ -2451,7 +2484,7 @@ export function SearchResultCard({
                             </span>
                           </div>
                           <div>
-                            <span class="block text-[9.5px] font-medium text-neutral-400 dark:text-neutral-500">
+                            <span class="block text-[9px] font-medium text-neutral-400 dark:text-neutral-500">
                               Bitrate
                             </span>
                             <span class="block truncate font-mono font-medium text-neutral-800 dark:text-neutral-200">
@@ -2463,11 +2496,11 @@ export function SearchResultCard({
 
                       {/* Description Box */}
                       {fullDescription && (
-                        <div class="flex flex-col flex-1 min-h-0">
-                          <h4 class="mb-1 shrink-0 text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
+                        <div class="flex flex-col shrink-0">
+                          <h4 class="mb-0.5 shrink-0 text-[9.5px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
                             DESCRIPTION
                           </h4>
-                          <div class="flex-1 min-h-[80px] max-h-[22vh] sm:max-h-[24vh] md:max-h-[26vh] overflow-y-auto rounded-lg border border-neutral-100 bg-neutral-50/70 p-2.5 text-[11px] leading-relaxed text-neutral-600 dark:border-white/5 dark:bg-neutral-900/40 dark:text-neutral-300 whitespace-pre-wrap break-words select-text pr-1">
+                          <div class="rounded-lg border border-neutral-100 bg-neutral-50/70 p-2 text-[11px] leading-relaxed text-neutral-600 dark:border-white/5 dark:bg-neutral-900/40 dark:text-neutral-300 whitespace-pre-wrap break-words select-text">
                             {fullDescription}
                           </div>
                         </div>
@@ -2477,7 +2510,7 @@ export function SearchResultCard({
                 </div>
 
                 {/* Bottom Action: Open in Downloader for Format Options */}
-                <div class="mt-auto pt-3 border-t border-neutral-100 dark:border-white/5">
+                <div class="mt-auto pt-2.5 border-t border-neutral-100 dark:border-white/5 shrink-0">
                   <button
                     type="button"
                     onClick={() => {

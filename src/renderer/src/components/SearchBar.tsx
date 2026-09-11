@@ -131,7 +131,7 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
   useDismiss(infoOpen, infoRef, () => setInfoOpen(false))
 
   return (
-    <div class="mf-search-panel flex flex-col gap-2.5">
+    <div class="mf-search-panel flex min-w-0 flex-col gap-2.5">
       <form
         onSubmit={(e) => {
           e.preventDefault()
@@ -408,7 +408,14 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
       )}
 
       {searchResults.value.length > 0 && !federated && (
-        <div class="mf-search-filter-rail app-no-drag mt-2 flex items-center overflow-x-auto bg-recess px-2 py-1.5">
+        <div
+          class="mf-search-filter-rail app-no-drag mt-2 flex w-full min-w-0 items-center overflow-x-auto bg-recess px-2 py-1.5"
+          onWheel={(e) => {
+            if (e.deltaY) {
+              e.currentTarget.scrollLeft += e.deltaY
+            }
+          }}
+        >
           <FilterGroup label="Duration">
             {DURATION_PRESETS.map((preset) => (
               <FilterChip

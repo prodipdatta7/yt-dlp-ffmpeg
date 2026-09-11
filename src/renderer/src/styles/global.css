@@ -482,7 +482,16 @@ textarea {
 }
 
 .mf-search-filter-rail::-webkit-scrollbar {
-  display: none;
+  height: 4px;
+}
+
+.mf-search-filter-rail::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mf-search-filter-rail::-webkit-scrollbar-thumb {
+  background: var(--color-line-strong);
+  border-radius: 9999px;
 }
 
 .mf-search-filter-group {
