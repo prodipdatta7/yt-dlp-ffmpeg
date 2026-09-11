@@ -41,7 +41,7 @@ against `git log --oneline`, and continue from the first unticked task.
 - [x] T5 — Async fsops, startup sweep off critical path, sweep-abort bug *(P-02 / R-06)*
 - [x] T6 — Streaming updaters with incremental SHA-256 *(P-03)*
 - [x] T7 — Playlist hydration: windowed and cancellable *(R-02, new P0)*
-- [ ] T8 — Analyze generation token; awaited cancel; search `activeHandles` *(P-08a)*
+- [x] T8 — Analyze generation token; awaited cancel; search `activeHandles` *(P-08a)*
 - [ ] T9 — Job early-completion buffer *(P-08b)*
 - [ ] T10 — Normalized playlist state, batched hydration *(P-05)*
 - [ ] T11 — Preview mechanical fixes: throttle, stable callbacks, binary search, LRU, cancellation *(P-06/P-07)*
@@ -67,6 +67,8 @@ against `git log --oneline`, and continue from the first unticked task.
 
 | Task | What changed | Why |
 |---|---|---|
+| T8 | The late-event generation guard lives in main (`AnalyzeService` refuses to emit for a superseded analysis), not in `applyAnalyzeStream`. | Stream events carry no generation, and main's counter is not comparable to the renderer's — a renderer-side check would have been decorative. The renderer keeps its token for the `analyzeStart` promise, which is the actual P-08 defect. |
+| T8 | Also added generation checks to `fetchChapters` / `fetchTranscript`. | Neither had one, so a cancel mid-request still returned its result, and the transcript path spawned its fallback subtitle pass *after* the cancel. |
 | T6 | The 250 MB memory guards assert `arrayBuffers` < 64 MiB, not < 32 MB. | `arrayBuffers` also counts in-flight stream buffers and pool slack; observed peaks are ~20-36 MB and vary run to run, so 32 MB was flaky. 64 MiB still fails loudly against the pre-fix path, whose peak was ≥ the full 250 MB. |
 | T5 | Also converted `sanitizer.collisionFreeTarget` and `downloadManifest` to async, beyond T5's stated file list. | Both are on the download completion path, so leaving them sync would have made T3's "no `*Sync` in the completion path" bar false outside `orchestrator.ts`. `diskSpace`'s `existsSync` walk is left sync — it is a preflight. |
 | T5 | `sweepOrphanedTempDirs` takes an options object with a `stat` seam. | `vi.spyOn` cannot patch an ESM namespace, so the "one entry is locked" regression — the whole point of the R-06 fix — had no other deterministic way to be tested. |
