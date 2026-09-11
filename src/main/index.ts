@@ -50,8 +50,9 @@ import type { AppUpdatePhase, UpdaterDriverKind, UpdaterPhase } from '../shared/
 import {
   clearAllPartialDirs,
   clearPartialDir,
+  isUnderAnyRoot,
   listPartialDirs,
-  isUnderTempRoot,
+  STAGING_DIR_NAME,
 } from './fsops/partials'
 import { sanitizeFileName } from './fsops/sanitizer'
 import { dirname } from 'node:path'
@@ -166,6 +167,16 @@ app.whenReady().then(() => {
   logger.info(`app starting v${app.getVersion()}`, { packaged: app.isPackaged })
 
   const settings = new SettingsStore(join(userDataDir, 'settings.json'))
+
+  /**
+   * Every root a partial job dir can live under: the userData staging area, plus the
+   * in-destination staging dir used when the output folder is on another volume (R-03).
+   * Resolved at call time — the output folder can change while the app runs.
+   */
+  const stagingRoots = (): string[] => {
+    const outputDir = settings.load().lastOutputDir || app.getPath('downloads')
+    return [...new Set([tempRoot, join(outputDir, STAGING_DIR_NAME)])]
+  }
 
   const swept = sweepOrphanedTempDirs(tempRoot)
   if (swept > 0) logger.info('orphaned temp dirs swept', { count: swept })
@@ -430,20 +441,21 @@ app.whenReady().then(() => {
       },
       listPartials: () => ({
         tempRoot,
-        items: listPartialDirs(tempRoot),
+        items: listPartialDirs(stagingRoots()),
       }),
       openPartialDir: async (dirPath: string) => {
-        if (!isUnderTempRoot(tempRoot, dirPath) || !existsSync(dirPath)) return { ok: false }
+        if (!isUnderAnyRoot(stagingRoots(), dirPath) || !existsSync(dirPath)) return { ok: false }
         const result = await shell.openPath(dirPath)
         return { ok: result.length === 0 }
       },
       clearPartials: (dirPath?: string) => {
+        const roots = stagingRoots()
         if (dirPath) {
-          const ok = clearPartialDir(tempRoot, dirPath)
+          const ok = clearPartialDir(roots, dirPath)
           if (ok) logger.info('partial dir cleared', { pathSet: true })
           return { ok, cleared: ok ? 1 : 0, failed: ok ? 0 : 1 }
         }
-        const result = clearAllPartialDirs(tempRoot)
+        const result = clearAllPartialDirs(roots)
         logger.info('all partial dirs cleared', result)
         return { ok: result.failed === 0, ...result }
       },

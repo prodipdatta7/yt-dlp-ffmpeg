@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import * as fsp from 'node:fs/promises'
 import { DownloadOrchestrator, type FinalizeFs } from '../../src/main/jobs/orchestrator'
+import { listPartialDirs, STAGING_DIR_NAME } from '../../src/main/fsops/partials'
 import { sanitizeFileName } from '../../src/main/fsops/sanitizer'
 import type { JobDonePayload, JobEvent } from '../../src/shared/ipcContract'
 
@@ -388,6 +389,92 @@ describe('finalization (T3 / P-02)', () => {
     expect(done.status).toBe('completed')
     const finalizing = events.filter((e) => e.phase === 'finalizing')
     expect(finalizing.length).toBeGreaterThanOrEqual(3)
+  }, 30_000)
+})
+
+describe('staging root (T4 / R-03)', () => {
+  async function runCapturingRename(isSameVolume?: (a: string, b: string) => boolean) {
+    const root = tempRoot()
+    const box: DoneBox = { value: null }
+    let renameSource = ''
+    let copied = false
+
+    const orch = new DownloadOrchestrator({
+      resolveYtDlp: async () => ({ kind: 'yt-dlp', path: NODE, source: 'bundled' }),
+      resolveFfmpeg: async () => ({ kind: 'ffmpeg', path: NODE, source: 'bundled' }),
+      tempRoot: root,
+      spawnArgPrefix: ['tests/fixtures/fake-bin/fake-ytdlp-download.mjs'],
+      coalesceIntervalMs: 0,
+      isSameVolume,
+      fs: {
+        rename: (a, b) => {
+          renameSource = a
+          return fsp.rename(a, b)
+        },
+        copyFile: async () => {
+          copied = true
+        },
+      },
+    })
+
+    await orch.launch(
+      CONFIG(root),
+      () => undefined,
+      (d) => {
+        box.value = d
+      },
+    )
+    return { done: await waitForDone(box), renameSource, copied, root }
+  }
+
+  it('stages under tempRoot when the destination is on the same volume', async () => {
+    const { done, renameSource, copied, root } = await runCapturingRename(() => true)
+    expect(done.status).toBe('completed')
+    expect(renameSource.startsWith(root)).toBe(true)
+    expect(renameSource).not.toContain(STAGING_DIR_NAME)
+    expect(copied).toBe(false)
+  }, 30_000)
+
+  it('stages beside the destination on another volume, so finalization still renames', async () => {
+    const { done, renameSource, copied, root } = await runCapturingRename(() => false)
+    expect(done.status).toBe('completed')
+    expect(renameSource.startsWith(join(destOf(root), STAGING_DIR_NAME))).toBe(true)
+    // The whole point of R-03: no cross-volume copy on the normal path.
+    expect(copied).toBe(false)
+  }, 30_000)
+
+  it('leaves no staging directory behind in the download folder', async () => {
+    const { done, root } = await runCapturingRename(() => false)
+    expect(done.status).toBe('completed')
+    expect(existsSync(join(destOf(root), STAGING_DIR_NAME))).toBe(false)
+  }, 30_000)
+
+  it('keeps the staged partials listable after a failure', async () => {
+    const root = tempRoot()
+    const box: DoneBox = { value: null }
+    const orch = new DownloadOrchestrator({
+      resolveYtDlp: async () => ({ kind: 'yt-dlp', path: NODE, source: 'bundled' }),
+      resolveFfmpeg: async () => ({ kind: 'ffmpeg', path: NODE, source: 'bundled' }),
+      tempRoot: root,
+      spawnArgPrefix: ['tests/fixtures/fake-bin/fake-ytdlp-fail.mjs'],
+      retryDelaysMs: [],
+      coalesceIntervalMs: 0,
+      isSameVolume: () => false,
+    })
+
+    await orch.launch(
+      CONFIG(root),
+      () => undefined,
+      (d) => {
+        box.value = d
+      },
+    )
+    const done = await waitForDone(box)
+    expect(done.status).toBe('failed')
+
+    const stagingRoot = join(destOf(root), STAGING_DIR_NAME)
+    expect(done.partialDir?.startsWith(stagingRoot)).toBe(true)
+    expect(listPartialDirs([root, stagingRoot]).map((i) => i.path)).toContain(done.partialDir)
   }, 30_000)
 })
 

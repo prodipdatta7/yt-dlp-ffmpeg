@@ -13,6 +13,7 @@ import type { LocatedBinary } from '../binaries/locator'
 import { spawnProcess, type RunResult, type SpawnHandle } from '../binaries/runner'
 import { freeDiskSpaceBytes, isDiskSpaceInsufficient } from '../fsops/diskSpace'
 import { findExistingDownload, recordDownload } from '../fsops/downloadManifest'
+import { sameVolume, STAGING_DIR_NAME } from '../fsops/partials'
 import { collisionFreeTarget, sanitizeFileName } from '../fsops/sanitizer'
 import { classifyStderr } from '../media/classifyStderr'
 import type { Logger } from '../store/logger'
@@ -79,6 +80,8 @@ export interface OrchestratorDeps {
   fs?: Partial<FinalizeFs>
   /** Test seam: `finalizing` heartbeat cadence during a cross-volume copy. */
   finalizeHeartbeatMs?: number
+  /** Test seam: volume comparison used to choose the staging root. */
+  isSameVolume?: (a: string, b: string) => boolean
 }
 
 export type SendEvent = (event: JobEvent) => void
@@ -90,6 +93,8 @@ interface ActiveJob {
   handle: SpawnHandle | null
   cancelRequested: boolean
   tempDir: string
+  /** Root `tempDir` was created under — `deps.tempRoot`, or a staging dir beside destDir. */
+  stagingRoot: string
   destDir: string
 }
 
@@ -250,7 +255,13 @@ export class DownloadOrchestrator {
     }
 
     const jobId = randomUUID()
-    const tempDir = tempDirForUrl(this.deps.tempRoot, config.url)
+    // R-03: staging on the destination's own volume turns finalization into a rename. On a
+    // different volume every large download would otherwise be written to disk twice.
+    const onSameVolume = this.deps.isSameVolume ?? sameVolume
+    const stagingRoot = onSameVolume(this.deps.tempRoot, effectiveDestDir)
+      ? this.deps.tempRoot
+      : join(effectiveDestDir, STAGING_DIR_NAME)
+    const tempDir = tempDirForUrl(stagingRoot, config.url)
     await fsp.mkdir(tempDir, { recursive: true })
 
     const job: ActiveJob = {
@@ -259,6 +270,7 @@ export class DownloadOrchestrator {
       handle: null,
       cancelRequested: false,
       tempDir,
+      stagingRoot,
       destDir: effectiveDestDir,
     }
     this.activeJobs.set(jobId, job)
@@ -447,6 +459,7 @@ export class DownloadOrchestrator {
       }
 
       await this.fs.rm(job.tempDir, { recursive: true, force: true })
+      await this.removeStagingRootIfEmpty(job)
       this.deps.logger?.info('download completed', { jobId, target })
       recordDownload(job.destDir, job.config, target)
       await this.finish(job, sendDone, { status: 'completed', outputPath: target })
@@ -502,7 +515,18 @@ export class DownloadOrchestrator {
     const target = collisionFreeTarget(job.destDir, finalName)
     if (!(await this.moveIntoPlace(partSource, target))) return null
     await this.fs.rm(job.tempDir, { recursive: true, force: true })
+    await this.removeStagingRootIfEmpty(job)
     return target
+  }
+
+  /**
+   * Removes an in-destination staging directory once its last job dir is gone, so a
+   * successful download leaves no `.mediaforge-part` behind in the user's folder. A
+   * non-empty directory (another job still staging) simply fails and is left alone.
+   */
+  private async removeStagingRootIfEmpty(job: ActiveJob): Promise<void> {
+    if (job.stagingRoot === this.deps.tempRoot) return
+    await fsp.rmdir(job.stagingRoot).catch(() => undefined)
   }
 
   private async finish(
