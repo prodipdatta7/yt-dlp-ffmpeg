@@ -11,6 +11,7 @@ import {
   shell,
   nativeImage,
   Notification,
+  session,
 } from 'electron'
 import { BinariesService } from './binaries/service'
 import { platformDir, type BinaryCandidate } from './binaries/locator'
@@ -55,6 +56,7 @@ import {
 import { sanitizeFileName } from './fsops/sanitizer'
 import { dirname } from 'node:path'
 import { chromeThemeColors, createWindowOptions, getWindowSecurityFlags } from './windowOptions'
+import { EMBED_REQUEST_FILTER, patchEmbedHeaders } from './embedHeaders'
 
 function toSettingsView(s: ReturnType<SettingsStore['load']>): MfSettingsView {
   return {
@@ -148,6 +150,13 @@ function applyChromeTheme(theme: 'light' | 'dark'): void {
 }
 
 app.whenReady().then(() => {
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    EMBED_REQUEST_FILTER,
+    (details, callback) => {
+      callback({ cancel: false, requestHeaders: patchEmbedHeaders(details.requestHeaders) })
+    },
+  )
+
   const userDataDir = app.getPath('userData')
   const logsDir = join(userDataDir, 'logs')
   const tempRoot = join(userDataDir, 'tmp')
