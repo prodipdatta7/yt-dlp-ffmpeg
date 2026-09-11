@@ -1,6 +1,6 @@
 import { SEARCH_PLATFORMS, type SearchResultItem } from '../../../shared/models'
 import { SearchBar } from './SearchBar'
-import { clearPreviewCaches } from './SearchResultCard'
+import { clearPreviewCaches } from './searchPreviewShared'
 import { SearchResults } from './SearchResults'
 import { AlertIcon, CookieIcon, RefreshIcon, SearchIcon } from './icons'
 import {

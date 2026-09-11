@@ -44,7 +44,7 @@ against `git log --oneline`, and continue from the first unticked task.
 - [x] T8 — Analyze generation token; awaited cancel; search `activeHandles` *(P-08a)*
 - [x] T9 — Job early-completion buffer *(P-08b)*
 - [x] T10 — Normalized playlist state, batched hydration *(P-05)*
-- [ ] T11 — Preview mechanical fixes: throttle, stable callbacks, binary search, LRU, cancellation *(P-06/P-07)*
+- [x] T11 — Preview mechanical fixes: throttle, stable callbacks, binary search, LRU, cancellation *(P-06/P-07)*
 - [ ] T12 — Extract `TheaterPreview` from `SearchResultCard` *(P-06)*
 - [ ] T13 — Fixed-row windowing for long lists *(P-05)*
 - [ ] T14 — Telemetry harness; regenerate `specs/perf-report.md` *(P-10)*
@@ -67,6 +67,7 @@ against `git log --oneline`, and continue from the first unticked task.
 
 | Task | What changed | Why |
 |---|---|---|
+| T11 | One `previewCancel(requestId)` instead of separate `chaptersCancel`/`transcriptCancel`. | Both would have been the same function — kill the children registered under an id. One channel, less surface. |
 | T10 | Added a `hydratedEntries()` overlay and routed three consumers through it, rather than relying on `analysis` still carrying detail. | The plan's "`analysis` keeps its current shape so nothing downstream breaks" assumed hydrated detail lived there. It never did — main mutates its own copy; the renderer only learns detail from the entry stream. Without the overlay, the download size estimator would have silently lost per-entry durations. |
 | T8 | The late-event generation guard lives in main (`AnalyzeService` refuses to emit for a superseded analysis), not in `applyAnalyzeStream`. | Stream events carry no generation, and main's counter is not comparable to the renderer's — a renderer-side check would have been decorative. The renderer keeps its token for the `analyzeStart` promise, which is the actual P-08 defect. |
 | T8 | Also added generation checks to `fetchChapters` / `fetchTranscript`. | Neither had one, so a cancel mid-request still returned its result, and the transcript path spawned its fallback subtitle pass *after* the cancel. |
