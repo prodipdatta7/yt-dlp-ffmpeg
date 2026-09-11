@@ -20,6 +20,11 @@ export function buildBaseDownloadArgs(ffmpegPath: string, outputTemplate: string
   return [
     '--newline',
     '--progress',
+    // yt-dlp's default progress delta is zero, so every hook call emits a line. Capping
+    // routine progress at ~4 lines/sec/job (P-04). Phase changes, completion, warnings and
+    // errors are separate stdout lines and are unaffected; AM-01's machine templates stay.
+    '--progress-delta',
+    '0.25',
     '--no-colors',
     '--windows-filenames',
     '--trim-filenames',

@@ -359,7 +359,8 @@ All channel names + payload types live in `src/shared/ipcContract.ts`. Handlers 
 | R→M invoke | `search:start` (M8) | `SearchRequest{platform, query, limit, sort, filters?}` → `{kind:'ok', results: SearchResultItem[]}` or `{kind:'error', code, message}` |
 | R→M invoke | `search:cancel` (M8) | `{}` → `{ok}` |
 | M→R event | `search:entry` (M8) | `{sourceUrl, metadataState, patch}` progressive exact-key metadata update |
-| M→R event | `job:event` | `JobEvent{jobId, phase, percent, speedBps, etaSec, message?}` |
+| R→M invoke | `log:console-open` (P-04) | `{open, includeProtocol?}` → `{ok}` — while the live console is closed, main broadcasts no CLI line at all; entries are still stored and `log:history` supplies the tail on open. Raw `MF\|`/`MFPOST\|` protocol lines are withheld unless `includeProtocol` is set. |
+| M→R event | `job:event` | `JobEvent{jobId, phase, percent, speedBps, etaSec, message?}` — routine `downloading-*` samples are coalesced in main at 150 ms, latest-wins per job; phase transitions, terminal phases and anything carrying `message` are never delayed (P-04) |
 | M→R event | `job:done` | `{jobId, status: completed\|cancelled\|failed, errorCode?, outputPath?}` |
 
 Phases (PRD §3.6 labels): `analyzing → downloading-video → downloading-audio → merging → finalizing → done`.

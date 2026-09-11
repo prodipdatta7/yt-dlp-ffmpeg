@@ -13,6 +13,7 @@ import {
   MF_JOB_EVENT,
   MF_LOGS_OPEN,
   MF_LOG_CLEAR,
+  MF_LOG_CONSOLE_OPEN,
   MF_LOG_HISTORY,
   MF_PING,
   MF_SETTINGS_CLEAR_COOKIES,
@@ -103,6 +104,7 @@ export interface IpcDeps {
   openLogsFolder: () => Promise<boolean>
   logHistory: () => Promise<{ lines: LogEntryPayload[] }> | { lines: LogEntryPayload[] }
   logClear: () => { ok: boolean }
+  logConsoleOpen: (open: boolean, includeProtocol: boolean) => { ok: boolean }
   getSettings: () => MfSettingsView
   setSettings: (
     patch: Partial<
@@ -215,6 +217,11 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
   ipcMain.handle(MF_LOG_HISTORY, () => deps.logHistory())
 
   ipcMain.handle(MF_LOG_CLEAR, () => deps.logClear())
+
+  ipcMain.handle(MF_LOG_CONSOLE_OPEN, (_event, payload: unknown) => {
+    const raw = (payload ?? {}) as { open?: unknown; includeProtocol?: unknown }
+    return deps.logConsoleOpen(raw.open === true, raw.includeProtocol === true)
+  })
 
   ipcMain.handle(MF_SETTINGS_GET, () => deps.getSettings())
 

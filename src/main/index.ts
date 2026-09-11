@@ -395,6 +395,10 @@ app.whenReady().then(() => {
         return result.length === 0
       },
       logHistory: () => ({ lines: logBus.tail(1000) }),
+      logConsoleOpen: (open, includeProtocol) => {
+        logBus.setBroadcast(open, includeProtocol)
+        return { ok: true }
+      },
       logClear: () => {
         logBus.clear()
         logger.info('live console cleared by user')

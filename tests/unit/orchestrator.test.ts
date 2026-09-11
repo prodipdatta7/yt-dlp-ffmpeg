@@ -16,12 +16,13 @@ interface DoneBox {
   value: JobDonePayload | null
 }
 
-function makeOrch(root: string, script: string) {
+function makeOrch(root: string, script: string, coalesceIntervalMs?: number) {
   return new DownloadOrchestrator({
     resolveYtDlp: async () => ({ kind: 'yt-dlp', path: NODE, source: 'bundled' }),
     resolveFfmpeg: async () => ({ kind: 'ffmpeg', path: NODE, source: 'bundled' }),
     tempRoot: root,
     spawnArgPrefix: [script],
+    coalesceIntervalMs,
   })
 }
 
@@ -62,7 +63,10 @@ describe('DownloadOrchestrator', () => {
     const events: JobEvent[] = []
     const box: DoneBox = { value: null }
 
-    const orch = makeOrch(root, 'tests/fixtures/fake-bin/fake-ytdlp-download.mjs')
+    // Coalescing off (P-04 seam): the fixture emits every sample in one tick, so this
+    // asserts the parse-and-propagate path rather than the flush cadence, which
+    // eventCoalescer.test.ts covers directly.
+    const orch = makeOrch(root, 'tests/fixtures/fake-bin/fake-ytdlp-download.mjs', 0)
     const jobId = await orch.launch(
       CONFIG(root),
       (e) => events.push(e),

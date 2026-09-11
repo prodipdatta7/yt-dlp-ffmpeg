@@ -33,8 +33,8 @@ against `git log --oneline`, and continue from the first unticked task.
 
 ### Checklist
 
-- [ ] T0 — Spec: AM-16 memory budget amendment
-- [ ] T1 — Runner capture policy; delete dead orchestrator arrays *(P-01)*
+- [x] T0 — Spec: AM-16 memory budget amendment
+- [x] T1 — Runner capture policy; delete dead orchestrator arrays *(P-01)*
 - [ ] T2 — `--progress-delta`, job-event coalescing, protocol-log gating *(P-04)*
 - [ ] T3 — Asynchronous finalization *(P-02)*
 - [ ] T4 — Same-volume staging root *(P-02 / R-03)*
@@ -67,6 +67,8 @@ against `git log --oneline`, and continue from the first unticked task.
 
 | Task | What changed | Why |
 |---|---|---|
+| T1 | `maxLineChars` applies under `'tail'` only, not under `'full'`. | A `-J` payload is a single very long line; capping it under `'full'` would silently corrupt every metadata/search result. `'full'` is bounded by `maxCaptureBytes` instead. |
+| T1 | Soak test left ungated (no `MF_SOAK`). | It completes in ~2 s, well inside the plan's 30 s threshold, so it earns its place in the default run. |
 
 ---
 

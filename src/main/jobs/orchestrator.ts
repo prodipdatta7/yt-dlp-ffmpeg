@@ -26,6 +26,7 @@ import { collisionFreeTarget, sanitizeFileName } from '../fsops/sanitizer'
 import { classifyStderr } from '../media/classifyStderr'
 import type { Logger } from '../store/logger'
 import { buildDownloadArgs, outputTemplateFor } from './argBuilders'
+import { JobEventCoalescer } from './eventCoalescer'
 import {
   computeSegmentPercent,
   isFinalPathLine,
@@ -56,6 +57,8 @@ export interface OrchestratorDeps {
   getMaxConcurrent?: () => number
   /** Test seam: override free-disk probe. */
   getFreeDiskBytes?: (destDir: string) => Promise<number | null>
+  /** Test seam: flush cadence for coalesced progress events. */
+  coalesceIntervalMs?: number
 }
 
 export type SendEvent = (event: JobEvent) => void
@@ -126,8 +129,12 @@ function sleep(ms: number): Promise<void> {
 
 export class DownloadOrchestrator {
   private readonly activeJobs = new Map<string, ActiveJob>()
+  /** P-04: rate-limits routine progress events on their way across IPC. */
+  private readonly events: JobEventCoalescer
 
-  constructor(private readonly deps: OrchestratorDeps) {}
+  constructor(private readonly deps: OrchestratorDeps) {
+    this.events = new JobEventCoalescer(deps.coalesceIntervalMs)
+  }
 
   isBusy(): boolean {
     return this.activeJobs.size > 0
@@ -238,7 +245,10 @@ export class DownloadOrchestrator {
       tier: config.tier,
       active: this.activeJobs.size,
     })
-    sendEvent({ jobId, phase: 'queued', percent: null, speedBps: null, etaSec: null })
+    this.events.emit(
+      { jobId, phase: 'queued', percent: null, speedBps: null, etaSec: null },
+      sendEvent,
+    )
 
     void this.run(job, ytDlp.path, ffmpeg.path, sendEvent, sendDone)
     return jobId
@@ -265,7 +275,10 @@ export class DownloadOrchestrator {
       totalBytes: number | null = null,
     ): void => {
       if (percent !== null) lastPercent = percent
-      sendEvent({ jobId, phase: next, percent, speedBps, etaSec, downloadedBytes, totalBytes })
+      this.events.emit(
+        { jobId, phase: next, percent, speedBps, etaSec, downloadedBytes, totalBytes },
+        sendEvent,
+      )
     }
 
     try {
@@ -360,14 +373,17 @@ export class DownloadOrchestrator {
 
         const delayMs = delays[attempt - 1]
         this.deps.logger?.info('network failure — retry scheduled', { jobId, attempt, delayMs })
-        sendEvent({
-          jobId,
-          phase: 'queued',
-          percent: lastPercent,
-          speedBps: null,
-          etaSec: null,
-          message: `Network issue — retrying in ${Math.round(delayMs / 1000)}s (attempt ${attempt} of ${delays.length})…`,
-        })
+        this.events.emit(
+          {
+            jobId,
+            phase: 'queued',
+            percent: lastPercent,
+            speedBps: null,
+            etaSec: null,
+            message: `Network issue — retrying in ${Math.round(delayMs / 1000)}s (attempt ${attempt} of ${delays.length})…`,
+          },
+          sendEvent,
+        )
         await sleep(delayMs)
       }
 
@@ -442,6 +458,8 @@ export class DownloadOrchestrator {
     sendDone: SendDone,
     payload: Omit<JobDonePayload, 'jobId'> & { jobId?: string },
   ): void {
+    // Drain before the terminal event so no sample is stranded behind it (P-04).
+    this.events.release(job.id)
     const keepPartials = payload.status === 'cancelled' || payload.status === 'failed'
     const partialDir =
       keepPartials && existsSync(job.tempDir) ? job.tempDir : (payload.partialDir ?? undefined)

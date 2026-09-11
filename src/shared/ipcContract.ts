@@ -34,6 +34,7 @@ export const MF_LOGS_OPEN = 'mf:logs:open' as const
 export const MF_LOG_HISTORY = 'mf:log:history' as const
 export const MF_LOG_CLEAR = 'mf:log:clear' as const
 export const MF_LOG_LINE = 'mf:log:line' as const
+export const MF_LOG_CONSOLE_OPEN = 'mf:log:console-open' as const
 export const MF_UPDATER_CHECK = 'mf:updater:check' as const
 export const MF_UPDATER_APPLY = 'mf:updater:apply' as const
 export const MF_UPDATER_PHASE = 'mf:updater:phase' as const
@@ -244,6 +245,11 @@ export interface MfApi {
   openLogsFolder(): Promise<boolean>
   logHistory(): Promise<{ lines: LogEntryPayload[] }>
   logClear(): Promise<{ ok: boolean }>
+  /**
+   * Tells main whether the live console is mounted, and whether it wants the raw
+   * `--progress-template` protocol lines. While closed, no CLI line crosses IPC (P-04).
+   */
+  logConsoleOpen(open: boolean, includeProtocol?: boolean): Promise<{ ok: boolean }>
   onLogLine(listener: (entry: LogEntryPayload) => void): () => void
   getSettings(): Promise<MfSettingsView>
   setSettings(

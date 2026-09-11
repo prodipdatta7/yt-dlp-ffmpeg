@@ -14,6 +14,7 @@ import {
   MF_LOGS_OPEN,
   MF_LOG_CLEAR,
   MF_LOG_HISTORY,
+  MF_LOG_CONSOLE_OPEN,
   MF_LOG_LINE,
   MF_PING,
   MF_PARTIALS_CLEAR,
@@ -103,6 +104,8 @@ const api: MfApi = {
   openLogsFolder: (): Promise<boolean> => ipcRenderer.invoke(MF_LOGS_OPEN),
   logHistory: (): Promise<{ lines: LogEntryPayload[] }> => ipcRenderer.invoke(MF_LOG_HISTORY),
   logClear: (): Promise<{ ok: boolean }> => ipcRenderer.invoke(MF_LOG_CLEAR),
+  logConsoleOpen: (open: boolean, includeProtocol?: boolean): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke(MF_LOG_CONSOLE_OPEN, { open, includeProtocol }),
   onLogLine: (listener: (entry: LogEntryPayload) => void): (() => void) => {
     const wrapped = (_event: IpcRendererEvent, payload: LogEntryPayload): void => listener(payload)
     ipcRenderer.on(MF_LOG_LINE, wrapped)

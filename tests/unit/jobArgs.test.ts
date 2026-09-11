@@ -15,6 +15,8 @@ describe('buildBaseDownloadArgs (AGENTS.md §7.2 contract)', () => {
     expect(args).toEqual([
       '--newline',
       '--progress',
+      '--progress-delta',
+      '0.25',
       '--no-colors',
       '--windows-filenames',
       '--trim-filenames',
@@ -30,6 +32,14 @@ describe('buildBaseDownloadArgs (AGENTS.md §7.2 contract)', () => {
       '--print',
       'after_move:filepath',
     ])
+  })
+
+  it('rate-limits the repeating progress hook with --progress-delta (P-04)', () => {
+    const args = buildBaseDownloadArgs('C:/bin/ffmpeg.exe', 'C:/tmp/%(title)s.%(ext)s')
+    const i = args.indexOf('--progress-delta')
+    expect(i).toBeGreaterThan(-1)
+    expect(args[i - 1]).toBe('--progress')
+    expect(args[i + 1]).toBe('0.25')
   })
 
   it('never uses a shell string (AM-02): args are separate argv elements', () => {
