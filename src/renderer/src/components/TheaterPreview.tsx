@@ -1150,13 +1150,20 @@ export function TheaterPreview({
                     </div>
                   </div>
 
-                  {/* Description Box */}
+                  {/*
+                    Description takes the leftover height and scrolls on its own, so the
+                    metrics and codec tables above stay put instead of scrolling away with it.
+                    It keeps a floor so it can never collapse to just a heading; if the window
+                    is too short to honour that, the tab's own `overflow-y-auto` takes over.
+                    Below md the right column has no fixed height, so this is inert and the
+                    modal scrolls as before.
+                  */}
                   {fullDescription && (
-                    <div class="flex flex-col shrink-0">
+                    <div class="flex min-h-[7.5rem] flex-1 flex-col">
                       <h4 class="mb-0.5 shrink-0 text-[9.5px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
                         DESCRIPTION
                       </h4>
-                      <div class="rounded-lg border border-neutral-100 bg-neutral-50/70 p-2 text-[11px] leading-relaxed text-neutral-600 dark:border-white/5 dark:bg-neutral-900/40 dark:text-neutral-300 whitespace-pre-wrap break-words select-text">
+                      <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-lg border border-neutral-100 bg-neutral-50/70 p-2 text-[11px] leading-relaxed text-neutral-600 dark:border-white/5 dark:bg-neutral-900/40 dark:text-neutral-300 whitespace-pre-wrap break-words select-text">
                         {fullDescription}
                       </div>
                     </div>
