@@ -40,6 +40,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   ClipboardIcon,
+  ClockIcon,
   CloseIcon,
   DownloadIcon,
   EyeIcon,
@@ -112,6 +113,33 @@ function extractRealChapters(
     }
   }
   return unique
+}
+
+function formatChapterTime(sec: number): string {
+  const s = Math.max(0, Math.round(sec))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const remSec = s % 60
+  const ss = String(remSec).padStart(2, '0') + 's'
+  if (h > 0) {
+    const mm = String(m).padStart(2, '0') + 'm'
+    return `${h}h ${mm} ${ss}`
+  }
+  return `${m}m ${ss}`
+}
+
+function fmtClockTime(sec: number): string {
+  const s = Math.max(0, Math.round(sec))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const remSec = s % 60
+  const mm = String(m).padStart(2, '0')
+  const ss = String(remSec).padStart(2, '0')
+  if (h > 0) {
+    const hh = String(h).padStart(2, '0')
+    return `${hh}:${mm}:${ss}`
+  }
+  return `${mm}:${ss}`
 }
 
 export interface SearchResultCardProps {
@@ -402,7 +430,7 @@ export function SearchResultCard({
   const [currentTimeSec, setCurrentTimeSec] = useState(0)
   const [isPlaying, setIsPlaying] = useState(true)
   const lastRealUpdateRef = useRef<number>(Date.now())
-  const activeChapterRef = useRef<HTMLButtonElement>(null)
+  const activeChapterRef = useRef<HTMLDivElement>(null)
   const leftColRef = useRef<HTMLDivElement>(null)
   const [leftColHeight, setLeftColHeight] = useState<number | null>(null)
   const [seekSec, setSeekSec] = useState<number | undefined>(undefined)
@@ -2141,32 +2169,135 @@ export function SearchResultCard({
                       )}
 
                       {/* Scrollable list of chapters */}
-                      <div class="flex-1 min-h-0 overflow-y-auto space-y-1 pr-1">
+                      <div class="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-1">
                         {filteredChapters.map((ch, idx) => {
                           const isCurrent = ch.seconds === chapters[activeChapterIndex]?.seconds
+
+                          if (isCurrent) {
+                            const fullIdx = chapters.findIndex((c) => c.seconds === ch.seconds)
+                            const segIdx = fullIdx >= 0 ? fullIdx : activeChapterIndex
+                            const nextChapter =
+                              segIdx + 1 < chapters.length ? chapters[segIdx + 1] : undefined
+                            const endSec = nextChapter
+                              ? nextChapter.seconds
+                              : (entry.durationSec ?? ch.seconds + 60)
+                            const chapterDurationSec = Math.max(1, endSec - ch.seconds)
+                            const elapsedSec = Math.max(
+                              0,
+                              Math.min(chapterDurationSec, currentTimeSec - ch.seconds),
+                            )
+                            const progressPct = Math.min(
+                              100,
+                              Math.max(0, Math.round((elapsedSec / chapterDurationSec) * 100)),
+                            )
+
+                            return (
+                              <div
+                                key={idx}
+                                ref={activeChapterRef}
+                                class="group flex flex-col w-full rounded-xl border border-[#ea580c] bg-orange-50/90 p-2.5 text-left text-xs shadow-xs dark:border-orange-500 dark:bg-orange-950/40 transition"
+                              >
+                                {/* Top Row: Click to seek */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSeekSec(ch.seconds)
+                                    setCurrentTimeSec(ch.seconds)
+                                  }}
+                                  title="Jump to start of this chapter"
+                                  class="flex w-full items-center justify-between gap-2 text-left text-xs font-semibold text-[#ea580c] dark:text-orange-300"
+                                >
+                                  <div class="flex min-w-0 flex-1 items-center gap-2">
+                                    <span class="shrink-0 rounded bg-[#ea580c] px-1.5 py-0.5 font-mono text-[10.5px] font-bold text-white shadow-xs">
+                                      {ch.time}
+                                    </span>
+                                    <span
+                                      class="truncate text-[11.5px] leading-tight"
+                                      title={ch.title}
+                                    >
+                                      {ch.title}
+                                    </span>
+                                  </div>
+                                  <div class="flex items-center gap-1.5 shrink-0">
+                                    <div
+                                      class="flex items-end gap-0.5 h-3 shrink-0"
+                                      title="Currently playing"
+                                    >
+                                      <span class="w-0.5 h-3 bg-[#ea580c] dark:bg-orange-400 rounded-full animate-pulse" />
+                                      <span class="w-0.5 h-1.5 bg-[#ea580c] dark:bg-orange-400 rounded-full" />
+                                      <span
+                                        class="w-0.5 h-2.5 bg-[#ea580c] dark:bg-orange-400 rounded-full animate-pulse"
+                                        style={{ animationDelay: '150ms' }}
+                                      />
+                                    </div>
+                                    {ch.duration && (
+                                      <span class="text-[10px] font-mono text-orange-600/80 dark:text-orange-400/80">
+                                        {ch.duration}
+                                      </span>
+                                    )}
+                                  </div>
+                                </button>
+
+                                {/* In-Chapter Progress Sub-Card */}
+                                <div class="mt-2.5 rounded-lg border border-orange-200/80 bg-white/95 p-2 space-y-1.5 shadow-2xs dark:border-orange-800/40 dark:bg-neutral-900/90">
+                                  <div class="flex items-center justify-between text-[11px] font-mono">
+                                    <span class="text-[10px] font-medium text-neutral-500 dark:text-neutral-400">
+                                      In-Chapter Progress:
+                                    </span>
+                                    <span class="font-bold text-[#ea580c] dark:text-orange-400">
+                                      {formatChapterTime(elapsedSec)} /{' '}
+                                      {formatChapterTime(chapterDurationSec)} ({progressPct}%)
+                                    </span>
+                                  </div>
+
+                                  {/* Progress Bar */}
+                                  <div class="h-1.5 w-full rounded-full bg-neutral-100 overflow-hidden dark:bg-neutral-800">
+                                    <div
+                                      class="h-full rounded-full bg-[#ea580c] transition-all duration-200"
+                                      style={{ width: `${progressPct}%` }}
+                                    />
+                                  </div>
+
+                                  {/* Segment Info & Replay Section */}
+                                  <div class="flex items-center justify-between gap-2 pt-0.5 text-[10.5px]">
+                                    <div class="flex items-center gap-1 text-neutral-500 dark:text-neutral-400 font-medium truncate">
+                                      <ClockIcon class="size-3 shrink-0 text-neutral-400 dark:text-neutral-500" />
+                                      <span class="truncate">
+                                        Seg {segIdx + 1} of {chapters.length} • Ends at{' '}
+                                        {fmtClockTime(endSec)}
+                                      </span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setSeekSec(ch.seconds)
+                                        setCurrentTimeSec(ch.seconds)
+                                      }}
+                                      title="Replay from start of this chapter"
+                                      class="inline-flex shrink-0 items-center gap-1 rounded border border-orange-200/80 bg-orange-50 px-2 py-0.5 text-[10px] font-semibold text-[#ea580c] shadow-2xs transition hover:bg-orange-100 hover:border-orange-300 dark:border-orange-800/50 dark:bg-orange-950/60 dark:text-orange-300 dark:hover:bg-orange-900/60"
+                                    >
+                                      <RotateCcwIcon class="size-2.5 text-[#ea580c] dark:text-orange-300" />
+                                      <span>Replay Section</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          }
+
                           return (
                             <button
                               key={idx}
-                              ref={isCurrent ? activeChapterRef : undefined}
                               type="button"
                               onClick={() => {
                                 setSeekSec(ch.seconds)
                                 setCurrentTimeSec(ch.seconds)
                               }}
-                              class={`group flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition ${
-                                isCurrent
-                                  ? 'border border-[#ea580c] bg-orange-50/90 font-semibold text-[#ea580c] shadow-xs dark:border-orange-500 dark:bg-orange-950/40 dark:text-orange-300'
-                                  : 'border border-transparent hover:border-neutral-200 hover:bg-neutral-50 text-neutral-700 dark:text-neutral-300 dark:hover:border-neutral-700 dark:hover:bg-neutral-800/60'
-                              }`}
+                              class="group flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition border border-transparent hover:border-neutral-200 hover:bg-neutral-50 text-neutral-700 dark:text-neutral-300 dark:hover:border-neutral-700 dark:hover:bg-neutral-800/60"
                             >
                               <div class="flex min-w-0 flex-1 items-center gap-2">
-                                <span
-                                  class={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[10.5px] font-bold ${
-                                    isCurrent
-                                      ? 'bg-[#ea580c] text-white shadow-xs'
-                                      : 'bg-neutral-100 text-neutral-600 group-hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400'
-                                  }`}
-                                >
+                                <span class="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-[10.5px] font-bold text-neutral-600 group-hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400">
                                   {ch.time}
                                 </span>
                                 <span class="truncate text-[11.5px] leading-tight" title={ch.title}>
@@ -2174,19 +2305,6 @@ export function SearchResultCard({
                                 </span>
                               </div>
                               <div class="flex items-center gap-1.5 shrink-0">
-                                {isCurrent && (
-                                  <div
-                                    class="flex items-end gap-0.5 h-3 shrink-0"
-                                    title="Currently playing"
-                                  >
-                                    <span class="w-0.5 h-3 bg-[#ea580c] dark:bg-orange-400 rounded-full animate-pulse" />
-                                    <span class="w-0.5 h-1.5 bg-[#ea580c] dark:bg-orange-400 rounded-full" />
-                                    <span
-                                      class="w-0.5 h-2.5 bg-[#ea580c] dark:bg-orange-400 rounded-full animate-pulse"
-                                      style={{ animationDelay: '150ms' }}
-                                    />
-                                  </div>
-                                )}
                                 {ch.duration && (
                                   <span class="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
                                     {ch.duration}
