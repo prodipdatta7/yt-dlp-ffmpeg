@@ -539,15 +539,19 @@ app.whenReady().then(() => {
         await searchService.cancel()
         return { ok: true }
       },
-      fetchChapters: async (url: string) => {
+      cancelPreview: async (requestId: string) => {
+        await searchService.cancelPreviewRequest(requestId)
+        return { ok: true }
+      },
+      fetchChapters: async (url: string, requestId?: string) => {
         const binary = await binariesService.locate('yt-dlp')
         if (!binary) return { chapters: [] }
-        return await searchService.fetchChapters(binary.path, url)
+        return await searchService.fetchChapters(binary.path, url, requestId)
       },
-      fetchTranscript: async (url: string) => {
+      fetchTranscript: async (url: string, requestId?: string) => {
         const binary = await binariesService.locate('yt-dlp')
         if (!binary) return { cues: [] }
-        return await searchService.fetchTranscript(binary.path, url)
+        return await searchService.fetchTranscript(binary.path, url, requestId)
       },
       saveTextFile: async (defaultFilename: string, content: string) => {
         const safeName = sanitizeFileName(defaultFilename)

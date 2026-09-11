@@ -28,6 +28,7 @@ import {
   MF_SEARCH_START,
   MF_FETCH_CHAPTERS,
   MF_FETCH_TRANSCRIPT,
+  MF_PREVIEW_CANCEL,
   MF_SAVE_TEXT_FILE,
   MF_PREVIEW_SET_VOLUME_BOOST,
   MF_SETTINGS_CLEAR_COOKIES,
@@ -162,10 +163,12 @@ const api: MfApi = {
     ipcRenderer.on(MF_APP_UPDATE_PHASE, wrapped)
     return () => ipcRenderer.removeListener(MF_APP_UPDATE_PHASE, wrapped)
   },
-  fetchChapters: (url: string): Promise<VideoChaptersResult> =>
-    ipcRenderer.invoke(MF_FETCH_CHAPTERS, url),
-  fetchTranscript: (url: string): Promise<VideoTranscriptResult> =>
-    ipcRenderer.invoke(MF_FETCH_TRANSCRIPT, url),
+  fetchChapters: (url: string, requestId?: string): Promise<VideoChaptersResult> =>
+    ipcRenderer.invoke(MF_FETCH_CHAPTERS, { url, requestId }),
+  fetchTranscript: (url: string, requestId?: string): Promise<VideoTranscriptResult> =>
+    ipcRenderer.invoke(MF_FETCH_TRANSCRIPT, { url, requestId }),
+  previewCancel: (requestId: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke(MF_PREVIEW_CANCEL, requestId),
   saveTextFile: (defaultFilename: string, content: string): Promise<SaveTextFileResult> =>
     ipcRenderer.invoke(MF_SAVE_TEXT_FILE, defaultFilename, content),
   setPreviewVolumeBoost: (boost: number): Promise<boolean> =>

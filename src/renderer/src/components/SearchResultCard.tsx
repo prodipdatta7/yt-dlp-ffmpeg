@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { VideoChaptersResult, VideoTranscriptResult } from '../../../shared/ipcContract'
 import {
   ERROR_MESSAGES,
@@ -58,11 +58,59 @@ import {
 } from './icons'
 import { InlineVideoPreview, VolumeBoosterControl } from './InlineVideoPreview'
 import { CheckSquare } from './PreviewPanel'
+import { findActiveIndex } from '../utils/activeIndex'
+import { LruCache } from '../utils/lruCache'
 
 export type { ChapterMarker, TranscriptCue }
 
-const chaptersCache = new Map<string, VideoChaptersResult>()
-const transcriptCache = new Map<string, VideoTranscriptResult>()
+/**
+ * Preview content caches. These were unbounded module-level Maps, so everything a session
+ * ever previewed stayed reachable after its card unmounted (P-06). Transcripts get a smaller
+ * entry count because a single one can be thousands of cues.
+ */
+const chaptersCache = new LruCache<VideoChaptersResult>(50, 10 * 1024 * 1024)
+const transcriptCache = new LruCache<VideoTranscriptResult>(10, 10 * 1024 * 1024)
+
+/**
+ * In-flight preview fetches keyed by URL, so reopening the same result while its first
+ * request is still running reuses that promise instead of spawning a second yt-dlp (P-06).
+ */
+const chaptersInFlight = new Map<string, Promise<VideoChaptersResult>>()
+const transcriptInFlight = new Map<string, Promise<VideoTranscriptResult>>()
+
+/** Drops all cached preview content — called when the search results are replaced. */
+export function clearPreviewCaches(): void {
+  chaptersCache.clear()
+  transcriptCache.clear()
+}
+
+function newRequestId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `req-${Date.now()}-${Math.random()}`
+}
+
+/** Fetches chapters for `url`, deduplicating concurrent requests for the same URL. */
+function fetchChaptersDeduped(url: string, requestId: string): Promise<VideoChaptersResult> {
+  const pending = chaptersInFlight.get(url)
+  if (pending) return pending
+
+  const request = (window.mf?.fetchChapters(url, requestId) ?? Promise.resolve({ chapters: [] }))
+    .catch((): VideoChaptersResult => ({ chapters: [] }))
+    .finally(() => chaptersInFlight.delete(url))
+  chaptersInFlight.set(url, request)
+  return request
+}
+
+/** Fetches a transcript for `url`, deduplicating concurrent requests for the same URL. */
+function fetchTranscriptDeduped(url: string, requestId: string): Promise<VideoTranscriptResult> {
+  const pending = transcriptInFlight.get(url)
+  if (pending) return pending
+
+  const request = (window.mf?.fetchTranscript(url, requestId) ?? Promise.resolve({ cues: [] }))
+    .catch((): VideoTranscriptResult => ({ cues: [] }))
+    .finally(() => transcriptInFlight.delete(url))
+  transcriptInFlight.set(url, request)
+  return request
+}
 
 function extractRealChapters(
   description?: string | null,
@@ -416,7 +464,7 @@ export function SearchResultCard({
     try {
       await navigator.clipboard.writeText(entry.url)
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      scheduleFeedback(() => setCopied(false), 2000)
     } catch {
       /* ignore clipboard err */
     }
@@ -431,6 +479,53 @@ export function SearchResultCard({
   const [currentTimeSec, setCurrentTimeSec] = useState(0)
   const [isPlaying, setIsPlaying] = useState(true)
   const lastRealUpdateRef = useRef<number>(Date.now())
+
+  /**
+   * Player callbacks, stable for the life of the component. The inline arrows they replace
+   * were new identities on every render, which tore down and re-installed the player's global
+   * `message` listener on every playback tick (P-06). `setCurrentTimeSec`/`setIsPlaying` are
+   * themselves stable, so the empty dependency arrays are genuine.
+   *
+   * The clock is rounded to 0.25 s and identical values are dropped, capping renders at 4 Hz
+   * regardless of how fast the embed reports progress (P-07).
+   */
+  const handleTimeUpdate = useCallback((t: number) => {
+    lastRealUpdateRef.current = Date.now()
+    const rounded = Math.round(t * 4) / 4
+    setCurrentTimeSec((prev) => (prev === rounded ? prev : rounded))
+  }, [])
+  const handlePlayingChange = useCallback((playing: boolean) => setIsPlaying(playing), [])
+
+  /** False once this card unmounts; every async setState below checks it (P-06). */
+  const mountedRef = useRef(true)
+  /** Request ids of preview fetches still in flight, so closing can cancel them. */
+  const previewRequestsRef = useRef(new Set<string>())
+  /** Transient "copied"/"downloaded" feedback timers, cleared on unmount (P-06). */
+  const feedbackTimersRef = useRef(new Set<ReturnType<typeof setTimeout>>())
+
+  /** setTimeout that forgets itself and is cancelled if the card goes away first. */
+  const scheduleFeedback = useCallback((fn: () => void, ms: number) => {
+    const timer = setTimeout(() => {
+      feedbackTimersRef.current.delete(timer)
+      if (mountedRef.current) fn()
+    }, ms)
+    feedbackTimersRef.current.add(timer)
+  }, [])
+
+  useEffect(() => {
+    mountedRef.current = true
+    const feedbackTimers = feedbackTimersRef.current
+    return () => {
+      mountedRef.current = false
+      for (const timer of feedbackTimers) clearTimeout(timer)
+      feedbackTimers.clear()
+      // Closing the preview used to flip a local boolean and leave main's yt-dlp running.
+      for (const id of previewRequestsRef.current) {
+        void window.mf?.previewCancel?.(id).catch(() => undefined)
+      }
+      previewRequestsRef.current.clear()
+    }
+  }, [])
   const activeChapterRef = useRef<HTMLDivElement>(null)
   const leftColRef = useRef<HTMLDivElement>(null)
   const [leftColHeight, setLeftColHeight] = useState<number | null>(null)
@@ -473,28 +568,27 @@ export function SearchResultCard({
     }
 
     let cancelled = false
+    const requestId = newRequestId()
+    previewRequestsRef.current.add(requestId)
     setLoadingChapters(true)
-    window.mf
-      ?.fetchChapters(entry.url)
+
+    fetchChaptersDeduped(entry.url, requestId)
       .then((res) => {
-        if (cancelled) return
+        if (cancelled || !mountedRef.current) return
         chaptersCache.set(entry.url, res)
         setFetchedData(res)
       })
-      .catch(() => {
-        if (cancelled) return
-        const fallback: VideoChaptersResult = { chapters: [] }
-        chaptersCache.set(entry.url, fallback)
-        setFetchedData(fallback)
-      })
       .finally(() => {
-        if (!cancelled) {
-          setLoadingChapters(false)
-        }
+        previewRequestsRef.current.delete(requestId)
+        if (!cancelled && mountedRef.current) setLoadingChapters(false)
       })
 
     return () => {
       cancelled = true
+      // Closing the preview kills the child; it is no longer left to run to completion.
+      if (previewRequestsRef.current.delete(requestId)) {
+        void window.mf?.previewCancel?.(requestId).catch(() => undefined)
+      }
     }
   }, [previewActive, entry.url])
 
@@ -507,30 +601,48 @@ export function SearchResultCard({
     return extractRealChapters(fullDescription, entry.durationSec)
   }, [fetchedData, fullDescription, entry.durationSec])
 
-  // Calculate the currently active/running chapter dynamically from playback time
+  // Currently running chapter, from playback time. O(log n) — chapters are ascending by
+  // `seconds`, and this runs on every tick (P-06). Contract preserved: 0 when none match.
   const activeChapterIndex = useMemo(() => {
     if (chapters.length === 0) return 0
-    const cur = currentTimeSec
-    for (let i = chapters.length - 1; i >= 0; i--) {
-      if (cur >= chapters[i].seconds) {
-        return i
-      }
-    }
-    return 0
+    return Math.max(
+      0,
+      findActiveIndex(chapters, currentTimeSec, (c) => c.seconds),
+    )
   }, [chapters, currentTimeSec])
 
-  // Fallback playback timer for embeds where postMessage is delayed or not emitted
+  // Fallback playback timer for embeds where postMessage is delayed or not emitted. Paused
+  // while the window is hidden — the clock advances on resume from the real player (P-07).
   useEffect(() => {
     if (!previewActive || !isPlaying) return
-    const interval = setInterval(() => {
-      if (Date.now() - lastRealUpdateRef.current > 1500) {
-        setCurrentTimeSec((prev) => {
-          const maxSec = entry.durationSec ?? 999999
-          return Math.min(maxSec, prev + 0.5)
-        })
-      }
-    }, 500)
-    return () => clearInterval(interval)
+    let interval: ReturnType<typeof setInterval> | null = null
+
+    const tick = (): void => {
+      if (Date.now() - lastRealUpdateRef.current <= 1500) return
+      setCurrentTimeSec((prev) => {
+        const maxSec = entry.durationSec ?? 999999
+        return Math.min(maxSec, prev + 0.5)
+      })
+    }
+    const start = (): void => {
+      if (interval === null) interval = setInterval(tick, 500)
+    }
+    const stop = (): void => {
+      if (interval === null) return
+      clearInterval(interval)
+      interval = null
+    }
+    const onVisibility = (): void => {
+      if (document.visibilityState === 'visible') start()
+      else stop()
+    }
+
+    onVisibility()
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      stop()
+    }
   }, [previewActive, isPlaying, entry.durationSec])
 
   // Reset time when a new preview URL opens
@@ -569,20 +681,21 @@ export function SearchResultCard({
       transcriptCache.delete(entry.url)
     }
 
+    const requestId = newRequestId()
+    previewRequestsRef.current.add(requestId)
     setLoadingTranscript(true)
-    window.mf
-      ?.fetchTranscript(entry.url)
+
+    void fetchTranscriptDeduped(entry.url, requestId)
       .then((res) => {
+        if (!mountedRef.current) return
         if (res && res.cues && res.cues.length > 0) {
           transcriptCache.set(entry.url, res)
         }
         setTranscriptData(res)
       })
-      .catch(() => {
-        setTranscriptData({ cues: [] })
-      })
       .finally(() => {
-        setLoadingTranscript(false)
+        previewRequestsRef.current.delete(requestId)
+        if (mountedRef.current) setLoadingTranscript(false)
       })
   }
 
@@ -599,17 +712,12 @@ export function SearchResultCard({
 
   const cues = useMemo(() => transcriptData?.cues ?? [], [transcriptData])
 
-  // Calculate the currently active transcript cue dynamically from playback time
-  const activeCueIndex = useMemo(() => {
-    if (cues.length === 0) return -1
-    const cur = currentTimeSec
-    for (let i = cues.length - 1; i >= 0; i--) {
-      if (cur >= cues[i].startSec) {
-        return i
-      }
-    }
-    return 0
-  }, [cues, currentTimeSec])
+  // Active transcript cue, from playback time. O(log n); cues are ascending by `startSec`
+  // (P-06). Contract preserved: -1 on an empty array, 0 when playback is before the first cue.
+  const activeCueIndex = useMemo(
+    () => findActiveIndex(cues, currentTimeSec, (c) => c.startSec),
+    [cues, currentTimeSec],
+  )
 
   // Auto-scroll active transcript cue into view as playback advances
   useEffect(() => {
@@ -637,7 +745,7 @@ export function SearchResultCard({
         const res = await window.mf.saveTextFile(filename, content)
         if (res?.ok) {
           setDownloadedTxt(true)
-          setTimeout(() => setDownloadedTxt(false), 3000)
+          scheduleFeedback(() => setDownloadedTxt(false), 3000)
         }
       } else {
         const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
@@ -648,7 +756,7 @@ export function SearchResultCard({
         a.click()
         URL.revokeObjectURL(url)
         setDownloadedTxt(true)
-        setTimeout(() => setDownloadedTxt(false), 3000)
+        scheduleFeedback(() => setDownloadedTxt(false), 3000)
       }
     } catch {
       /* best-effort */
@@ -682,7 +790,7 @@ export function SearchResultCard({
     try {
       await navigator.clipboard.writeText(entry.url)
       setCopiedLink(true)
-      setTimeout(() => setCopiedLink(false), 2000)
+      scheduleFeedback(() => setCopiedLink(false), 2000)
     } catch {
       /* ignore */
     }
@@ -1970,13 +2078,8 @@ export function SearchResultCard({
                     volumeBoost={previewVolumeBoost}
                     onClose={() => setPreviewActive(false)}
                     hideHeaderControls
-                    onTimeUpdate={(t) => {
-                      lastRealUpdateRef.current = Date.now()
-                      setCurrentTimeSec(t)
-                    }}
-                    onPlayingChange={(playing) => {
-                      setIsPlaying(playing)
-                    }}
+                    onTimeUpdate={handleTimeUpdate}
+                    onPlayingChange={handlePlayingChange}
                     className="size-full"
                   />
                 </div>

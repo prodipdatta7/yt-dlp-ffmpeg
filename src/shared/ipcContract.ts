@@ -57,6 +57,7 @@ export const MF_SEARCH_CANCEL = 'mf:search:cancel' as const
 export const MF_SEARCH_ENTRY = 'mf:search:entry' as const
 export const MF_FETCH_CHAPTERS = 'mf:media:fetch-chapters' as const
 export const MF_FETCH_TRANSCRIPT = 'mf:media:fetch-transcript' as const
+export const MF_PREVIEW_CANCEL = 'mf:media:preview-cancel' as const
 export const MF_SAVE_TEXT_FILE = 'mf:dialog:save-text-file' as const
 export const MF_PREVIEW_SET_VOLUME_BOOST = 'mf:preview:set-volume-boost' as const
 
@@ -286,8 +287,14 @@ export interface MfApi {
   openAppReleasePage(): Promise<{ ok: boolean }>
   downloadAndInstallAppUpdate(): Promise<AppUpdateInstallResult>
   onAppUpdatePhase(listener: (event: AppUpdatePhaseEvent) => void): () => void
-  fetchChapters(url: string): Promise<VideoChaptersResult>
-  fetchTranscript(url: string): Promise<VideoTranscriptResult>
+  /** `requestId` lets the renderer cancel this exact request via {@link previewCancel}. */
+  fetchChapters(url: string, requestId?: string): Promise<VideoChaptersResult>
+  fetchTranscript(url: string, requestId?: string): Promise<VideoTranscriptResult>
+  /**
+   * Kills the yt-dlp children of one preview request and blocks any follow-up it would
+   * spawn. Closing a preview or unmounting its card used to leave them running (P-06).
+   */
+  previewCancel(requestId: string): Promise<{ ok: boolean }>
   saveTextFile(defaultFilename: string, content: string): Promise<SaveTextFileResult>
   setPreviewVolumeBoost(boost: number): Promise<boolean>
 }

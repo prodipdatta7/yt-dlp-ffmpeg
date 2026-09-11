@@ -31,6 +31,7 @@ import {
   MF_SEARCH_START,
   MF_FETCH_CHAPTERS,
   MF_FETCH_TRANSCRIPT,
+  MF_PREVIEW_CANCEL,
   MF_SAVE_TEXT_FILE,
   MF_PREVIEW_SET_VOLUME_BOOST,
   MF_UPDATER_APPLY,
@@ -150,8 +151,9 @@ export interface IpcDeps {
   checkAppUpdate: () => Promise<AppUpdateCheckResult>
   openAppReleasePage: () => Promise<{ ok: boolean }>
   downloadAndInstallAppUpdate: () => Promise<AppUpdateInstallResult>
-  fetchChapters: (url: string) => Promise<VideoChaptersResult>
-  fetchTranscript: (url: string) => Promise<VideoTranscriptResult>
+  fetchChapters: (url: string, requestId?: string) => Promise<VideoChaptersResult>
+  fetchTranscript: (url: string, requestId?: string) => Promise<VideoTranscriptResult>
+  cancelPreview: (requestId: string) => Promise<{ ok: boolean }>
   saveTextFile: (defaultFilename: string, content: string) => Promise<SaveTextFileResult>
 }
 
@@ -330,13 +332,19 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
   })
   ipcMain.handle(MF_SEARCH_CANCEL, () => deps.cancelSearch())
 
+  ipcMain.handle(MF_PREVIEW_CANCEL, async (_event, payload: unknown) => {
+    const requestId = typeof payload === 'string' ? payload : ''
+    if (!requestId) return { ok: false }
+    return deps.cancelPreview(requestId)
+  })
+
   ipcMain.handle(
     MF_FETCH_CHAPTERS,
     async (_event, payload: unknown): Promise<VideoChaptersResult> => {
-      const url = extractUrl(payload)
+      const { url, requestId } = readPreviewPayload(payload)
       if (!url) return { chapters: [] }
       try {
-        return await deps.fetchChapters(url)
+        return await deps.fetchChapters(url, requestId)
       } catch {
         return { chapters: [] }
       }
@@ -346,10 +354,10 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
   ipcMain.handle(
     MF_FETCH_TRANSCRIPT,
     async (_event, payload: unknown): Promise<VideoTranscriptResult> => {
-      const url = extractUrl(payload)
+      const { url, requestId } = readPreviewPayload(payload)
       if (!url) return { cues: [] }
       try {
-        return await deps.fetchTranscript(url)
+        return await deps.fetchTranscript(url, requestId)
       } catch {
         return { cues: [] }
       }
@@ -528,6 +536,17 @@ function parseSearchRequest(payload: unknown): {
   }
 
   return { platform: platform.id, query, limit, sort, filters }
+}
+
+/**
+ * Preview channels carry `{ url, requestId }` so a request can be cancelled by id (P-06).
+ * Kept separate from `extractUrl` so the other channels' stricter string-only shape is
+ * unchanged.
+ */
+function readPreviewPayload(payload: unknown): { url: string | null; requestId?: string } {
+  const raw = (payload ?? {}) as { url?: unknown; requestId?: unknown }
+  const requestId = typeof raw.requestId === 'string' ? raw.requestId : undefined
+  return { url: extractUrl(raw.url), requestId }
 }
 
 function extractUrl(payload: unknown): string | null {

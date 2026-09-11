@@ -440,6 +440,14 @@ const CANCEL_TIMEOUT_MS = 2000
 
 export class SearchService {
   private readonly activeHandles = new Set<SpawnHandle>()
+  /**
+   * Preview (chapter/transcript) handles keyed by the renderer's request id, so closing a
+   * preview can kill exactly that request's children instead of letting them run to
+   * completion (P-06).
+   */
+  private readonly previewRequests = new Map<string, Set<SpawnHandle>>()
+  /** Request ids cancelled while still in flight; consulted before spawning a follow-up. */
+  private readonly cancelledRequests = new Set<string>()
   private readonly searchHandles = new Set<SpawnHandle>()
   private searchGeneration = 0
   private searchAbortController: AbortController | null = null
@@ -475,6 +483,58 @@ export class SearchService {
   /** Supersedes without waiting — for the internal "a new search replaces the old" path. */
   private supersede(): void {
     void this.cancel()
+  }
+
+  /** Kills the children of one preview request and blocks any follow-up spawn it would make. */
+  async cancelPreviewRequest(requestId: string): Promise<void> {
+    if (!requestId) return
+    this.cancelledRequests.add(requestId)
+    // Bounded: ids are removed when their request settles, this only guards a leak if one
+    // never does.
+    if (this.cancelledRequests.size > 64) {
+      const oldest = this.cancelledRequests.values().next()
+      if (!oldest.done) this.cancelledRequests.delete(oldest.value)
+    }
+
+    const handles = this.previewRequests.get(requestId)
+    this.previewRequests.delete(requestId)
+    if (!handles || handles.size === 0) return
+
+    const kills = Promise.allSettled([...handles].map((handle) => handle.killTree()))
+    const timeout = new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, CANCEL_TIMEOUT_MS)
+      timer.unref?.()
+    })
+    await Promise.race([kills, timeout])
+  }
+
+  private trackPreview(requestId: string | undefined, handle: SpawnHandle): void {
+    if (!requestId) return
+    let set = this.previewRequests.get(requestId)
+    if (!set) {
+      set = new Set<SpawnHandle>()
+      this.previewRequests.set(requestId, set)
+    }
+    set.add(handle)
+  }
+
+  private untrackPreview(requestId: string | undefined, handle: SpawnHandle): void {
+    if (!requestId) return
+    const set = this.previewRequests.get(requestId)
+    if (!set) return
+    set.delete(handle)
+    if (set.size === 0) this.previewRequests.delete(requestId)
+  }
+
+  private previewCancelled(requestId: string | undefined): boolean {
+    return requestId !== undefined && this.cancelledRequests.has(requestId)
+  }
+
+  /** Forgets a settled request id so `cancelledRequests` cannot grow with the session. */
+  private finishPreview(requestId: string | undefined): void {
+    if (!requestId) return
+    this.previewRequests.delete(requestId)
+    this.cancelledRequests.delete(requestId)
   }
 
   async search(
@@ -904,8 +964,13 @@ export class SearchService {
     await Promise.all(Array.from({ length: concurrency }, () => worker()))
   }
 
-  async fetchChapters(binaryPath: string, url: string): Promise<VideoChaptersResult> {
+  async fetchChapters(
+    binaryPath: string,
+    url: string,
+    requestId?: string,
+  ): Promise<VideoChaptersResult> {
     const generation = this.searchGeneration
+    if (this.previewCancelled(requestId)) return { chapters: [] }
     const args = [
       '--no-warnings',
       '--print',
@@ -925,10 +990,13 @@ export class SearchService {
       timeoutMs: 15_000,
     })
     this.activeHandles.add(handle)
+    this.trackPreview(requestId, handle)
     try {
       const res = await handle.result
       // A cancel landing mid-request supersedes it (AM-09).
-      if (generation !== this.searchGeneration) return { chapters: [] }
+      if (generation !== this.searchGeneration || this.previewCancelled(requestId)) {
+        return { chapters: [] }
+      }
       if (res.code === 0) {
         return parseChaptersOutput(res.stdoutLines.join('\n'))
       }
@@ -937,11 +1005,18 @@ export class SearchService {
       return { chapters: [] }
     } finally {
       this.activeHandles.delete(handle)
+      this.untrackPreview(requestId, handle)
+      this.finishPreview(requestId)
     }
   }
 
-  async fetchTranscript(binaryPath: string, url: string): Promise<VideoTranscriptResult> {
+  async fetchTranscript(
+    binaryPath: string,
+    url: string,
+    requestId?: string,
+  ): Promise<VideoTranscriptResult> {
     const generation = this.searchGeneration
+    if (this.previewCancelled(requestId)) return { cues: [] }
     const tmpDir = path.join(
       os.tmpdir(),
       `mf-transcripts-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -971,18 +1046,22 @@ export class SearchService {
         timeoutMs: 25_000,
       })
       this.activeHandles.add(handle)
+      this.trackPreview(requestId, handle)
       try {
         await handle.result
       } finally {
         this.activeHandles.delete(handle)
+        this.untrackPreview(requestId, handle)
       }
 
-      if (generation !== this.searchGeneration) return { cues: [] }
+      const superseded = (): boolean =>
+        generation !== this.searchGeneration || this.previewCancelled(requestId)
+      if (superseded()) return { cues: [] }
       let files = await fs.promises.readdir(tmpDir)
 
       // Fallback: if none of the explicit primary language tags matched, try all available
       // subtitles — but not if a cancel has since superseded this request (AM-09).
-      if (files.length === 0 && generation === this.searchGeneration) {
+      if (files.length === 0 && !superseded()) {
         const fallbackArgs = [
           '--skip-download',
           '--ignore-errors',
@@ -1004,15 +1083,17 @@ export class SearchService {
           timeoutMs: 20_000,
         })
         this.activeHandles.add(fbHandle)
+        this.trackPreview(requestId, fbHandle)
         try {
           await fbHandle.result
         } finally {
           this.activeHandles.delete(fbHandle)
+          this.untrackPreview(requestId, fbHandle)
         }
         files = await fs.promises.readdir(tmpDir)
       }
 
-      if (files.length === 0 || generation !== this.searchGeneration) {
+      if (files.length === 0 || superseded()) {
         return { cues: [] }
       }
 
@@ -1056,6 +1137,7 @@ export class SearchService {
     } catch {
       return { cues: [] }
     } finally {
+      this.finishPreview(requestId)
       try {
         await fs.promises.rm(tmpDir, { recursive: true, force: true })
       } catch {
