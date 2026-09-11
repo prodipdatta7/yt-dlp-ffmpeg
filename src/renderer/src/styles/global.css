@@ -382,6 +382,13 @@ textarea {
  * This is a complement to windowing, not a substitute — the DOM nodes still exist, they are
  * just not laid out or painted while off-screen. `contain-intrinsic-size` supplies a
  * placeholder height so the scrollbar stays stable.
+ *
+ * TRAP: `content-visibility` implies **paint containment**. A contained element becomes a
+ * containing block for `position: fixed` descendants and clips to its padding box, and its
+ * whole subtree stops rendering once it scrolls off-screen. Never put these classes on an
+ * ancestor of a modal, popover, dropdown or anything else that escapes its parent's box —
+ * put them on the inner content element instead. (This broke the theater preview once: the
+ * overlay was `fixed inset-0` inside a contained `<li>`, so it sized to the card.)
  */
 .mf-skip-offscreen {
   content-visibility: auto;

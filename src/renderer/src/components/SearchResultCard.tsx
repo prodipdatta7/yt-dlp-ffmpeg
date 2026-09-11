@@ -333,9 +333,16 @@ export function SearchResultCard({
       /drama|records|vevo|music|channel|tv|official|sky|capital/i.test(entry.uploader!))
 
   return (
-    <li class="mf-skip-offscreen-card list-none min-w-0">
+    <li class="list-none min-w-0">
+      {/*
+        `mf-skip-offscreen-card` sits on the collapsed card, NOT on the <li>. It implies
+        paint containment, which makes the element a containing block for fixed-position
+        descendants and clips to its padding box — so the theater overlay below, which is
+        `fixed inset-0`, would resolve against this card instead of the viewport and be
+        clipped inside it. Containment must never wrap the overlay.
+      */}
       <div
-        class={`w-full min-w-0 rounded-2xl border p-3.5 transition-all duration-150 sm:p-4 text-left ${
+        class={`mf-skip-offscreen-card w-full min-w-0 rounded-2xl border p-3.5 transition-all duration-150 sm:p-4 text-left ${
           selected
             ? 'border-[#ff5500]/70 bg-orange-50/40 shadow-md shadow-orange-500/10 dark:border-sky-500/50 dark:bg-[#161d2d]'
             : previewActive
