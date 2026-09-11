@@ -35,6 +35,7 @@ export function requestMorePlaylistHydration(): void {
 }
 
 export function resetAnalysis(): void {
+  analyzeGeneration += 1
   analysis.value = null
   analyzeError.value = null
   playlistHydration.value = null
@@ -42,6 +43,14 @@ export function resetAnalysis(): void {
   resetJobStatus()
   resetQueueForNewAnalysis()
 }
+
+/**
+ * Identifies the current analysis. Every write below is guarded by it, so a superseded
+ * request cannot land its result — or clear `analyzing` — under the one that replaced it
+ * (P-08). Cancel-then-reanalyze overlaps in practice now that hydration runs in the
+ * background (R-02).
+ */
+let analyzeGeneration = 0
 
 /**
  * Automates pasting a URL into the link bar and triggering metadata analysis.
@@ -52,28 +61,42 @@ export async function triggerAnalyze(url: string): Promise<void> {
   if (!cleanUrl) return
   if (analyzing.value) {
     try {
+      // Awaited on the main side too, so this means the old process tree is gone (AM-09).
       await window.mf?.analyzeCancel?.()
     } catch {
       /* ignore cancel err */
     }
   }
   urlInput.value = cleanUrl
-  resetAnalysis()
+  resetAnalysis() // bumps the generation, invalidating anything still in flight
+  const gen = analyzeGeneration
   analyzing.value = true
   try {
     const response = await window.mf.analyzeStart(cleanUrl)
+    if (gen !== analyzeGeneration) return
     if (response.kind === 'ok') {
       analysis.value = response.result
     } else {
       analyzeError.value = { code: response.code, message: response.message }
     }
   } catch {
+    if (gen !== analyzeGeneration) return
     analyzeError.value = { code: 'MF_UNKNOWN', message: 'Unexpected IPC failure.' }
   } finally {
-    analyzing.value = false
+    if (gen === analyzeGeneration) analyzing.value = false
   }
 }
 
+/** Test seam: the generation in-flight writes are checked against. */
+export function currentAnalyzeGeneration(): number {
+  return analyzeGeneration
+}
+
+/**
+ * Applies a streamed analysis event. Superseded analyses are filtered in main, which owns
+ * the generation counter and stops emitting the moment a cancel or a newer analysis lands
+ * (see AnalyzeService) — the renderer cannot compare generations it never receives.
+ */
 export function applyAnalyzeStream(event: AnalyzeStreamEvent): void {
   if (event.kind === 'outline') {
     analysis.value = event.result

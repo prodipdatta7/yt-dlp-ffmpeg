@@ -323,6 +323,11 @@ export class AnalyzeService {
 
     const attempt = async (url: string): Promise<AnalyzeResult> => {
       const result = await this.runOnce(binary.path, url, true)
+      // A cancel or a newer analysis landing during the outline call supersedes this one;
+      // emitting now would overwrite the newer analysis in the renderer (P-08).
+      if (this.cancelRequested || generation !== this.generation) {
+        throw new MfError('MF_CANCELLED')
+      }
       if (result.kind === 'playlist' && (result.playlistEntries?.length ?? 0) > 0) {
         this.entrySink?.({ kind: 'outline', result })
         const current: CurrentPlaylist = {

@@ -42,6 +42,8 @@ export interface SearchServiceOptions {
   onEntryHydrated?: (item: SearchHydratePayload) => void
   /** Injectable only for deterministic tests; production uses the cookie-free public-web fetcher. */
   fetchPublicWebSearch?: (url: string, signal: AbortSignal) => Promise<string>
+  /** Test seam: process spawner, so handle bookkeeping and cancel are assertable. */
+  spawn?: typeof spawnProcess
 }
 
 /** Parses a formatted print line "%(original_url)s|%(upload_date)s|%(timestamp)s|%(like_count)s". */
@@ -433,6 +435,9 @@ export function parseVttTranscript(rawVtt: string): TranscriptCue[] {
 
 const SEARCH_TIMEOUT_MS = 45_000
 
+/** Upper bound on how long `cancel()` waits for process trees to die before giving up. */
+const CANCEL_TIMEOUT_MS = 2000
+
 export class SearchService {
   private readonly activeHandles = new Set<SpawnHandle>()
   private readonly searchHandles = new Set<SpawnHandle>()
@@ -441,13 +446,35 @@ export class SearchService {
 
   constructor(private readonly opts: SearchServiceOptions) {}
 
-  cancel(): void {
+  /**
+   * Supersedes the current search and kills every child it owns (AM-09). `activeHandles` —
+   * the set chapter and transcript requests register in — used to be left running, so those
+   * processes survived a cancel entirely (P-08).
+   *
+   * The generation bump comes first so late writes from in-flight work are dropped, and the
+   * wait for termination is bounded: a stuck `taskkill` must not hang the UI.
+   */
+  async cancel(): Promise<void> {
     this.searchGeneration++
     this.searchAbortController?.abort()
     this.searchAbortController = null
-    const handles = [...this.searchHandles]
+
+    const handles = [...this.searchHandles, ...this.activeHandles]
     this.searchHandles.clear()
-    for (const handle of handles) void handle.killTree()
+    this.activeHandles.clear()
+    if (handles.length === 0) return
+
+    const kills = Promise.allSettled(handles.map((handle) => handle.killTree()))
+    const timeout = new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, CANCEL_TIMEOUT_MS)
+      timer.unref?.()
+    })
+    await Promise.race([kills, timeout])
+  }
+
+  /** Supersedes without waiting — for the internal "a new search replaces the old" path. */
+  private supersede(): void {
+    void this.cancel()
   }
 
   async search(
@@ -462,7 +489,7 @@ export class SearchService {
     if (!platform || trimmed.length === 0) throw new MfError('MF_INVALID_QUERY')
 
     // A new search supersedes both discovery and background hydration from the previous one.
-    this.cancel()
+    this.supersede()
     const generation = this.searchGeneration
     const binary = await this.opts.resolveYtDlp()
     if (!binary) throw new MfError('MF_UNKNOWN')
@@ -500,7 +527,7 @@ export class SearchService {
       federated: false,
     })
     this.opts.onProcessLine?.(`$ yt-dlp ${args.join(' ')}`, 'out')
-    const handle = spawnProcess(binary.path, args, {
+    const handle = (this.opts.spawn ?? spawnProcess)(binary.path, args, {
       // stdout is the -J JSON payload and must be complete; stderr only needs a tail (P-01).
       capture: { stdout: 'full', stderr: 'tail', tailLines: 100 },
       onStdoutLine: (line) => {
@@ -797,7 +824,7 @@ export class SearchService {
         if (cookies) args.push('--cookies', cookies)
         args.push(...urls)
 
-        const handle = spawnProcess(binaryPath, args, {
+        const handle = (this.opts.spawn ?? spawnProcess)(binaryPath, args, {
           // Lines are parsed live; nothing needs retaining (P-01).
           capture: { stdout: 'none', stderr: 'tail', tailLines: 20 },
           onStdoutLine: (line) => {
@@ -833,7 +860,7 @@ export class SearchService {
       while (nextEntry < entries.length && generation === this.searchGeneration) {
         const entry = entries[nextEntry++]
         const args = buildEntryInfoArgs(entry.url, this.opts.getCookiesPath?.() ?? null)
-        const handle = spawnProcess(binaryPath, args, {
+        const handle = (this.opts.spawn ?? spawnProcess)(binaryPath, args, {
           // stdout is the -J JSON payload and must be complete (P-01).
           capture: { stdout: 'full', stderr: 'tail', tailLines: 100 },
           timeoutMs: 30_000,
@@ -878,6 +905,7 @@ export class SearchService {
   }
 
   async fetchChapters(binaryPath: string, url: string): Promise<VideoChaptersResult> {
+    const generation = this.searchGeneration
     const args = [
       '--no-warnings',
       '--print',
@@ -891,7 +919,7 @@ export class SearchService {
     if (cookies) args.push('--cookies', cookies)
     args.push(url)
 
-    const handle = spawnProcess(binaryPath, args, {
+    const handle = (this.opts.spawn ?? spawnProcess)(binaryPath, args, {
       // --print payload (chapters JSON + description) must be complete (P-01).
       capture: { stdout: 'full', stderr: 'tail', tailLines: 20 },
       timeoutMs: 15_000,
@@ -899,6 +927,8 @@ export class SearchService {
     this.activeHandles.add(handle)
     try {
       const res = await handle.result
+      // A cancel landing mid-request supersedes it (AM-09).
+      if (generation !== this.searchGeneration) return { chapters: [] }
       if (res.code === 0) {
         return parseChaptersOutput(res.stdoutLines.join('\n'))
       }
@@ -911,6 +941,7 @@ export class SearchService {
   }
 
   async fetchTranscript(binaryPath: string, url: string): Promise<VideoTranscriptResult> {
+    const generation = this.searchGeneration
     const tmpDir = path.join(
       os.tmpdir(),
       `mf-transcripts-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -935,7 +966,7 @@ export class SearchService {
       primaryArgs.push(url)
 
       // Subtitles land on disk; stdout is never read (P-01).
-      const handle = spawnProcess(binaryPath, primaryArgs, {
+      const handle = (this.opts.spawn ?? spawnProcess)(binaryPath, primaryArgs, {
         capture: { stdout: 'none', stderr: 'tail', tailLines: 20 },
         timeoutMs: 25_000,
       })
@@ -946,10 +977,12 @@ export class SearchService {
         this.activeHandles.delete(handle)
       }
 
+      if (generation !== this.searchGeneration) return { cues: [] }
       let files = await fs.promises.readdir(tmpDir)
 
-      // Fallback: if none of the explicit primary language tags matched, try all available subtitles
-      if (files.length === 0) {
+      // Fallback: if none of the explicit primary language tags matched, try all available
+      // subtitles — but not if a cancel has since superseded this request (AM-09).
+      if (files.length === 0 && generation === this.searchGeneration) {
         const fallbackArgs = [
           '--skip-download',
           '--ignore-errors',
@@ -966,7 +999,7 @@ export class SearchService {
         if (cookies) fallbackArgs.push('--cookies', cookies)
         fallbackArgs.push(url)
 
-        const fbHandle = spawnProcess(binaryPath, fallbackArgs, {
+        const fbHandle = (this.opts.spawn ?? spawnProcess)(binaryPath, fallbackArgs, {
           capture: { stdout: 'none', stderr: 'tail', tailLines: 20 },
           timeoutMs: 20_000,
         })
@@ -979,7 +1012,7 @@ export class SearchService {
         files = await fs.promises.readdir(tmpDir)
       }
 
-      if (files.length === 0) {
+      if (files.length === 0 || generation !== this.searchGeneration) {
         return { cues: [] }
       }
 

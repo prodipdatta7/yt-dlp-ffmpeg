@@ -145,7 +145,7 @@ export interface IpcDeps {
     sort: SearchSort,
     filters?: SearchFilterCriteria,
   ) => Promise<SearchResponse>
-  cancelSearch: () => { ok: boolean }
+  cancelSearch: () => Promise<{ ok: boolean }> | { ok: boolean }
   getAppVersion: () => string
   checkAppUpdate: () => Promise<AppUpdateCheckResult>
   openAppReleasePage: () => Promise<{ ok: boolean }>

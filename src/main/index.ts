@@ -535,8 +535,8 @@ app.whenReady().then(() => {
           return { kind: 'error', code, message: ERROR_MESSAGES[code] }
         }
       },
-      cancelSearch: () => {
-        searchService.cancel()
+      cancelSearch: async () => {
+        await searchService.cancel()
         return { ok: true }
       },
       fetchChapters: async (url: string) => {

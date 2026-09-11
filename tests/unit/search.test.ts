@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { buildSearchQuery } from '../../src/main/media/argBuilders'
+import type { RunResult, SpawnHandle } from '../../src/main/binaries/runner'
 import {
   buildBravePublicWebSearchUrl,
   buildPublicWebSearchUrl,
@@ -22,6 +23,7 @@ import {
   parseVttTranscript,
   normalizeFederatedCandidateUrl,
   SearchService,
+  type SearchServiceOptions,
 } from '../../src/main/media/search'
 
 function platform(id: SearchPlatformId) {
@@ -1028,5 +1030,83 @@ describe('Search Filters & Server Criteria (Option 2)', () => {
       expect(text).toContain('[00:00] Welcome to this deep dive.')
       expect(text).toContain('[00:04] Let us get started.')
     })
+  })
+})
+
+/**
+ * P-08. `cancel()` killed `searchHandles` but left `activeHandles` — the set chapter and
+ * transcript requests register in — running, so those yt-dlp processes survived a cancel
+ * entirely. AM-09 says cancel kills the tree.
+ */
+describe('SearchService.cancel handle bookkeeping (T8)', () => {
+  interface FakeHandle {
+    killed: boolean
+    release: () => void
+  }
+
+  /** Spawns that never exit on their own — only killTree settles them. */
+  function serviceWithHangingSpawns(): { service: SearchService; handles: FakeHandle[] } {
+    const handles: FakeHandle[] = []
+
+    const spawn = (): SpawnHandle => {
+      let settle!: () => void
+      const settled = new Promise<void>((r) => {
+        settle = r
+      })
+      const record: FakeHandle = { killed: false, release: () => settle() }
+      handles.push(record)
+
+      return {
+        pid: handles.length,
+        result: settled.then<RunResult>(() => ({
+          code: 0,
+          signal: null,
+          stdoutLines: [],
+          stderrLines: [],
+          timedOut: false,
+          stdoutTruncated: false,
+          stderrTruncated: false,
+        })),
+        killTree: async () => {
+          record.killed = true
+          record.release()
+        },
+      }
+    }
+
+    const service = new SearchService({
+      resolveYtDlp: async () => ({ kind: 'yt-dlp', path: 'fake', source: 'bundled' }),
+      spawn: spawn as unknown as SearchServiceOptions['spawn'],
+    })
+    return { service, handles }
+  }
+
+  it('kills the handle a chapters request registered in activeHandles', async () => {
+    const { service, handles } = serviceWithHangingSpawns()
+    const pending = service.fetchChapters('fake', 'https://x.test/v')
+    await new Promise((r) => setTimeout(r, 10))
+
+    expect(handles).toHaveLength(1)
+    expect(handles[0].killed).toBe(false)
+
+    await service.cancel()
+    expect(handles[0].killed).toBe(true)
+    await pending
+  }, 10_000)
+
+  it('kills the handle a transcript request registered in activeHandles', async () => {
+    const { service, handles } = serviceWithHangingSpawns()
+    const pending = service.fetchTranscript('fake', 'https://x.test/v')
+    await new Promise((r) => setTimeout(r, 10))
+
+    expect(handles.length).toBeGreaterThan(0)
+    await service.cancel()
+    expect(handles.every((h) => h.killed)).toBe(true)
+    await pending
+  }, 10_000)
+
+  it('is a safe no-op with nothing in flight', async () => {
+    const { service } = serviceWithHangingSpawns()
+    await expect(service.cancel()).resolves.toBeUndefined()
   })
 })
