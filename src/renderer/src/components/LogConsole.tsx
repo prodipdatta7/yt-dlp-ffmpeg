@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { LogEntryPayload } from '../../../shared/ipcContract'
-import { clearLogs, logEntries } from '../signals/logState'
+import { clearLogs, logEntries, setLogHistory } from '../signals/logState'
 import { toggleLogDock } from '../signals/uiState'
 import { CloseIcon, SearchIcon, TerminalIcon } from './icons'
 
@@ -41,6 +41,22 @@ export function LogConsole({ dock = false }: { dock?: boolean }) {
       return entry.text.toLowerCase().includes(q)
     })
   }, [entries, query, showProtocol])
+
+  // P-04: while this component is unmounted, main broadcasts no CLI lines at all. Opening
+  // the console re-syncs from the stored tail, so nothing is lost — only the IPC traffic.
+  useEffect(() => {
+    window.mf
+      .logHistory()
+      .then((res) => setLogHistory(res.lines))
+      .catch(() => undefined)
+    return () => {
+      void window.mf.logConsoleOpen(false).catch(() => undefined)
+    }
+  }, [])
+
+  useEffect(() => {
+    void window.mf.logConsoleOpen(true, showProtocol).catch(() => undefined)
+  }, [showProtocol])
 
   useEffect(() => {
     if (stuck && scrollRef.current) {

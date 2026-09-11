@@ -2,6 +2,7 @@ import { ipcMain, type WebFrameMain } from 'electron'
 import {
   MF_ANALYZE_CANCEL,
   MF_ANALYZE_ENTRY,
+  MF_ANALYZE_HYDRATE_RANGE,
   MF_ANALYZE_START,
   MF_BINARIES_INFO,
   MF_DOWNLOAD_CANCEL,
@@ -13,6 +14,7 @@ import {
   MF_JOB_EVENT,
   MF_LOGS_OPEN,
   MF_LOG_CLEAR,
+  MF_LOG_CONSOLE_OPEN,
   MF_LOG_HISTORY,
   MF_PING,
   MF_SETTINGS_CLEAR_COOKIES,
@@ -29,6 +31,8 @@ import {
   MF_SEARCH_START,
   MF_FETCH_CHAPTERS,
   MF_FETCH_TRANSCRIPT,
+  MF_PREVIEW_CANCEL,
+  MF_PROBE_SCENARIO,
   MF_SAVE_TEXT_FILE,
   MF_PREVIEW_SET_VOLUME_BOOST,
   MF_UPDATER_APPLY,
@@ -88,7 +92,12 @@ export interface IpcDeps {
     url: string,
     sendEntry?: (event: AnalyzeStreamEvent) => void,
   ) => Promise<AnalyzeResponse>
-  cancelAnalyze: () => { ok: boolean }
+  cancelAnalyze: () => Promise<{ ok: boolean }> | { ok: boolean }
+  hydrateAnalyzeRange: (
+    fromIndex: number,
+    count: number,
+    sendEntry: (event: AnalyzeStreamEvent) => void,
+  ) => Promise<{ ok: boolean }>
   startDownload: (
     config: JobConfig,
     sendEvent: (event: JobEvent) => void,
@@ -103,6 +112,7 @@ export interface IpcDeps {
   openLogsFolder: () => Promise<boolean>
   logHistory: () => Promise<{ lines: LogEntryPayload[] }> | { lines: LogEntryPayload[] }
   logClear: () => { ok: boolean }
+  logConsoleOpen: (open: boolean, includeProtocol: boolean) => { ok: boolean }
   getSettings: () => MfSettingsView
   setSettings: (
     patch: Partial<
@@ -113,9 +123,9 @@ export interface IpcDeps {
     >,
   ) => MfSettingsView
   markFirstRunSeen: () => boolean
-  listPartials: () => PartialsListResult
+  listPartials: () => Promise<PartialsListResult>
   openPartialDir: (path: string) => Promise<{ ok: boolean }>
-  clearPartials: (path?: string) => PartialsClearResult
+  clearPartials: (path?: string) => Promise<PartialsClearResult>
   revealPath: (path: string) => Promise<{ ok: boolean }>
   openFile: (path: string) => Promise<{ ok: boolean }>
   updaterCheck: (kind: UpdaterDriverKind) => Promise<{
@@ -137,13 +147,15 @@ export interface IpcDeps {
     sort: SearchSort,
     filters?: SearchFilterCriteria,
   ) => Promise<SearchResponse>
-  cancelSearch: () => { ok: boolean }
+  cancelSearch: () => Promise<{ ok: boolean }> | { ok: boolean }
   getAppVersion: () => string
   checkAppUpdate: () => Promise<AppUpdateCheckResult>
   openAppReleasePage: () => Promise<{ ok: boolean }>
   downloadAndInstallAppUpdate: () => Promise<AppUpdateInstallResult>
-  fetchChapters: (url: string) => Promise<VideoChaptersResult>
-  fetchTranscript: (url: string) => Promise<VideoTranscriptResult>
+  fetchChapters: (url: string, requestId?: string) => Promise<VideoChaptersResult>
+  fetchTranscript: (url: string, requestId?: string) => Promise<VideoTranscriptResult>
+  cancelPreview: (requestId: string) => Promise<{ ok: boolean }>
+  setProbeScenario: (scenario: string) => { ok: boolean }
   saveTextFile: (defaultFilename: string, content: string) => Promise<SaveTextFileResult>
 }
 
@@ -173,6 +185,25 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
   })
 
   ipcMain.handle(MF_ANALYZE_CANCEL, () => deps.cancelAnalyze())
+
+  ipcMain.handle(MF_ANALYZE_HYDRATE_RANGE, async (event, payload: unknown) => {
+    const raw = (payload ?? {}) as { fromIndex?: unknown; count?: unknown }
+    const fromIndex = Number(raw.fromIndex)
+    const count = Number(raw.count)
+    if (!Number.isInteger(fromIndex) || !Number.isInteger(count) || count <= 0) {
+      return { ok: false }
+    }
+    const sender = event.sender
+    const sendEntry = (streamEvent: AnalyzeStreamEvent): void => {
+      if (!sender.isDestroyed()) sender.send(MF_ANALYZE_ENTRY, streamEvent)
+    }
+    try {
+      return await deps.hydrateAnalyzeRange(fromIndex, count, sendEntry)
+    } catch (error) {
+      logger?.debug('playlist range hydration failed', { error: String(error) })
+      return { ok: false }
+    }
+  })
 
   ipcMain.handle(
     MF_DOWNLOAD_START,
@@ -215,6 +246,11 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
   ipcMain.handle(MF_LOG_HISTORY, () => deps.logHistory())
 
   ipcMain.handle(MF_LOG_CLEAR, () => deps.logClear())
+
+  ipcMain.handle(MF_LOG_CONSOLE_OPEN, (_event, payload: unknown) => {
+    const raw = (payload ?? {}) as { open?: unknown; includeProtocol?: unknown }
+    return deps.logConsoleOpen(raw.open === true, raw.includeProtocol === true)
+  })
 
   ipcMain.handle(MF_SETTINGS_GET, () => deps.getSettings())
 
@@ -298,13 +334,23 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
   })
   ipcMain.handle(MF_SEARCH_CANCEL, () => deps.cancelSearch())
 
+  ipcMain.handle(MF_PROBE_SCENARIO, (_event, payload: unknown) =>
+    deps.setProbeScenario(typeof payload === 'string' ? payload.slice(0, 64) : 'unknown'),
+  )
+
+  ipcMain.handle(MF_PREVIEW_CANCEL, async (_event, payload: unknown) => {
+    const requestId = typeof payload === 'string' ? payload : ''
+    if (!requestId) return { ok: false }
+    return deps.cancelPreview(requestId)
+  })
+
   ipcMain.handle(
     MF_FETCH_CHAPTERS,
     async (_event, payload: unknown): Promise<VideoChaptersResult> => {
-      const url = extractUrl(payload)
+      const { url, requestId } = readPreviewPayload(payload)
       if (!url) return { chapters: [] }
       try {
-        return await deps.fetchChapters(url)
+        return await deps.fetchChapters(url, requestId)
       } catch {
         return { chapters: [] }
       }
@@ -314,10 +360,10 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
   ipcMain.handle(
     MF_FETCH_TRANSCRIPT,
     async (_event, payload: unknown): Promise<VideoTranscriptResult> => {
-      const url = extractUrl(payload)
+      const { url, requestId } = readPreviewPayload(payload)
       if (!url) return { cues: [] }
       try {
-        return await deps.fetchTranscript(url)
+        return await deps.fetchTranscript(url, requestId)
       } catch {
         return { cues: [] }
       }
@@ -496,6 +542,17 @@ function parseSearchRequest(payload: unknown): {
   }
 
   return { platform: platform.id, query, limit, sort, filters }
+}
+
+/**
+ * Preview channels carry `{ url, requestId }` so a request can be cancelled by id (P-06).
+ * Kept separate from `extractUrl` so the other channels' stricter string-only shape is
+ * unchanged.
+ */
+function readPreviewPayload(payload: unknown): { url: string | null; requestId?: string } {
+  const raw = (payload ?? {}) as { url?: unknown; requestId?: unknown }
+  const requestId = typeof raw.requestId === 'string' ? raw.requestId : undefined
+  return { url: extractUrl(raw.url), requestId }
 }
 
 function extractUrl(payload: unknown): string | null {

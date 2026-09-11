@@ -49,15 +49,24 @@ export function computeSegmentPercent(progress: ParsedDownloadProgress): number 
   return progress.status === 'finished' ? 100 : null
 }
 
+/** True when a stdout line is the `--print after_move:filepath` payload (AM-01). */
+export function isFinalPathLine(
+  line: string,
+  exists: (path: string) => boolean = existsSync,
+): boolean {
+  const candidate = line.trim()
+  if (!candidate) return false
+  if (candidate.startsWith('MF') || candidate.startsWith('[')) return false
+  return exists(candidate)
+}
+
 export function extractFinalPathLine(
   lines: readonly string[],
   exists: (path: string) => boolean = existsSync,
 ): string | null {
   for (let i = lines.length - 1; i >= 0; i--) {
-    const candidate = lines[i]?.trim()
-    if (!candidate) continue
-    if (candidate.startsWith('MF') || candidate.startsWith('[')) continue
-    if (exists(candidate)) return candidate
+    const candidate = lines[i]
+    if (candidate !== undefined && isFinalPathLine(candidate, exists)) return candidate.trim()
   }
   return null
 }

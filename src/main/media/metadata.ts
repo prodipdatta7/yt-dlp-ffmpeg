@@ -5,6 +5,7 @@ import type {
   MfErrorCode,
   PlaylistEntryPreview,
 } from '../../shared/models'
+import { PLAYLIST_HYDRATION_WINDOW } from '../../shared/models'
 import type { LocatedBinary } from '../binaries/locator'
 import { spawnProcess, type SpawnHandle } from '../binaries/runner'
 import type { Logger } from '../store/logger'
@@ -212,6 +213,8 @@ export interface AnalyzeServiceOptions {
   onEntryHydrated?: (event: Extract<AnalyzeStreamEvent, { kind: 'entry' }>) => void
   /** Raw CLI line tap (stdout/stderr of yt-dlp) for the live console. */
   onProcessLine?: (line: string, stream: 'out' | 'err') => void
+  /** Test seam: process spawner, so hydration can be counted and driven deterministically. */
+  spawn?: typeof spawnProcess
 }
 
 const RETRYABLE_CODES = new Set(['MF_EXTRACTOR_STALE', 'MF_UNKNOWN'])
@@ -222,18 +225,77 @@ const HYDRATION_ABORT_CODES = new Set(['MF_RATE_LIMITED', 'MF_BOT_CHECK', 'MF_AG
 const ENTRY_INFO_TIMEOUT_MS = 30_000
 const HYDRATION_CONCURRENCY = 4
 
+/**
+ * Entries hydrated eagerly when a playlist is analyzed (R-02). Each hydration spawns its own
+ * yt-dlp — a 17 MB PyInstaller binary that unpacks itself to temp on every launch — so
+ * hydrating a 1,000-entry playlist up front cost on the order of 1,000 processes and several
+ * minutes before `analyze()` would resolve. The rest keep their flat-playlist preview rows
+ * (title + URL, which already render) and gain detail on demand via `hydrateRange`.
+ */
+export const HYDRATION_WINDOW = PLAYLIST_HYDRATION_WINDOW
+
+/** Upper bound on how long `cancel()` waits for process trees to die before giving up. */
+const CANCEL_TIMEOUT_MS = 2000
+
+interface CurrentPlaylist {
+  binaryPath: string
+  entries: PlaylistEntryPreview[]
+  /** Array positions already hydrated or in flight, so a range is never hydrated twice. */
+  attempted: Set<number>
+  /** Entries attempted so far, for the `done` figure in stream events. */
+  done: number
+}
+
 export class AnalyzeService {
   private readonly activeHandles = new Set<SpawnHandle>()
   private cancelRequested = false
   private entrySink: ((event: AnalyzeStreamEvent) => void) | null = null
+  /** Bumped by every new analysis, so late results from a superseded one are dropped. */
+  private generation = 0
+  private current: CurrentPlaylist | null = null
 
   constructor(private readonly opts: AnalyzeServiceOptions) {}
 
-  cancel(): void {
+  /**
+   * Kills every in-flight yt-dlp tree and waits for them (AM-09), so a caller awaiting this
+   * can rely on the old processes actually being gone. A stuck `taskkill` must not hang the
+   * UI, so the wait is bounded — on timeout the handles are dropped and we move on.
+   */
+  async cancel(): Promise<void> {
     this.cancelRequested = true
+    this.generation += 1
+    this.current = null
     const handles = [...this.activeHandles]
     this.activeHandles.clear()
-    for (const handle of handles) void handle.killTree()
+    if (handles.length === 0) return
+    const kills = Promise.allSettled(handles.map((handle) => handle.killTree()))
+    const timeout = new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, CANCEL_TIMEOUT_MS)
+      timer.unref?.()
+    })
+    await Promise.race([kills, timeout])
+  }
+
+  /**
+   * Hydrates a further slice of the current playlist, emitting the same `entry` events as the
+   * initial window. No-ops when there is no current playlist, when the range is already
+   * hydrated, or when a newer analysis has started.
+   */
+  async hydrateRange(
+    fromIndex: number,
+    count: number,
+    onEntry?: (event: AnalyzeStreamEvent) => void,
+  ): Promise<void> {
+    const current = this.current
+    if (!current || count <= 0) return
+    const generation = this.generation
+    this.cancelRequested = false
+    try {
+      await this.hydrateEntries(current, fromIndex, count, generation, onEntry)
+    } catch (error) {
+      if (error instanceof MfError && error.code === 'MF_CANCELLED') return
+      throw error
+    }
   }
 
   async analyze(
@@ -247,6 +309,9 @@ export class AnalyzeService {
     if (!binary) throw new MfError('MF_UNKNOWN')
 
     this.cancelRequested = false
+    this.generation += 1
+    const generation = this.generation
+    this.current = null
     const legacySink = this.opts.onEntryHydrated
     this.entrySink =
       onEntry ??
@@ -258,9 +323,23 @@ export class AnalyzeService {
 
     const attempt = async (url: string): Promise<AnalyzeResult> => {
       const result = await this.runOnce(binary.path, url, true)
+      // A cancel or a newer analysis landing during the outline call supersedes this one;
+      // emitting now would overwrite the newer analysis in the renderer (P-08).
+      if (this.cancelRequested || generation !== this.generation) {
+        throw new MfError('MF_CANCELLED')
+      }
       if (result.kind === 'playlist' && (result.playlistEntries?.length ?? 0) > 0) {
         this.entrySink?.({ kind: 'outline', result })
-        await this.hydrateEntries(binary.path, result.playlistEntries!)
+        const current: CurrentPlaylist = {
+          binaryPath: binary.path,
+          entries: result.playlistEntries!,
+          attempted: new Set<number>(),
+          done: 0,
+        }
+        this.current = current
+        // Only the first window is hydrated eagerly; the rest arrive via hydrateRange
+        // as the renderer scrolls (R-02).
+        await this.hydrateEntries(current, 0, HYDRATION_WINDOW, generation, this.entrySink)
       }
       return result
     }
@@ -292,18 +371,15 @@ export class AnalyzeService {
     const args = flatPlaylist
       ? buildAnalyzeArgs(url, this.opts.getCookiesPath?.() ?? null)
       : buildEntryInfoArgs(url, this.opts.getCookiesPath?.() ?? null)
-    const stdoutLines: string[] = []
-    const stderrLines: string[] = []
-
     this.opts.logger?.debug('analyze spawn started', { url, flatPlaylist })
     this.opts.onProcessLine?.(`$ yt-dlp ${args.join(' ')}`, 'out')
-    const handle = spawnProcess(binaryPath, args, {
+    const handle = (this.opts.spawn ?? spawnProcess)(binaryPath, args, {
+      // stdout is the -J JSON payload and must be complete; stderr only needs a tail (P-01).
+      capture: { stdout: 'full', stderr: 'tail', tailLines: 100 },
       onStdoutLine: (line) => {
-        stdoutLines.push(line)
         this.opts.onProcessLine?.(line, 'out')
       },
       onStderrLine: (line) => {
-        stderrLines.push(line)
         this.opts.onProcessLine?.(line, 'err')
       },
       timeoutMs: flatPlaylist ? undefined : ENTRY_INFO_TIMEOUT_MS,
@@ -318,11 +394,16 @@ export class AnalyzeService {
     }
 
     if (result.code !== 0) {
-      this.opts.logger?.debug('analyze failed', { stderrTail: stderrLines.slice(-5).join(' / ') })
-      throw new MfError(classifyStderr(stderrLines))
+      this.opts.logger?.debug('analyze failed', {
+        stderrTail: result.stderrLines.slice(-5).join(' / '),
+      })
+      throw new MfError(classifyStderr(result.stderrLines))
     }
 
-    const jsonText = stdoutLines.join('\n').trim()
+    // A partial payload would JSON.parse into nonsense; fail explicitly instead.
+    if (result.stdoutTruncated) throw new MfError('MF_EXTRACTOR_STALE')
+
+    const jsonText = result.stdoutLines.join('\n').trim()
     let raw: RawInfo
     try {
       raw = JSON.parse(jsonText) as RawInfo
@@ -335,50 +416,70 @@ export class AnalyzeService {
   }
 
   /**
-   * Fills in per-video details (thumbnail, duration, uploader, views) for every playlist
-   * entry so the UI can present each one like a single-video analysis. Failures on
+   * Fills in per-video details (thumbnail, duration, uploader, views) for the array positions
+   * `[from, from + count)` so the UI can present each entry like a single-video analysis.
+   * Positions already attempted are skipped, so a range is never hydrated twice. Failures on
    * individual entries keep the bare preview row; systemic failures abort the pass.
    */
-  private async hydrateEntries(binaryPath: string, entries: PlaylistEntryPreview[]): Promise<void> {
+  private async hydrateEntries(
+    playlist: CurrentPlaylist,
+    from: number,
+    count: number,
+    generation: number,
+    sink?: ((event: AnalyzeStreamEvent) => void) | null,
+  ): Promise<void> {
+    const { binaryPath, entries, attempted } = playlist
     const total = entries.length
-    let completed = 0
-    let nextIndex = 0
+    const end = Math.min(total, Math.max(0, from) + count)
+
+    const queue: number[] = []
+    for (let i = Math.max(0, from); i < end; i += 1) {
+      if (attempted.has(i)) continue
+      attempted.add(i)
+      queue.push(i)
+    }
+    if (queue.length === 0) return
+
+    const superseded = (): boolean => this.cancelRequested || generation !== this.generation
+    let nextQueued = 0
 
     const worker = async (): Promise<void> => {
       while (true) {
-        if (this.cancelRequested) throw new MfError('MF_CANCELLED')
-        const i = nextIndex
-        if (i >= total) return
-        nextIndex += 1
-        const entry = entries[i]
+        if (superseded()) throw new MfError('MF_CANCELLED')
+        const q = nextQueued
+        if (q >= queue.length) return
+        nextQueued += 1
+        const entry = entries[queue[q]]
         try {
           const info = await this.runOnce(binaryPath, entry.url, false)
+          // Re-check after the await: a cancel landing mid-entry must not emit a stale event.
+          if (superseded()) throw new MfError('MF_CANCELLED')
           entry.title = info.metadata.title !== 'Untitled' ? info.metadata.title : entry.title
           entry.durationSec = info.metadata.durationSec
           entry.uploader = info.metadata.uploader
           entry.viewCount = info.metadata.viewCount
           if (info.metadata.thumbnailUrl) entry.thumbnailUrl = info.metadata.thumbnailUrl
         } catch (error) {
-          if (this.cancelRequested) throw new MfError('MF_CANCELLED')
+          if (superseded()) throw new MfError('MF_CANCELLED')
           const code = error instanceof MfError ? error.code : 'MF_UNKNOWN'
           if (HYDRATION_ABORT_CODES.has(code)) throw error
           this.opts.logger?.debug('playlist entry hydration skipped', { index: entry.index, code })
         }
-        completed += 1
+        playlist.done += 1
         const entryEvent: Extract<AnalyzeStreamEvent, { kind: 'entry' }> = {
           kind: 'entry',
           index: entry.index,
           entry: { ...entry },
-          done: completed,
+          done: playlist.done,
           total,
         }
-        this.entrySink?.(entryEvent)
+        sink?.(entryEvent)
         this.opts.onEntryHydrated?.(entryEvent)
       }
     }
 
     await Promise.all(
-      Array.from({ length: Math.min(HYDRATION_CONCURRENCY, total) }, () => worker()),
+      Array.from({ length: Math.min(HYDRATION_CONCURRENCY, queue.length) }, () => worker()),
     )
   }
 }

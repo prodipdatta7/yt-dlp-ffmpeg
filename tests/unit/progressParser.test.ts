@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   computeSegmentPercent,
   extractFinalPathLine,
+  isFinalPathLine,
   isPostprocessorLine,
   parseDownloadLine,
   parsePostprocessLine,
@@ -103,5 +104,13 @@ describe('extractFinalPathLine (after_move:filepath capture)', () => {
 
   it('returns null when no candidate exists', () => {
     expect(extractFinalPathLine(['[download] x'], exists)).toBeNull()
+  })
+
+  it('shares its predicate with isFinalPathLine so the two cannot drift (T1)', () => {
+    expect(isFinalPathLine('C:/dest/My Video [abc123].mp4', exists)).toBe(true)
+    expect(isFinalPathLine('MF|downloading|1|2||3|4', exists)).toBe(false)
+    expect(isFinalPathLine('[Merger] Merging', exists)).toBe(false)
+    expect(isFinalPathLine('   ', exists)).toBe(false)
+    expect(isFinalPathLine('C:/tmp/nope.txt', exists)).toBe(false)
   })
 })

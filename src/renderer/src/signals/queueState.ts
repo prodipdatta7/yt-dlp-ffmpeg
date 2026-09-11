@@ -29,7 +29,22 @@ export interface JobResult {
 
 const doneResolvers = new Map<string, (result: JobResult) => void>()
 
+/**
+ * Completions that arrived before anyone was waiting on them. `waitForJob` registers its
+ * resolver only after `downloadStart` returns, so a `job:done` that beats the invoke reply
+ * would otherwise find no resolver and the resolver registered afterwards would never
+ * settle — the queue would wait forever (P-08). The window is narrow, but the failure is
+ * unrecoverable, so this is cheap insurance rather than a hot path.
+ */
+const earlyResults = new Map<string, JobResult>()
+const MAX_EARLY_RESULTS = 32
+
 export function waitForJob(jobId: string): Promise<JobResult> {
+  const early = earlyResults.get(jobId)
+  if (early) {
+    earlyResults.delete(jobId)
+    return Promise.resolve(early)
+  }
   return new Promise((resolve) => {
     doneResolvers.set(jobId, resolve)
   })
@@ -55,8 +70,20 @@ export function resolveJob(jobId: string, result: JobResult): void {
   if (resolver) {
     doneResolvers.delete(jobId)
     resolver(result)
+  } else {
+    // Map iterates in insertion order, so the first key is the oldest.
+    if (earlyResults.size >= MAX_EARLY_RESULTS) {
+      const oldest = earlyResults.keys().next()
+      if (!oldest.done) earlyResults.delete(oldest.value)
+    }
+    earlyResults.set(jobId, result)
   }
   resolveCurrentJob(result)
+}
+
+/** Test seam: how many completions are buffered awaiting a waiter. */
+export function earlyResultCount(): number {
+  return earlyResults.size
 }
 
 const isSettled = (row: QueueRow): boolean =>
@@ -115,6 +142,8 @@ export function resetQueueForNewAnalysis(): void {
   if (queueRunning.value) return
   queueRows.value = []
   stopRequested.value = false
+  // Buffered completions belong to the queue that just went away.
+  earlyResults.clear()
 }
 
 /** Sweeps every leftover partial folder on disk (not just ones tracked in the queue). */

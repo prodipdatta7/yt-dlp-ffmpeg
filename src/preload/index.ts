@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import {
   MF_ANALYZE_CANCEL,
   MF_ANALYZE_ENTRY,
+  MF_ANALYZE_HYDRATE_RANGE,
   MF_ANALYZE_START,
   MF_BINARIES_INFO,
   MF_DOWNLOAD_CANCEL,
@@ -14,6 +15,7 @@ import {
   MF_LOGS_OPEN,
   MF_LOG_CLEAR,
   MF_LOG_HISTORY,
+  MF_LOG_CONSOLE_OPEN,
   MF_LOG_LINE,
   MF_PING,
   MF_PARTIALS_CLEAR,
@@ -26,6 +28,8 @@ import {
   MF_SEARCH_START,
   MF_FETCH_CHAPTERS,
   MF_FETCH_TRANSCRIPT,
+  MF_PREVIEW_CANCEL,
+  MF_PROBE_SCENARIO,
   MF_SAVE_TEXT_FILE,
   MF_PREVIEW_SET_VOLUME_BOOST,
   MF_SETTINGS_CLEAR_COOKIES,
@@ -75,6 +79,8 @@ const api: MfApi = {
   analyzeStart: (url: string): Promise<AnalyzeResponse> =>
     ipcRenderer.invoke(MF_ANALYZE_START, url),
   analyzeCancel: (): Promise<{ ok: boolean }> => ipcRenderer.invoke(MF_ANALYZE_CANCEL),
+  analyzeHydrateRange: (fromIndex: number, count: number): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke(MF_ANALYZE_HYDRATE_RANGE, { fromIndex, count }),
   onAnalyzeEntry: (listener: (event: AnalyzeStreamEvent) => void): (() => void) => {
     const wrapped = (_event: IpcRendererEvent, payload: AnalyzeStreamEvent): void =>
       listener(payload)
@@ -103,6 +109,8 @@ const api: MfApi = {
   openLogsFolder: (): Promise<boolean> => ipcRenderer.invoke(MF_LOGS_OPEN),
   logHistory: (): Promise<{ lines: LogEntryPayload[] }> => ipcRenderer.invoke(MF_LOG_HISTORY),
   logClear: (): Promise<{ ok: boolean }> => ipcRenderer.invoke(MF_LOG_CLEAR),
+  logConsoleOpen: (open: boolean, includeProtocol?: boolean): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke(MF_LOG_CONSOLE_OPEN, { open, includeProtocol }),
   onLogLine: (listener: (entry: LogEntryPayload) => void): (() => void) => {
     const wrapped = (_event: IpcRendererEvent, payload: LogEntryPayload): void => listener(payload)
     ipcRenderer.on(MF_LOG_LINE, wrapped)
@@ -156,14 +164,18 @@ const api: MfApi = {
     ipcRenderer.on(MF_APP_UPDATE_PHASE, wrapped)
     return () => ipcRenderer.removeListener(MF_APP_UPDATE_PHASE, wrapped)
   },
-  fetchChapters: (url: string): Promise<VideoChaptersResult> =>
-    ipcRenderer.invoke(MF_FETCH_CHAPTERS, url),
-  fetchTranscript: (url: string): Promise<VideoTranscriptResult> =>
-    ipcRenderer.invoke(MF_FETCH_TRANSCRIPT, url),
+  fetchChapters: (url: string, requestId?: string): Promise<VideoChaptersResult> =>
+    ipcRenderer.invoke(MF_FETCH_CHAPTERS, { url, requestId }),
+  fetchTranscript: (url: string, requestId?: string): Promise<VideoTranscriptResult> =>
+    ipcRenderer.invoke(MF_FETCH_TRANSCRIPT, { url, requestId }),
+  previewCancel: (requestId: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke(MF_PREVIEW_CANCEL, requestId),
   saveTextFile: (defaultFilename: string, content: string): Promise<SaveTextFileResult> =>
     ipcRenderer.invoke(MF_SAVE_TEXT_FILE, defaultFilename, content),
   setPreviewVolumeBoost: (boost: number): Promise<boolean> =>
     ipcRenderer.invoke(MF_PREVIEW_SET_VOLUME_BOOST, boost),
+  setProbeScenario: (scenario: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke(MF_PROBE_SCENARIO, scenario),
 }
 
 contextBridge.exposeInMainWorld('mf', api)

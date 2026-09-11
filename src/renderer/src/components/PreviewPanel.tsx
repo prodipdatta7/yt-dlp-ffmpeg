@@ -3,6 +3,7 @@ import type { AnalyzeResult } from '../../../shared/models'
 import { fmtCount, fmtDuration, fmtEta, fmtSize, fmtSpeed } from '../utils/format'
 import { sourceLabel } from '../utils/source'
 import { jobEventsById, lastJobEvent } from '../signals/jobState'
+import { hydratedEntries, requestMorePlaylistHydration } from '../signals/appState'
 import {
   clearAllQueueLeftovers,
   patchQueueRow,
@@ -492,7 +493,8 @@ export function PlaylistEntries({
   onToggleEntry?: (url: string) => void
   onToggleAll?: (select: boolean) => void
 }) {
-  const entries = result.playlistEntries ?? []
+  // Rows come from the outline (order) with hydrated detail overlaid (P-05).
+  const entries = hydratedEntries(result.playlistEntries ?? [])
   const total = entries.length
   const selectedCount = entries.filter((e) => selectedUrls?.has(e.url) ?? true).length
   const allSelected = total > 0 && selectedCount === total
@@ -576,7 +578,17 @@ export function PlaylistEntries({
       </div>
 
       {total > 0 ? (
-        <ol class="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-1.5 text-[13px]">
+        <ol
+          class="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-1.5 text-[13px]"
+          onScroll={(event) => {
+            // Pull the next hydration window as the list nears its end (R-02). T13 replaces
+            // this with VirtualList's onNearEnd once the rows are windowed.
+            const el = event.currentTarget as HTMLOListElement
+            if (el.scrollTop + el.clientHeight > el.scrollHeight - 600) {
+              requestMorePlaylistHydration()
+            }
+          }}
+        >
           {entries.map((entry) => {
             const checked = selectedUrls?.has(entry.url) ?? true
             const rowStatus = statusByUrl.get(entry.url)
@@ -670,7 +682,7 @@ export function PlaylistEntries({
               return (
                 <li
                   key={entry.url}
-                  class="mf-row-hover rounded-lg border border-sky-500/25 bg-sky-500/[0.07] px-2 py-1.5"
+                  class="mf-skip-offscreen-row mf-row-hover rounded-lg border border-sky-500/25 bg-sky-500/[0.07] px-2 py-1.5"
                 >
                   <div class="flex items-center gap-3">{row}</div>
                   <div class="mt-1.5 flex items-center gap-2.5 pl-[52px]">
@@ -709,7 +721,7 @@ export function PlaylistEntries({
               )
             }
             return onToggleEntry && !rowStatus ? (
-              <li key={entry.url}>
+              <li key={entry.url} class="mf-skip-offscreen-row">
                 <button
                   onClick={() => onToggleEntry(entry.url)}
                   title={checked ? 'Exclude from download' : 'Include in download'}
@@ -723,7 +735,7 @@ export function PlaylistEntries({
             ) : (
               <li
                 key={entry.url}
-                class="mf-row-hover rounded-lg border border-transparent px-2 py-1.5"
+                class="mf-skip-offscreen-row mf-row-hover rounded-lg border border-transparent px-2 py-1.5"
               >
                 <div class="flex items-center gap-3">{row}</div>
                 {rowStatus === 'done' && outputPath && (

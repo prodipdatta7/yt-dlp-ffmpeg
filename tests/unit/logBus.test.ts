@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LogBus } from '../../src/main/logs/logBus'
+import { isProtocolLine, LogBus } from '../../src/main/logs/logBus'
 
 describe('LogBus', () => {
   it('stores redacted entries with timestamp, source and stream', () => {
@@ -31,6 +31,7 @@ describe('LogBus', () => {
 
   it('broadcasts live entries to subscribers and supports unsubscribe', () => {
     const bus = new LogBus()
+    bus.setBroadcast(true)
     const seen: string[] = []
     const off = bus.subscribe((entry) => seen.push(entry.text))
     bus.push('yt-dlp', 'out', 'first')
@@ -41,6 +42,7 @@ describe('LogBus', () => {
 
   it('clear wipes history but keeps the subscription alive', () => {
     const bus = new LogBus()
+    bus.setBroadcast(true)
     bus.push('yt-dlp', 'out', 'old')
     const seen: string[] = []
     bus.subscribe((entry) => seen.push(entry.text))
@@ -48,5 +50,65 @@ describe('LogBus', () => {
     expect(bus.tail()).toHaveLength(0)
     bus.push('yt-dlp', 'out', 'new')
     expect(seen).toEqual(['new'])
+  })
+
+  describe('broadcast gating (P-04)', () => {
+    it('stores but does not broadcast while the console is closed', () => {
+      const bus = new LogBus()
+      const seen: string[] = []
+      bus.subscribe((entry) => seen.push(entry.text))
+
+      bus.push('yt-dlp', 'out', '[download] Destination: a.mp4')
+      expect(seen).toEqual([])
+      expect(bus.tail().map((e) => e.text)).toEqual(['[download] Destination: a.mp4'])
+    })
+
+    it('retains protocol lines in tail() but withholds them from subscribers', () => {
+      const bus = new LogBus()
+      bus.setBroadcast(true)
+      const seen: string[] = []
+      bus.subscribe((entry) => seen.push(entry.text))
+
+      bus.push('yt-dlp', 'out', 'MF|downloading|1|2||3|4')
+      bus.push('yt-dlp', 'out', 'MFPOST| 50%')
+      bus.push('yt-dlp', 'out', '[Merger] Merging formats')
+
+      expect(seen).toEqual(['[Merger] Merging formats'])
+      expect(bus.tail()).toHaveLength(3)
+    })
+
+    it('delivers protocol lines once the console asks for them', () => {
+      const bus = new LogBus()
+      bus.setBroadcast(true, true)
+      const seen: string[] = []
+      bus.subscribe((entry) => seen.push(entry.text))
+
+      bus.push('yt-dlp', 'out', 'MF|downloading|1|2||3|4')
+      expect(seen).toEqual(['MF|downloading|1|2||3|4'])
+    })
+
+    it('stops broadcasting again when the console closes', () => {
+      const bus = new LogBus()
+      bus.setBroadcast(true)
+      const seen: string[] = []
+      bus.subscribe((entry) => seen.push(entry.text))
+
+      bus.push('yt-dlp', 'out', 'while open')
+      bus.setBroadcast(false)
+      bus.push('yt-dlp', 'out', 'while closed')
+
+      expect(seen).toEqual(['while open'])
+      expect(bus.tail()).toHaveLength(2)
+    })
+  })
+
+  describe('isProtocolLine', () => {
+    it('matches only the AM-01 machine templates', () => {
+      expect(isProtocolLine('MF|downloading|1|2||3|4')).toBe(true)
+      expect(isProtocolLine('MFPOST| 50%')).toBe(true)
+      expect(isProtocolLine('[download] 50%')).toBe(false)
+      expect(isProtocolLine('MFX|not ours')).toBe(false)
+      expect(isProtocolLine('')).toBe(false)
+    })
   })
 })

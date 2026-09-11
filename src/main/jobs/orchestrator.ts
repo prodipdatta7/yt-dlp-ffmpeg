@@ -1,14 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  renameSync,
-  rmSync,
-  statSync,
-  unlinkSync,
-} from 'node:fs'
+import * as fsp from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import type {
   JobConfig,
@@ -22,19 +13,46 @@ import type { LocatedBinary } from '../binaries/locator'
 import { spawnProcess, type RunResult, type SpawnHandle } from '../binaries/runner'
 import { freeDiskSpaceBytes, isDiskSpaceInsufficient } from '../fsops/diskSpace'
 import { findExistingDownload, recordDownload } from '../fsops/downloadManifest'
+import { sameVolume, STAGING_DIR_NAME } from '../fsops/partials'
 import { collisionFreeTarget, sanitizeFileName } from '../fsops/sanitizer'
 import { classifyStderr } from '../media/classifyStderr'
 import type { Logger } from '../store/logger'
 import { buildDownloadArgs, outputTemplateFor } from './argBuilders'
+import { JobEventCoalescer } from './eventCoalescer'
 import {
   computeSegmentPercent,
-  extractFinalPathLine,
+  isFinalPathLine,
   isPostprocessorLine,
   parseDownloadLine,
   parsePostprocessLine,
 } from './progressParser'
 
 export const DEFAULT_RETRY_DELAYS_MS: readonly number[] = [5000, 15000, 30000]
+
+/** Cadence of the `finalizing` heartbeat emitted while a cross-volume copy is in flight. */
+export const FINALIZE_HEARTBEAT_MS = 500
+
+/**
+ * The filesystem surface used by finalization, injectable so tests can drive the EXDEV,
+ * permission-denied and zero-byte-destination branches without a second volume.
+ */
+export interface FinalizeFs {
+  mkdir(path: string, options: { recursive: true }): Promise<string | undefined>
+  rename(source: string, target: string): Promise<void>
+  copyFile(source: string, target: string): Promise<void>
+  stat(path: string): Promise<{ size: number }>
+  unlink(path: string): Promise<void>
+  rm(path: string, options: { recursive: true; force: true }): Promise<void>
+}
+
+const NODE_FS: FinalizeFs = {
+  mkdir: (path, options) => fsp.mkdir(path, options),
+  rename: (source, target) => fsp.rename(source, target),
+  copyFile: (source, target) => fsp.copyFile(source, target),
+  stat: (path) => fsp.stat(path),
+  unlink: (path) => fsp.unlink(path),
+  rm: (path, options) => fsp.rm(path, options),
+}
 
 export interface OrchestratorDeps {
   resolveYtDlp(): Promise<LocatedBinary | null>
@@ -56,6 +74,14 @@ export interface OrchestratorDeps {
   getMaxConcurrent?: () => number
   /** Test seam: override free-disk probe. */
   getFreeDiskBytes?: (destDir: string) => Promise<number | null>
+  /** Test seam: flush cadence for coalesced progress events. */
+  coalesceIntervalMs?: number
+  /** Test seam: filesystem used by finalization. Defaults to node:fs/promises. */
+  fs?: Partial<FinalizeFs>
+  /** Test seam: `finalizing` heartbeat cadence during a cross-volume copy. */
+  finalizeHeartbeatMs?: number
+  /** Test seam: volume comparison used to choose the staging root. */
+  isSameVolume?: (a: string, b: string) => boolean
 }
 
 export type SendEvent = (event: JobEvent) => void
@@ -67,6 +93,8 @@ interface ActiveJob {
   handle: SpawnHandle | null
   cancelRequested: boolean
   tempDir: string
+  /** Root `tempDir` was created under — `deps.tempRoot`, or a staging dir beside destDir. */
+  stagingRoot: string
   destDir: string
 }
 
@@ -80,13 +108,13 @@ export class MfLaunchError extends Error {
   }
 }
 
-function findLargestCompletedFile(dir: string): string | null {
+async function findLargestCompletedFile(dir: string): Promise<string | null> {
   let best: string | null = null
   let bestSize = -1
-  for (const name of readdirSync(dir)) {
+  for (const name of await fsp.readdir(dir)) {
     if (name.endsWith('.part') || name.endsWith('.ytdl')) continue
     const full = join(dir, name)
-    const stat = statSync(full)
+    const stat = await fsp.stat(full)
     if (!stat.isFile()) continue
     if (stat.size > bestSize) {
       best = full
@@ -96,14 +124,14 @@ function findLargestCompletedFile(dir: string): string | null {
   return best !== null && bestSize > 0 ? best : null
 }
 
-function findLargestPartFile(dir: string): string | null {
+async function findLargestPartFile(dir: string): Promise<string | null> {
   let best: string | null = null
   let bestSize = -1
-  for (const name of readdirSync(dir)) {
+  for (const name of await fsp.readdir(dir)) {
     if (!name.endsWith('.part')) continue
     const full = join(dir, name)
     try {
-      const size = statSync(full).size
+      const size = (await fsp.stat(full)).size
       if (size > bestSize) {
         best = full
         bestSize = size
@@ -126,8 +154,15 @@ function sleep(ms: number): Promise<void> {
 
 export class DownloadOrchestrator {
   private readonly activeJobs = new Map<string, ActiveJob>()
+  /** P-04: rate-limits routine progress events on their way across IPC. */
+  private readonly events: JobEventCoalescer
 
-  constructor(private readonly deps: OrchestratorDeps) {}
+  private readonly fs: FinalizeFs
+
+  constructor(private readonly deps: OrchestratorDeps) {
+    this.events = new JobEventCoalescer(deps.coalesceIntervalMs)
+    this.fs = { ...NODE_FS, ...deps.fs }
+  }
 
   isBusy(): boolean {
     return this.activeJobs.size > 0
@@ -186,7 +221,7 @@ export class DownloadOrchestrator {
       : config.destDir
 
     if (!config.isLive) {
-      const existingPath = findExistingDownload(effectiveDestDir, config)
+      const existingPath = await findExistingDownload(effectiveDestDir, config)
       if (existingPath) {
         const jobId = randomUUID()
         this.deps.logger?.info('download skipped — already exists at this quality', {
@@ -220,8 +255,14 @@ export class DownloadOrchestrator {
     }
 
     const jobId = randomUUID()
-    const tempDir = tempDirForUrl(this.deps.tempRoot, config.url)
-    mkdirSync(tempDir, { recursive: true })
+    // R-03: staging on the destination's own volume turns finalization into a rename. On a
+    // different volume every large download would otherwise be written to disk twice.
+    const onSameVolume = this.deps.isSameVolume ?? sameVolume
+    const stagingRoot = onSameVolume(this.deps.tempRoot, effectiveDestDir)
+      ? this.deps.tempRoot
+      : join(effectiveDestDir, STAGING_DIR_NAME)
+    const tempDir = tempDirForUrl(stagingRoot, config.url)
+    await fsp.mkdir(tempDir, { recursive: true })
 
     const job: ActiveJob = {
       id: jobId,
@@ -229,6 +270,7 @@ export class DownloadOrchestrator {
       handle: null,
       cancelRequested: false,
       tempDir,
+      stagingRoot,
       destDir: effectiveDestDir,
     }
     this.activeJobs.set(jobId, job)
@@ -238,7 +280,10 @@ export class DownloadOrchestrator {
       tier: config.tier,
       active: this.activeJobs.size,
     })
-    sendEvent({ jobId, phase: 'queued', percent: null, speedBps: null, etaSec: null })
+    this.events.emit(
+      { jobId, phase: 'queued', percent: null, speedBps: null, etaSec: null },
+      sendEvent,
+    )
 
     void this.run(job, ytDlp.path, ffmpeg.path, sendEvent, sendDone)
     return jobId
@@ -265,20 +310,23 @@ export class DownloadOrchestrator {
       totalBytes: number | null = null,
     ): void => {
       if (percent !== null) lastPercent = percent
-      sendEvent({ jobId, phase: next, percent, speedBps, etaSec, downloadedBytes, totalBytes })
+      this.events.emit(
+        { jobId, phase: next, percent, speedBps, etaSec, downloadedBytes, totalBytes },
+        sendEvent,
+      )
     }
 
     try {
       const delays = this.deps.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS
       const cookiesPath = this.deps.getCookiesPath?.() ?? null
-      const allStdoutLines: string[] = []
+      // P-01: the `--print after_move:filepath` payload is the only stdout line we need to
+      // outlive the process, so keep one string instead of retaining every decoded line.
+      let finalPathFromPrint: string | null = null
 
       let attempt = 0
       let result: RunResult | null = null
       for (;;) {
         attempt += 1
-        const stdoutLines: string[] = []
-        const stderrLines: string[] = []
 
         if (job.cancelRequested) break
 
@@ -290,10 +338,12 @@ export class DownloadOrchestrator {
         this.deps.onProcessLine?.(`$ yt-dlp ${args.join(' ')}`, 'out')
 
         const handle = spawnProcess(ytdlpPath, args, {
+          // stdout is parsed live; nothing needs retaining past the callback (P-01).
+          capture: { stdout: 'none', stderr: 'tail', tailLines: 100 },
           onStdoutLine: (line) => {
-            stdoutLines.push(line)
-            allStdoutLines.push(line)
             this.deps.onProcessLine?.(line, 'out')
+
+            if (isFinalPathLine(line)) finalPathFromPrint = line.trim()
 
             const post = parsePostprocessLine(line)
             if (post !== null) {
@@ -328,7 +378,6 @@ export class DownloadOrchestrator {
             }
           },
           onStderrLine: (line) => {
-            stderrLines.push(line)
             this.deps.onProcessLine?.(line, 'err')
           },
         })
@@ -345,7 +394,7 @@ export class DownloadOrchestrator {
 
         if (result.code === 0) break
 
-        const code: MfErrorCode = classifyStderr(stderrLines.slice(-40))
+        const code: MfErrorCode = classifyStderr(result.stderrLines.slice(-40))
         if (code !== 'MF_NETWORK' || attempt > delays.length) {
           this.deps.logger?.warn('download failed', {
             jobId,
@@ -353,98 +402,148 @@ export class DownloadOrchestrator {
             exitCode: result.code,
             attempts: attempt,
           })
-          this.finish(job, sendDone, { status: 'failed', errorCode: code })
+          await this.finish(job, sendDone, { status: 'failed', errorCode: code })
           return
         }
 
         const delayMs = delays[attempt - 1]
         this.deps.logger?.info('network failure — retry scheduled', { jobId, attempt, delayMs })
-        sendEvent({
-          jobId,
-          phase: 'queued',
-          percent: lastPercent,
-          speedBps: null,
-          etaSec: null,
-          message: `Network issue — retrying in ${Math.round(delayMs / 1000)}s (attempt ${attempt} of ${delays.length})…`,
-        })
+        this.events.emit(
+          {
+            jobId,
+            phase: 'queued',
+            percent: lastPercent,
+            speedBps: null,
+            etaSec: null,
+            message: `Network issue — retrying in ${Math.round(delayMs / 1000)}s (attempt ${attempt} of ${delays.length})…`,
+          },
+          sendEvent,
+        )
         await sleep(delayMs)
       }
 
       if (result && job.cancelRequested) {
         if (job.config.isLive) {
-          const saved = this.finalizeLiveRecording(job)
+          const saved = await this.finalizeLiveRecording(job)
           if (saved) {
             this.deps.logger?.info('live recording saved on stop', { jobId, target: saved })
-            this.finish(job, sendDone, { status: 'completed', outputPath: saved })
+            await this.finish(job, sendDone, { status: 'completed', outputPath: saved })
           } else {
-            this.finish(job, sendDone, { status: 'cancelled' })
+            await this.finish(job, sendDone, { status: 'cancelled' })
           }
         } else {
-          this.finish(job, sendDone, { status: 'cancelled' })
+          await this.finish(job, sendDone, { status: 'cancelled' })
         }
         return
       }
 
       emit('finalizing', 100, null, null)
 
-      const finalSource =
-        extractFinalPathLine(allStdoutLines) ?? findLargestCompletedFile(job.tempDir)
-      if (!finalSource || !existsSync(finalSource) || statSync(finalSource).size <= 0) {
+      const finalSource = finalPathFromPrint ?? (await findLargestCompletedFile(job.tempDir))
+      const sourceStat = finalSource ? await this.fs.stat(finalSource).catch(() => null) : null
+      if (!finalSource || !sourceStat || sourceStat.size <= 0) {
         this.deps.logger?.error('final output missing after success', { jobId })
-        this.finish(job, sendDone, { status: 'failed', errorCode: 'MF_UNKNOWN' })
+        await this.finish(job, sendDone, { status: 'failed', errorCode: 'MF_UNKNOWN' })
         return
       }
 
-      mkdirSync(job.destDir, { recursive: true })
-      const target = collisionFreeTarget(job.destDir, basename(finalSource))
-      try {
-        renameSync(finalSource, target)
-      } catch {
-        copyFileSync(finalSource, target)
-        unlinkSync(finalSource)
-      }
-
-      if (!existsSync(target) || statSync(target).size <= 0) {
+      await this.fs.mkdir(job.destDir, { recursive: true })
+      const target = await collisionFreeTarget(job.destDir, basename(finalSource))
+      const moved = await this.moveIntoPlace(finalSource, target, () =>
+        emit('finalizing', 100, null, null),
+      )
+      if (!moved) {
         this.deps.logger?.error('moved output failed verification', { jobId, target })
-        this.finish(job, sendDone, { status: 'failed', errorCode: 'MF_UNKNOWN' })
+        await this.finish(job, sendDone, { status: 'failed', errorCode: 'MF_UNKNOWN' })
         return
       }
 
-      rmSync(job.tempDir, { recursive: true, force: true })
+      await this.fs.rm(job.tempDir, { recursive: true, force: true })
+      await this.removeStagingRootIfEmpty(job)
       this.deps.logger?.info('download completed', { jobId, target })
-      recordDownload(job.destDir, job.config, target)
-      this.finish(job, sendDone, { status: 'completed', outputPath: target })
+      await recordDownload(job.destDir, job.config, target)
+      await this.finish(job, sendDone, { status: 'completed', outputPath: target })
     } catch (error) {
       this.deps.logger?.error('orchestrator error', { jobId, error: String(error) })
-      this.finish(job, sendDone, { status: 'failed', errorCode: 'MF_UNKNOWN' })
+      await this.finish(job, sendDone, { status: 'failed', errorCode: 'MF_UNKNOWN' })
     }
   }
 
-  private finalizeLiveRecording(job: ActiveJob): string | null {
-    const partSource = findLargestPartFile(job.tempDir)
+  /**
+   * Moves `source` onto `target`, preferring a same-volume rename. Only EXDEV falls through
+   * to a copy — a permission or collision failure is a real error and rethrows rather than
+   * being retried as a copy that would fail differently.
+   *
+   * AM-06 throughout: the source is unlinked, and the caller removes the temp tree, only
+   * after the destination is confirmed to exist and be non-zero. Returns false when that
+   * verification fails, leaving the source in place so the download is still recoverable.
+   */
+  private async moveIntoPlace(
+    source: string,
+    target: string,
+    heartbeat?: () => void,
+  ): Promise<boolean> {
+    let copied = false
+    try {
+      await this.fs.rename(source, target)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EXDEV') throw error
+      // A multi-gigabyte cross-volume copy can take minutes. The copy itself no longer
+      // blocks the main loop; the heartbeat lets the UI show that it hasn't (P-02).
+      const every = this.deps.finalizeHeartbeatMs ?? FINALIZE_HEARTBEAT_MS
+      const timer = heartbeat ? setInterval(heartbeat, every) : null
+      timer?.unref?.()
+      try {
+        await this.fs.copyFile(source, target)
+      } finally {
+        if (timer) clearInterval(timer)
+      }
+      copied = true
+    }
+
+    const stat = await this.fs.stat(target).catch(() => null)
+    if (!stat || stat.size <= 0) return false
+    if (copied) await this.fs.unlink(source)
+    return true
+  }
+
+  private async finalizeLiveRecording(job: ActiveJob): Promise<string | null> {
+    const partSource = await findLargestPartFile(job.tempDir)
     if (!partSource) return null
     const finalName = sanitizeFileName(basename(partSource).replace(/\.part$/i, ''))
-    mkdirSync(job.destDir, { recursive: true })
-    const target = collisionFreeTarget(job.destDir, finalName)
-    try {
-      renameSync(partSource, target)
-    } catch {
-      copyFileSync(partSource, target)
-      unlinkSync(partSource)
-    }
-    if (!existsSync(target) || statSync(target).size <= 0) return null
-    rmSync(job.tempDir, { recursive: true, force: true })
+    await this.fs.mkdir(job.destDir, { recursive: true })
+    const target = await collisionFreeTarget(job.destDir, finalName)
+    if (!(await this.moveIntoPlace(partSource, target))) return null
+    await this.fs.rm(job.tempDir, { recursive: true, force: true })
+    await this.removeStagingRootIfEmpty(job)
     return target
   }
 
-  private finish(
+  /**
+   * Removes an in-destination staging directory once its last job dir is gone, so a
+   * successful download leaves no `.mediaforge-part` behind in the user's folder. A
+   * non-empty directory (another job still staging) simply fails and is left alone.
+   */
+  private async removeStagingRootIfEmpty(job: ActiveJob): Promise<void> {
+    if (job.stagingRoot === this.deps.tempRoot) return
+    await fsp.rmdir(job.stagingRoot).catch(() => undefined)
+  }
+
+  private async finish(
     job: ActiveJob,
     sendDone: SendDone,
     payload: Omit<JobDonePayload, 'jobId'> & { jobId?: string },
-  ): void {
+  ): Promise<void> {
+    // Drain before the terminal event so no sample is stranded behind it (P-04).
+    this.events.release(job.id)
     const keepPartials = payload.status === 'cancelled' || payload.status === 'failed'
-    const partialDir =
-      keepPartials && existsSync(job.tempDir) ? job.tempDir : (payload.partialDir ?? undefined)
+    const tempExists =
+      keepPartials &&
+      (await fsp
+        .stat(job.tempDir)
+        .then(() => true)
+        .catch(() => false))
+    const partialDir = tempExists ? job.tempDir : (payload.partialDir ?? undefined)
     sendDone({
       ...payload,
       jobId: job.id,

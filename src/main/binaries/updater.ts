@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { createWriteStream, statSync } from 'node:fs'
+import * as fsp from 'node:fs/promises'
 import { join } from 'node:path'
+import { Readable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 import type { UpdaterPhase } from '../../shared/models'
 import { parseYtDlpVersion } from './versions'
 import { runCapture } from './runner'
@@ -70,6 +73,10 @@ export function extractExpectedChecksum(sumsText: string, fileName: string): str
   return null
 }
 
+/**
+ * One-shot hash for small in-memory payloads only. Release assets are hashed incrementally
+ * by {@link downloadToFile} — never buffer one to hash it (P-03).
+ */
 export function sha256Hex(data: Buffer): string {
   return createHash('sha256').update(data).digest('hex')
 }
@@ -98,15 +105,95 @@ export interface UpdaterDeps {
   verifyInstalled?: (exePath: string) => Promise<string | null>
 }
 
-export async function downloadBuffer(url: string, fetchFn: typeof fetch): Promise<Buffer> {
+/** Ceiling for the small text sidecars `downloadBuffer` is for (`.sha256`, `SHA256SUMS`). */
+export const MAX_SIDECAR_BYTES = 64 * 1024
+
+/**
+ * Reads a small sidecar fully into memory. Large assets must use {@link downloadToFile} —
+ * this one is capped so it can never become the 150 MB buffer it used to be (P-03).
+ */
+export async function downloadBuffer(
+  url: string,
+  fetchFn: typeof fetch,
+  maxBytes: number = MAX_SIDECAR_BYTES,
+): Promise<Buffer> {
   const response = await fetchFn(url, {
     headers: { 'User-Agent': 'MediaForge-Updater', Accept: 'application/octet-stream' },
   })
   if (!response.ok) throw new Error(`download failed: HTTP ${response.status}`)
-  return Buffer.from(await response.arrayBuffer())
+  const buffer = Buffer.from(await response.arrayBuffer())
+  if (buffer.length > maxBytes) {
+    throw new Error(`download exceeded ${maxBytes} bytes — expected a small sidecar`)
+  }
+  return buffer
+}
+
+export interface DownloadToFileResult {
+  bytes: number
+  sha256: string
+}
+
+/**
+ * Streams a release asset to `destPath`, hashing incrementally. Never holds the asset in
+ * memory (P-03). Rejects — and removes the partial file — if the stream exceeds `maxBytes`
+ * or if a declared Content-Length disagrees with the bytes actually received.
+ */
+export async function downloadToFile(
+  url: string,
+  destPath: string,
+  fetchFn: typeof fetch,
+  maxBytes: number,
+): Promise<DownloadToFileResult> {
+  const response = await fetchFn(url, {
+    headers: { 'User-Agent': 'MediaForge-Updater', Accept: 'application/octet-stream' },
+  })
+  if (!response.ok) throw new Error(`download failed: HTTP ${response.status}`)
+  if (!response.body) throw new Error('download failed: response had no body')
+
+  const declared = Number(response.headers?.get?.('content-length') ?? '')
+  const hash = createHash('sha256')
+  let bytes = 0
+
+  try {
+    await pipeline(
+      Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]),
+      async function* (source: AsyncIterable<Buffer>) {
+        for await (const chunk of source) {
+          bytes += chunk.length
+          if (bytes > maxBytes) {
+            throw new Error(`download exceeded ${maxBytes} bytes — rejected`)
+          }
+          hash.update(chunk)
+          yield chunk
+        }
+      },
+      // Bound the writable's own buffer so a fast producer cannot queue the asset in
+      // memory ahead of the disk (P-03).
+      createWriteStream(destPath, { highWaterMark: 1024 * 1024 }),
+    )
+
+    if (Number.isFinite(declared) && declared > 0 && declared !== bytes) {
+      throw new Error(`download truncated: expected ${declared} bytes, received ${bytes}`)
+    }
+  } catch (error) {
+    await fsp.rm(destPath, { force: true })
+    throw error
+  }
+
+  return { bytes, sha256: hash.digest('hex') }
 }
 
 const NO_UPDATE = 'No update available — you are already up to date.'
+
+/** Ceiling for the yt-dlp PyInstaller executable — currently ~17 MB. */
+export const MAX_YTDLP_EXE_BYTES = 128 * 1024 * 1024
+
+async function exists(path: string): Promise<boolean> {
+  return fsp
+    .stat(path)
+    .then(() => true)
+    .catch(() => false)
+}
 
 export class YtDlpUpdater {
   private cachedTag: string | null = null
@@ -157,41 +244,54 @@ export class YtDlpUpdater {
       const exeUrl = releaseDownloadUrl(YTDLP_OWNER, YTDLP_REPO, 'yt-dlp.exe')
       const sumsUrl = releaseDownloadUrl(YTDLP_OWNER, YTDLP_REPO, 'SHA2-256SUMS')
 
-      this.deps.onPhase?.('downloading', tag)
-      const [exeBytes, sumsBytes] = await Promise.all([
-        downloadBuffer(exeUrl, fetchFn),
-        downloadBuffer(sumsUrl, fetchFn),
-      ])
+      await fsp.mkdir(this.deps.overrideDir, { recursive: true })
+      const target = join(this.deps.overrideDir, 'yt-dlp.exe')
+      const backup = join(this.deps.overrideDir, 'yt-dlp.exe.bak')
+      // Streamed straight to the file it will be renamed from — the executable is never
+      // held in main-process memory (P-03).
+      const tmpFile = `${target}.${Date.now()}.tmp`
 
-      this.deps.onPhase?.('verifying', tag)
-      const expected = extractExpectedChecksum(sumsBytes.toString('utf8'), 'yt-dlp.exe')
-      if (!expected) return { ok: false, error: 'checksum entry not found in SHA2-256SUMS' }
-      if (sha256Hex(exeBytes) !== expected) {
-        this.deps.logger?.warn('updater rejected download: checksum mismatch')
-        return { ok: false, error: 'checksum mismatch — download rejected' }
+      this.deps.onPhase?.('downloading', tag)
+      let downloaded: DownloadToFileResult
+      try {
+        const [asset, sumsBytes] = await Promise.all([
+          downloadToFile(exeUrl, tmpFile, fetchFn, MAX_YTDLP_EXE_BYTES),
+          downloadBuffer(sumsUrl, fetchFn),
+        ])
+        downloaded = asset
+
+        this.deps.onPhase?.('verifying', tag)
+        const expected = extractExpectedChecksum(sumsBytes.toString('utf8'), 'yt-dlp.exe')
+        if (!expected) {
+          await fsp.rm(tmpFile, { force: true })
+          return { ok: false, error: 'checksum entry not found in SHA2-256SUMS' }
+        }
+        if (downloaded.sha256 !== expected) {
+          await fsp.rm(tmpFile, { force: true })
+          this.deps.logger?.warn('updater rejected download: checksum mismatch')
+          return { ok: false, error: 'checksum mismatch — download rejected' }
+        }
+      } catch (downloadError) {
+        await fsp.rm(tmpFile, { force: true })
+        throw downloadError
       }
 
       this.deps.onPhase?.('swapping', tag)
-      mkdirSync(this.deps.overrideDir, { recursive: true })
-      const target = join(this.deps.overrideDir, 'yt-dlp.exe')
-      const backup = join(this.deps.overrideDir, 'yt-dlp.exe.bak')
-      const hadPrevious = existsSync(target)
-      if (hadPrevious) copyFileSync(target, backup)
-      const tmpFile = `${target}.${Date.now()}.tmp`
-      writeFileSync(tmpFile, exeBytes)
+      const hadPrevious = await exists(target)
+      if (hadPrevious) await fsp.copyFile(target, backup)
       try {
-        rmSync(target, { force: true })
-        renameSync(tmpFile, target)
+        await fsp.rm(target, { force: true })
+        await fsp.rename(tmpFile, target)
       } catch (swapError) {
-        rmSync(tmpFile, { force: true })
+        await fsp.rm(tmpFile, { force: true })
         throw swapError
       }
 
       this.deps.onPhase?.('verifying-install', tag)
       const installedVersion = await (this.deps.verifyInstalled ?? defaultVerify)(target)
       if (!installedVersion || compareVersions(installedVersion, tag) !== 0) {
-        rmSync(target, { force: true })
-        if (hadPrevious && existsSync(backup)) copyFileSync(backup, target)
+        await fsp.rm(target, { force: true })
+        if (hadPrevious && (await exists(backup))) await fsp.copyFile(backup, target)
         this.deps.logger?.warn('swapped binary failed verification — rolled back')
         return {
           ok: false,
@@ -211,7 +311,10 @@ export class YtDlpUpdater {
 
 async function defaultVerify(exePath: string): Promise<string | null> {
   try {
-    const result = await runCapture(exePath, ['--version'], { timeoutMs: 20000 })
+    const result = await runCapture(exePath, ['--version'], {
+      capture: { stdout: 'tail', stderr: 'tail', tailLines: 20 },
+      timeoutMs: 20000,
+    })
     if (result.code !== 0) return null
     return parseYtDlpVersion(result.stdoutLines)
   } catch {

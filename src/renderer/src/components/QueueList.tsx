@@ -235,7 +235,7 @@ export function QueueList({
                 dragFrom.current = null
                 if (from !== null) reorderQueueRows(from, i)
               }}
-              class={`group mf-row-hover rounded-xl border px-3 py-2.5 text-sm ${
+              class={`group mf-skip-offscreen-row mf-row-hover rounded-xl border px-3 py-2.5 text-sm ${
                 isLive
                   ? 'border-sky-500/25 bg-sky-500/[0.07]'
                   : dragOver === i

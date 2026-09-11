@@ -21,6 +21,7 @@ export const MF_BINARIES_INFO = 'mf:binaries:info' as const
 export const MF_ANALYZE_START = 'mf:analyze:start' as const
 export const MF_ANALYZE_CANCEL = 'mf:analyze:cancel' as const
 export const MF_ANALYZE_ENTRY = 'mf:analyze:entry' as const
+export const MF_ANALYZE_HYDRATE_RANGE = 'mf:analyze:hydrate-range' as const
 export const MF_DOWNLOAD_START = 'mf:download:start' as const
 export const MF_DOWNLOAD_CANCEL = 'mf:download:cancel' as const
 export const MF_JOB_EVENT = 'mf:job:event' as const
@@ -34,6 +35,7 @@ export const MF_LOGS_OPEN = 'mf:logs:open' as const
 export const MF_LOG_HISTORY = 'mf:log:history' as const
 export const MF_LOG_CLEAR = 'mf:log:clear' as const
 export const MF_LOG_LINE = 'mf:log:line' as const
+export const MF_LOG_CONSOLE_OPEN = 'mf:log:console-open' as const
 export const MF_UPDATER_CHECK = 'mf:updater:check' as const
 export const MF_UPDATER_APPLY = 'mf:updater:apply' as const
 export const MF_UPDATER_PHASE = 'mf:updater:phase' as const
@@ -55,6 +57,8 @@ export const MF_SEARCH_CANCEL = 'mf:search:cancel' as const
 export const MF_SEARCH_ENTRY = 'mf:search:entry' as const
 export const MF_FETCH_CHAPTERS = 'mf:media:fetch-chapters' as const
 export const MF_FETCH_TRANSCRIPT = 'mf:media:fetch-transcript' as const
+export const MF_PREVIEW_CANCEL = 'mf:media:preview-cancel' as const
+export const MF_PROBE_SCENARIO = 'mf:probe:scenario' as const
 export const MF_SAVE_TEXT_FILE = 'mf:dialog:save-text-file' as const
 export const MF_PREVIEW_SET_VOLUME_BOOST = 'mf:preview:set-volume-boost' as const
 
@@ -231,6 +235,12 @@ export interface MfApi {
   getBinariesInfo(): Promise<BinariesInfoResult>
   analyzeStart(url: string): Promise<AnalyzeResponse>
   analyzeCancel(): Promise<{ ok: boolean }>
+  /**
+   * Hydrates a further slice of the current playlist, streaming the same `analyze:entry`
+   * events as the initial window. No-ops when there is no current playlist, when the range
+   * is already hydrated, or when a newer analysis has started (R-02).
+   */
+  analyzeHydrateRange(fromIndex: number, count: number): Promise<{ ok: boolean }>
   onAnalyzeEntry(listener: (event: AnalyzeStreamEvent) => void): () => void
   downloadStart(config: JobConfig): Promise<DownloadStartResponse>
   downloadCancel(jobId: string): Promise<{ ok: boolean }>
@@ -244,6 +254,11 @@ export interface MfApi {
   openLogsFolder(): Promise<boolean>
   logHistory(): Promise<{ lines: LogEntryPayload[] }>
   logClear(): Promise<{ ok: boolean }>
+  /**
+   * Tells main whether the live console is mounted, and whether it wants the raw
+   * `--progress-template` protocol lines. While closed, no CLI line crosses IPC (P-04).
+   */
+  logConsoleOpen(open: boolean, includeProtocol?: boolean): Promise<{ ok: boolean }>
   onLogLine(listener: (entry: LogEntryPayload) => void): () => void
   getSettings(): Promise<MfSettingsView>
   setSettings(
@@ -273,10 +288,21 @@ export interface MfApi {
   openAppReleasePage(): Promise<{ ok: boolean }>
   downloadAndInstallAppUpdate(): Promise<AppUpdateInstallResult>
   onAppUpdatePhase(listener: (event: AppUpdatePhaseEvent) => void): () => void
-  fetchChapters(url: string): Promise<VideoChaptersResult>
-  fetchTranscript(url: string): Promise<VideoTranscriptResult>
+  /** `requestId` lets the renderer cancel this exact request via {@link previewCancel}. */
+  fetchChapters(url: string, requestId?: string): Promise<VideoChaptersResult>
+  fetchTranscript(url: string, requestId?: string): Promise<VideoTranscriptResult>
+  /**
+   * Kills the yt-dlp children of one preview request and blocks any follow-up it would
+   * spawn. Closing a preview or unmounting its card used to leave them running (P-06).
+   */
+  previewCancel(requestId: string): Promise<{ ok: boolean }>
   saveTextFile(defaultFilename: string, content: string): Promise<SaveTextFileResult>
   setPreviewVolumeBoost(boost: number): Promise<boolean>
+  /**
+   * Labels subsequent memory-probe samples so a benchmark run can mark phases. No-op
+   * unless MF_MEMORY_PROBE=1 (P-10).
+   */
+  setProbeScenario(scenario: string): Promise<{ ok: boolean }>
 }
 
 export type {

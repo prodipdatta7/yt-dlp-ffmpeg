@@ -121,18 +121,47 @@ export function InlineVideoPreview({
     }
   }, [startSec, embed?.type])
 
-  // Periodic time poll for YouTube iframe embeds
+  // Periodic time poll for YouTube iframe embeds. Paused while the window is hidden —
+  // there is nothing to update and nobody to see it (P-07).
   useEffect(() => {
     if (embed?.type !== 'iframe') return
-    const interval = setInterval(() => {
-      sendIframeCommand('getCurrentTime')
-    }, 400)
-    return () => clearInterval(interval)
+    let interval: ReturnType<typeof setInterval> | null = null
+
+    const start = (): void => {
+      if (interval !== null) return
+      interval = setInterval(() => sendIframeCommand('getCurrentTime'), 400)
+    }
+    const stop = (): void => {
+      if (interval === null) return
+      clearInterval(interval)
+      interval = null
+    }
+    const onVisibility = (): void => {
+      if (document.visibilityState === 'visible') start()
+      else stop()
+    }
+
+    onVisibility()
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      stop()
+    }
   }, [embed?.type])
+
+  /**
+   * Latest props for the `message` listener. The listener is global and installs once per
+   * player; keeping the callbacks in a ref stops it being torn down and re-added on every
+   * playback tick (P-06) and fixes `volumeBoost` being read from a stale closure — it was
+   * used inside the handler but never declared as a dependency.
+   */
+  const liveProps = useRef({ onTimeUpdate, onPlayingChange, volumeBoost })
+  liveProps.current = { onTimeUpdate, onPlayingChange, volumeBoost }
 
   // Listen to postMessage from YouTube, SoundCloud, and Vimeo embeds
   useEffect(() => {
     const handleMessage = (e: MessageEvent) => {
+      const { onTimeUpdate, onPlayingChange, volumeBoost } = liveProps.current
       let data = e.data
       if (typeof data === 'string') {
         try {
@@ -186,7 +215,7 @@ export function InlineVideoPreview({
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [onTimeUpdate, onPlayingChange])
+  }, [])
 
   if (!embed) {
     return (

@@ -374,6 +374,34 @@ textarea {
   box-shadow: 0 8px 20px -8px rgb(0 0 0 / 0.55);
 }
 
+/**
+ * Off-screen layout/paint skip for long repeated lists whose rows are NOT fixed height and
+ * therefore cannot be windowed (T13): playlist and queue rows grow a progress bar while
+ * downloading, and search result cards size to their content.
+ *
+ * This is a complement to windowing, not a substitute — the DOM nodes still exist, they are
+ * just not laid out or painted while off-screen. `contain-intrinsic-size` supplies a
+ * placeholder height so the scrollbar stays stable.
+ *
+ * TRAP: `content-visibility` implies **paint containment**. A contained element becomes a
+ * containing block for `position: fixed` descendants and clips to its padding box, and its
+ * whole subtree stops rendering once it scrolls off-screen. Never put these classes on an
+ * ancestor of a modal, popover, dropdown or anything else that escapes its parent's box —
+ * put them on the inner content element instead. (This broke the theater preview once: the
+ * overlay was `fixed inset-0` inside a contained `<li>`, so it sized to the card.)
+ */
+.mf-skip-offscreen {
+  content-visibility: auto;
+}
+.mf-skip-offscreen-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 44px;
+}
+.mf-skip-offscreen-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 132px;
+}
+
 .mf-hairline {
   position: relative;
 }

@@ -1,5 +1,6 @@
 import { SEARCH_PLATFORMS, type SearchResultItem } from '../../../shared/models'
 import { SearchBar } from './SearchBar'
+import { clearPreviewCaches } from './searchPreviewShared'
 import { SearchResults } from './SearchResults'
 import { AlertIcon, CookieIcon, RefreshIcon, SearchIcon } from './icons'
 import {
@@ -101,6 +102,8 @@ export function SearchScreen({
     searching.value = true
     searchError.value = null
     searchResults.value = []
+    // The previous results' cards are gone; their cached preview content is dead weight (P-06).
+    clearPreviewCaches()
     filterRailDuration.value = 'all'
     filterType.value = 'all'
     filterQuality.value = 'any'

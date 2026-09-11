@@ -1,4 +1,5 @@
-import { existsSync, copyFileSync, rmSync, appendFileSync, writeFileSync } from 'node:fs'
+import { existsSync, copyFileSync, rmSync, writeFileSync } from 'node:fs'
+import * as fsp from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   app,
@@ -16,6 +17,7 @@ import {
 import { BinariesService } from './binaries/service'
 import { platformDir, type BinaryCandidate } from './binaries/locator'
 import { registerIpcHandlers } from './ipc/handlers'
+import { MemoryProbe } from './telemetry/memoryProbe'
 import { AnalyzeService, MfError } from './media/metadata'
 import { SearchService } from './media/search'
 import { DownloadOrchestrator } from './jobs/orchestrator'
@@ -50,8 +52,9 @@ import type { AppUpdatePhase, UpdaterDriverKind, UpdaterPhase } from '../shared/
 import {
   clearAllPartialDirs,
   clearPartialDir,
+  isUnderAnyRoot,
   listPartialDirs,
-  isUnderTempRoot,
+  STAGING_DIR_NAME,
 } from './fsops/partials'
 import { sanitizeFileName } from './fsops/sanitizer'
 import { dirname } from 'node:path'
@@ -110,6 +113,8 @@ function createMainWindow(theme: 'light' | 'dark'): BrowserWindow {
 }
 
 let mainWindow: BrowserWindow | null = null
+/** Set only when MF_MEMORY_PROBE=1; flushed on quit so no samples are lost (P-10). */
+let memoryProbe: MemoryProbe | null = null
 let tray: Tray | null = null
 let forceClose = false
 
@@ -167,8 +172,15 @@ app.whenReady().then(() => {
 
   const settings = new SettingsStore(join(userDataDir, 'settings.json'))
 
-  const swept = sweepOrphanedTempDirs(tempRoot)
-  if (swept > 0) logger.info('orphaned temp dirs swept', { count: swept })
+  /**
+   * Every root a partial job dir can live under: the userData staging area, plus the
+   * in-destination staging dir used when the output folder is on another volume (R-03).
+   * Resolved at call time — the output folder can change while the app runs.
+   */
+  const stagingRoots = (): string[] => {
+    const outputDir = settings.load().lastOutputDir || app.getPath('downloads')
+    return [...new Set([tempRoot, join(outputDir, STAGING_DIR_NAME)])]
+  }
 
   const binariesService = new BinariesService({
     platform: process.platform,
@@ -246,40 +258,25 @@ app.whenReady().then(() => {
     }
   }
 
+  // Opt-in and off by default; no telemetry leaves the machine (P-10).
   if (process.env.MF_MEMORY_PROBE === '1') {
-    const probePath = join(logsDir, 'mem.jsonl')
-    if (!existsSync(probePath)) {
-      try {
-        writeFileSync(probePath, `${JSON.stringify({ note: 'AM-10 probe', unit: 'MB' })}\n`)
-      } catch {
-        /* best-effort */
-      }
-    }
-    setInterval(() => {
-      try {
-        const byType: Record<string, number> = {}
-        let electronSum = 0
-        for (const metric of app.getAppMetrics()) {
-          const mb = (metric.memory?.workingSetSize ?? 0) / 1024
-          electronSum += mb
-          const type = String(metric.type ?? 'unknown')
-          byType[type] = Math.round(((byType[type] ?? 0) + mb) * 10) / 10
-        }
-        appendFileSync(
-          probePath,
-          `${JSON.stringify({
-            t: new Date().toISOString(),
-            mainRssMB: Math.round((process.memoryUsage().rss / 1024 / 1024) * 10) / 10,
-            electronSumMB: Math.round(electronSum * 10) / 10,
-            byType,
-            busy: orchestrator.isBusy(),
-          })}\n`,
-        )
-      } catch {
-        /* best-effort */
-      }
-    }, 2000).unref()
+    const probe = new MemoryProbe({
+      // scripts/perf-bench.mjs points this at its own run directory.
+      filePath: join(process.env.MF_PERF_LOG_DIR || logsDir, 'mem.jsonl'),
+      app,
+      isBusy: () => orchestrator.isBusy(),
+    })
+    probe.start()
+    memoryProbe = probe
     logger.info('memory probe enabled', { file: 'logs/mem.jsonl' })
+
+    // Benchmark runs quit the app themselves rather than being killed, so `before-quit`
+    // gets to flush the tail of the buffer and the process tree exits cleanly.
+    const exitAfterMs = Number(process.env.MF_PERF_EXIT_MS ?? '')
+    if (Number.isFinite(exitAfterMs) && exitAfterMs > 0) {
+      const timer = setTimeout(() => app.quit(), exitAfterMs)
+      timer.unref()
+    }
   }
 
   registerIpcHandlers(
@@ -293,8 +290,12 @@ app.whenReady().then(() => {
           return { kind: 'error', code, message: ERROR_MESSAGES[code] }
         }
       },
-      cancelAnalyze: () => {
-        analyzeService.cancel()
+      cancelAnalyze: async () => {
+        await analyzeService.cancel()
+        return { ok: true }
+      },
+      hydrateAnalyzeRange: async (fromIndex, count, sendEntry) => {
+        await analyzeService.hydrateRange(fromIndex, count, sendEntry)
         return { ok: true }
       },
       startDownload: async (
@@ -395,6 +396,10 @@ app.whenReady().then(() => {
         return result.length === 0
       },
       logHistory: () => ({ lines: logBus.tail(1000) }),
+      logConsoleOpen: (open, includeProtocol) => {
+        logBus.setBroadcast(open, includeProtocol)
+        return { ok: true }
+      },
       logClear: () => {
         logBus.clear()
         logger.info('live console cleared by user')
@@ -424,22 +429,30 @@ app.whenReady().then(() => {
         settings.save({ ...settings.load(), firstRunNoticeSeen: true })
         return true
       },
-      listPartials: () => ({
+      listPartials: async () => ({
         tempRoot,
-        items: listPartialDirs(tempRoot),
+        items: await listPartialDirs(stagingRoots()),
       }),
       openPartialDir: async (dirPath: string) => {
-        if (!isUnderTempRoot(tempRoot, dirPath) || !existsSync(dirPath)) return { ok: false }
+        if (!isUnderAnyRoot(stagingRoots(), dirPath)) return { ok: false }
+        if (
+          !(await fsp
+            .stat(dirPath)
+            .then(() => true)
+            .catch(() => false))
+        )
+          return { ok: false }
         const result = await shell.openPath(dirPath)
         return { ok: result.length === 0 }
       },
-      clearPartials: (dirPath?: string) => {
+      clearPartials: async (dirPath?: string) => {
+        const roots = stagingRoots()
         if (dirPath) {
-          const ok = clearPartialDir(tempRoot, dirPath)
+          const ok = await clearPartialDir(roots, dirPath)
           if (ok) logger.info('partial dir cleared', { pathSet: true })
           return { ok, cleared: ok ? 1 : 0, failed: ok ? 0 : 1 }
         }
-        const result = clearAllPartialDirs(tempRoot)
+        const result = await clearAllPartialDirs(roots)
         logger.info('all partial dirs cleared', result)
         return { ok: result.failed === 0, ...result }
       },
@@ -510,19 +523,27 @@ app.whenReady().then(() => {
           return { kind: 'error', code, message: ERROR_MESSAGES[code] }
         }
       },
-      cancelSearch: () => {
-        searchService.cancel()
+      cancelSearch: async () => {
+        await searchService.cancel()
         return { ok: true }
       },
-      fetchChapters: async (url: string) => {
+      setProbeScenario: (scenario: string) => {
+        memoryProbe?.setScenario(scenario)
+        return { ok: true }
+      },
+      cancelPreview: async (requestId: string) => {
+        await searchService.cancelPreviewRequest(requestId)
+        return { ok: true }
+      },
+      fetchChapters: async (url: string, requestId?: string) => {
         const binary = await binariesService.locate('yt-dlp')
         if (!binary) return { chapters: [] }
-        return await searchService.fetchChapters(binary.path, url)
+        return await searchService.fetchChapters(binary.path, url, requestId)
       },
-      fetchTranscript: async (url: string) => {
+      fetchTranscript: async (url: string, requestId?: string) => {
         const binary = await binariesService.locate('yt-dlp')
         if (!binary) return { cues: [] }
-        return await searchService.fetchTranscript(binary.path, url)
+        return await searchService.fetchTranscript(binary.path, url, requestId)
       },
       saveTextFile: async (defaultFilename: string, content: string) => {
         const safeName = sanitizeFileName(defaultFilename)
@@ -556,6 +577,16 @@ app.whenReady().then(() => {
   )
 
   mainWindow = createMainWindow(resolvedTheme(settings.load().theme))
+
+  // Off the critical path: sweeping stale job dirs used to run before the window existed,
+  // so it landed directly on cold-start time. The window never waits on it (P-02).
+  mainWindow.once('ready-to-show', () => {
+    void sweepOrphanedTempDirs(stagingRoots())
+      .then((count) => {
+        if (count > 0) logger.info('orphaned temp dirs swept', { count })
+      })
+      .catch((error) => logger.debug('temp sweep failed', { error: String(error) }))
+  })
 
   nativeTheme.on('updated', () => {
     applyChromeTheme(resolvedTheme(settings.load().theme))
@@ -592,6 +623,10 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0)
       createMainWindow(resolvedTheme(settings.load().theme))
   })
+})
+
+app.on('before-quit', () => {
+  void memoryProbe?.stop()
 })
 
 app.on('window-all-closed', () => {

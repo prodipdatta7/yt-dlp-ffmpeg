@@ -1,20 +1,11 @@
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
+import { mkdtempSync } from 'node:fs'
+import * as fsp from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { UpdaterPhase } from '../../shared/models'
 import { runCapture, spawnProcess } from './runner'
 import { parseFfmpegVersion } from './versions'
-import { downloadBuffer, releaseDownloadUrl, resolveLatestTag, sha256Hex } from './updater'
+import { downloadBuffer, downloadToFile, releaseDownloadUrl, resolveLatestTag } from './updater'
 import type { Logger } from '../store/logger'
 
 const FFMPEG_OWNER = 'BtbN'
@@ -51,6 +42,28 @@ export interface UpdaterApplyResult {
 
 const NO_UPDATE = 'No update available — you are already up to date.'
 const MIN_ZIP_BYTES = 1_000_000
+/** Ceiling for the BtbN LGPL build — currently ~100 MB. */
+export const MAX_FFMPEG_ZIP_BYTES = 512 * 1024 * 1024
+
+async function exists(path: string): Promise<boolean> {
+  return fsp
+    .stat(path)
+    .then(() => true)
+    .catch(() => false)
+}
+
+/** Atomic-ish swap: back up the current file, move `source` into place, restore on failure. */
+async function swapIntoPlace(source: string, target: string): Promise<void> {
+  const tmp = `${target}.${Date.now()}.tmp`
+  await fsp.copyFile(source, tmp)
+  try {
+    await fsp.rm(target, { force: true })
+    await fsp.rename(tmp, target)
+  } catch (swapError) {
+    await fsp.rm(tmp, { force: true })
+    throw swapError
+  }
+}
 
 /** Grab the first 64-hex token from a `.sha256` sidecar (tolerates filename suffixes). */
 export function extractFirstSha256(text: string): string | null {
@@ -58,11 +71,11 @@ export function extractFirstSha256(text: string): string | null {
   return m ? m[1].toLowerCase() : null
 }
 
-function findFile(rootDir: string, fileName: string): string | null {
+async function findFile(rootDir: string, fileName: string): Promise<string | null> {
   const stack = [rootDir]
   while (stack.length > 0) {
     const dir = stack.pop()!
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    for (const entry of await fsp.readdir(dir, { withFileTypes: true })) {
       const full = join(dir, entry.name)
       if (entry.isDirectory()) stack.push(full)
       else if (entry.name === fileName) return full
@@ -77,30 +90,34 @@ interface FfmpegState {
   version: string
 }
 
-function readState(dir: string): FfmpegState | null {
+async function readState(dir: string): Promise<FfmpegState | null> {
   try {
-    const p = join(dir, STATE_FILE)
-    if (!existsSync(p)) return null
-    return JSON.parse(readFileSync(p, 'utf8')) as FfmpegState
+    return JSON.parse(await fsp.readFile(join(dir, STATE_FILE), 'utf8')) as FfmpegState
   } catch {
     return null
   }
 }
 
-function writeState(dir: string, state: FfmpegState): void {
-  writeFileSync(join(dir, STATE_FILE), JSON.stringify(state))
+async function writeState(dir: string, state: FfmpegState): Promise<void> {
+  await fsp.writeFile(join(dir, STATE_FILE), JSON.stringify(state))
 }
 
 async function defaultExtract(archivePath: string, destDir: string): Promise<void> {
-  mkdirSync(destDir, { recursive: true })
-  const handle = spawnProcess('tar', ['-xf', archivePath, '-C', destDir], { timeoutMs: 120_000 })
+  await fsp.mkdir(destDir, { recursive: true })
+  const handle = spawnProcess('tar', ['-xf', archivePath, '-C', destDir], {
+    capture: { stdout: 'none', stderr: 'tail', tailLines: 20 },
+    timeoutMs: 120_000,
+  })
   const res = await handle.result
   if (res.code !== 0) throw new Error(`failed to extract FFmpeg archive (exit ${res.code})`)
 }
 
 async function defaultVerify(exePath: string): Promise<string | null> {
   try {
-    const result = await runCapture(exePath, ['-version'], { timeoutMs: 20000 })
+    const result = await runCapture(exePath, ['-version'], {
+      capture: { stdout: 'tail', stderr: 'tail', tailLines: 20 },
+      timeoutMs: 20000,
+    })
     if (result.code !== 0) return null
     return parseFfmpegVersion(result.stdoutLines)
   } catch {
@@ -140,7 +157,7 @@ export class FfmpegUpdater {
         }
       }
 
-      const stored = readState(this.deps.overrideDir)
+      const stored = await readState(this.deps.overrideDir)
       const updateAvailable = current !== null && stored?.checksum !== latestHash
       return { current, latest: tag, updateAvailable }
     } catch (error) {
@@ -159,33 +176,35 @@ export class FfmpegUpdater {
       const zipUrl = releaseDownloadUrl(FFMPEG_OWNER, FFMPEG_REPO, FFMPEG_ZIP_NAME)
       const shaUrl = releaseDownloadUrl(FFMPEG_OWNER, FFMPEG_REPO, FFMPEG_SHA_NAME)
 
-      this.deps.onPhase?.('downloading', tag ?? undefined)
-      const [zipBytes, shaBytes] = await Promise.all([
-        downloadBuffer(zipUrl, fetchFn),
-        downloadBuffer(shaUrl, fetchFn),
-      ])
-      if (zipBytes.length < MIN_ZIP_BYTES) {
-        return { ok: false, error: 'downloaded FFmpeg archive looks truncated' }
-      }
-
-      this.deps.onPhase?.('verifying', tag ?? undefined)
-      const expected = extractFirstSha256(shaBytes.toString('utf8'))
-      if (!expected) return { ok: false, error: 'checksum entry not found in .sha256' }
-      if (sha256Hex(zipBytes) !== expected) {
-        this.deps.logger?.warn('ffmpeg updater rejected download: checksum mismatch')
-        return { ok: false, error: 'checksum mismatch — download rejected' }
-      }
-
-      this.deps.onPhase?.('swapping', tag ?? undefined)
+      // The zip streams straight into the work dir and is hashed on the way past, so it is
+      // never held in memory and the ~100 MB hash never blocks the event loop (P-03).
       const work = mkdtempSync(join(tmpdir(), 'mf-ffmpeg-update-'))
       try {
         const zipPath = join(work, 'ffmpeg.zip')
-        writeFileSync(zipPath, zipBytes)
+
+        this.deps.onPhase?.('downloading', tag ?? undefined)
+        const [zip, shaBytes] = await Promise.all([
+          downloadToFile(zipUrl, zipPath, fetchFn, MAX_FFMPEG_ZIP_BYTES),
+          downloadBuffer(shaUrl, fetchFn),
+        ])
+        if (zip.bytes < MIN_ZIP_BYTES) {
+          return { ok: false, error: 'downloaded FFmpeg archive looks truncated' }
+        }
+
+        this.deps.onPhase?.('verifying', tag ?? undefined)
+        const expected = extractFirstSha256(shaBytes.toString('utf8'))
+        if (!expected) return { ok: false, error: 'checksum entry not found in .sha256' }
+        if (zip.sha256 !== expected) {
+          this.deps.logger?.warn('ffmpeg updater rejected download: checksum mismatch')
+          return { ok: false, error: 'checksum mismatch — download rejected' }
+        }
+
+        this.deps.onPhase?.('swapping', tag ?? undefined)
         await (this.deps.extract ?? defaultExtract)(zipPath, work)
 
-        const exe = findFile(work, 'ffmpeg.exe')
+        const exe = await findFile(work, 'ffmpeg.exe')
         if (!exe) return { ok: false, error: 'ffmpeg.exe not found inside archive' }
-        const ffprobe = findFile(work, 'ffprobe.exe')
+        const ffprobe = await findFile(work, 'ffprobe.exe')
 
         this.deps.onPhase?.('verifying-install', tag ?? undefined)
         const extractedVersion = await (this.deps.verifyInstalled ?? defaultVerify)(exe)
@@ -193,39 +212,23 @@ export class FfmpegUpdater {
           return { ok: false, error: 'new FFmpeg build failed to run — previous version kept' }
         }
 
-        mkdirSync(this.deps.overrideDir, { recursive: true })
+        await fsp.mkdir(this.deps.overrideDir, { recursive: true })
         const target = join(this.deps.overrideDir, 'ffmpeg.exe')
         const backup = join(this.deps.overrideDir, 'ffmpeg.exe.bak')
-        const hadPrevious = existsSync(target)
-        if (hadPrevious) copyFileSync(target, backup)
-        const tmpExe = `${target}.${Date.now()}.tmp`
-        writeFileSync(tmpExe, readFileSync(exe))
-        try {
-          rmSync(target, { force: true })
-          renameSync(tmpExe, target)
-        } catch (swapError) {
-          rmSync(tmpExe, { force: true })
-          throw swapError
-        }
+        const hadPrevious = await exists(target)
+        if (hadPrevious) await fsp.copyFile(target, backup)
+        await swapIntoPlace(exe, target)
 
         if (ffprobe) {
           const probeTarget = join(this.deps.overrideDir, 'ffprobe.exe')
-          if (existsSync(probeTarget)) copyFileSync(probeTarget, `${probeTarget}.bak`)
-          const tmpProbe = `${probeTarget}.${Date.now()}.tmp`
-          writeFileSync(tmpProbe, readFileSync(ffprobe))
-          try {
-            rmSync(probeTarget, { force: true })
-            renameSync(tmpProbe, probeTarget)
-          } catch (swapError) {
-            rmSync(tmpProbe, { force: true })
-            throw swapError
-          }
+          if (await exists(probeTarget)) await fsp.copyFile(probeTarget, `${probeTarget}.bak`)
+          await swapIntoPlace(ffprobe, probeTarget)
         }
 
         const finalVersion = await (this.deps.verifyInstalled ?? defaultVerify)(target)
         if (!finalVersion) {
-          rmSync(target, { force: true })
-          if (hadPrevious && existsSync(backup)) copyFileSync(backup, target)
+          await fsp.rm(target, { force: true })
+          if (hadPrevious && (await exists(backup))) await fsp.copyFile(backup, target)
           this.deps.logger?.warn('swapped ffmpeg failed verification — rolled back')
           return {
             ok: false,
@@ -234,7 +237,7 @@ export class FfmpegUpdater {
           }
         }
 
-        writeState(this.deps.overrideDir, {
+        await writeState(this.deps.overrideDir, {
           checksum: expected,
           tag: tag ?? 'unknown',
           version: finalVersion,
@@ -242,7 +245,7 @@ export class FfmpegUpdater {
         this.deps.logger?.info('ffmpeg updated successfully', { version: finalVersion })
         return { ok: true, newVersion: finalVersion }
       } finally {
-        rmSync(work, { recursive: true, force: true })
+        await fsp.rm(work, { recursive: true, force: true })
       }
     } catch (error) {
       this.deps.logger?.warn('ffmpeg updater apply failed', { error: String(error) })

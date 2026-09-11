@@ -1,4 +1,4 @@
-import { readdirSync } from 'node:fs'
+import * as fsp from 'node:fs/promises'
 import { extname, join } from 'node:path'
 
 const ILLEGAL_CHARS = /[\\/:*?"<>|]/g
@@ -28,17 +28,17 @@ export function sanitizeFileName(input: string): string {
   return name.length > 0 ? name : 'untitled'
 }
 
-function lowercasedEntries(dir: string): Set<string> {
+async function lowercasedEntries(dir: string): Promise<Set<string>> {
   try {
-    return new Set(readdirSync(dir).map((entry) => entry.toLowerCase()))
+    return new Set((await fsp.readdir(dir)).map((entry) => entry.toLowerCase()))
   } catch {
     return new Set()
   }
 }
 
-export function collisionFreeTarget(destDir: string, fileName: string): string {
+export async function collisionFreeTarget(destDir: string, fileName: string): Promise<string> {
   const safeName = sanitizeFileName(fileName)
-  const existing = lowercasedEntries(destDir)
+  const existing = await lowercasedEntries(destDir)
 
   if (!existing.has(safeName.toLowerCase())) return join(destDir, safeName)
 

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import * as fsp from 'node:fs/promises'
 import { join } from 'node:path'
 import type { JobConfig } from '../../shared/models'
 
@@ -15,9 +15,9 @@ function manifestPath(destDir: string): string {
   return join(destDir, MANIFEST_FILENAME)
 }
 
-function readManifest(destDir: string): ManifestRecord[] {
+async function readManifest(destDir: string): Promise<ManifestRecord[]> {
   try {
-    const parsed: unknown = JSON.parse(readFileSync(manifestPath(destDir), 'utf8'))
+    const parsed: unknown = JSON.parse(await fsp.readFile(manifestPath(destDir), 'utf8'))
     const records = (parsed as { records?: unknown })?.records
     return Array.isArray(records) ? (records as ManifestRecord[]) : []
   } catch {
@@ -25,9 +25,9 @@ function readManifest(destDir: string): ManifestRecord[] {
   }
 }
 
-function writeManifest(destDir: string, records: ManifestRecord[]): void {
+async function writeManifest(destDir: string, records: ManifestRecord[]): Promise<void> {
   try {
-    writeFileSync(manifestPath(destDir), JSON.stringify({ records }, null, 2))
+    await fsp.writeFile(manifestPath(destDir), JSON.stringify({ records }, null, 2))
   } catch {
     /* best-effort — a failed write only means future runs won't skip a duplicate */
   }
@@ -48,18 +48,31 @@ export function qualityKeyFor(config: JobConfig): string {
 }
 
 /** Path of a prior completed download of this exact URL + quality in destDir, if it still exists. */
-export function findExistingDownload(destDir: string, config: JobConfig): string | null {
+export async function findExistingDownload(
+  destDir: string,
+  config: JobConfig,
+): Promise<string | null> {
   const key = qualityKeyFor(config)
-  const match = readManifest(destDir).find((r) => r.url === config.url && r.qualityKey === key)
-  return match && existsSync(match.outputPath) ? match.outputPath : null
+  const records = await readManifest(destDir)
+  const match = records.find((r) => r.url === config.url && r.qualityKey === key)
+  if (!match) return null
+  const stillThere = await fsp
+    .stat(match.outputPath)
+    .then(() => true)
+    .catch(() => false)
+  return stillThere ? match.outputPath : null
 }
 
 /** Records a completed download so a future request for this URL + quality can be skipped. */
-export function recordDownload(destDir: string, config: JobConfig, outputPath: string): void {
+export async function recordDownload(
+  destDir: string,
+  config: JobConfig,
+  outputPath: string,
+): Promise<void> {
   const key = qualityKeyFor(config)
-  const records = readManifest(destDir).filter(
+  const records = (await readManifest(destDir)).filter(
     (r) => !(r.url === config.url && r.qualityKey === key),
   )
   records.push({ url: config.url, qualityKey: key, outputPath, downloadedAt: Date.now() })
-  writeManifest(destDir, records)
+  await writeManifest(destDir, records)
 }
