@@ -682,7 +682,7 @@ export function PlaylistEntries({
               return (
                 <li
                   key={entry.url}
-                  class="mf-row-hover rounded-lg border border-sky-500/25 bg-sky-500/[0.07] px-2 py-1.5"
+                  class="mf-skip-offscreen-row mf-row-hover rounded-lg border border-sky-500/25 bg-sky-500/[0.07] px-2 py-1.5"
                 >
                   <div class="flex items-center gap-3">{row}</div>
                   <div class="mt-1.5 flex items-center gap-2.5 pl-[52px]">
@@ -721,7 +721,7 @@ export function PlaylistEntries({
               )
             }
             return onToggleEntry && !rowStatus ? (
-              <li key={entry.url}>
+              <li key={entry.url} class="mf-skip-offscreen-row">
                 <button
                   onClick={() => onToggleEntry(entry.url)}
                   title={checked ? 'Exclude from download' : 'Include in download'}
@@ -735,7 +735,7 @@ export function PlaylistEntries({
             ) : (
               <li
                 key={entry.url}
-                class="mf-row-hover rounded-lg border border-transparent px-2 py-1.5"
+                class="mf-skip-offscreen-row mf-row-hover rounded-lg border border-transparent px-2 py-1.5"
               >
                 <div class="flex items-center gap-3">{row}</div>
                 {rowStatus === 'done' && outputPath && (

@@ -333,7 +333,7 @@ export function SearchResultCard({
       /drama|records|vevo|music|channel|tv|official|sky|capital/i.test(entry.uploader!))
 
   return (
-    <li class="list-none min-w-0">
+    <li class="mf-skip-offscreen-card list-none min-w-0">
       <div
         class={`w-full min-w-0 rounded-2xl border p-3.5 transition-all duration-150 sm:p-4 text-left ${
           selected

@@ -20,6 +20,7 @@ import {
   transcriptCache,
 } from './searchPreviewShared'
 import { InlineVideoPreview, VolumeBoosterControl } from './InlineVideoPreview'
+import { VirtualList } from './VirtualList'
 import {
   CalendarIcon,
   CheckCircleFilledIcon,
@@ -236,7 +237,6 @@ export function TheaterPreview({
   const [loadingTranscript, setLoadingTranscript] = useState(false)
   const [transcriptFilter, setTranscriptFilter] = useState('')
   const [autoScrollTranscript, setAutoScrollTranscript] = useState(true)
-  const activeCueRef = useRef<HTMLButtonElement>(null)
 
   const fetchTranscriptForEntry = (force = false) => {
     if (!entry.url) return
@@ -289,12 +289,6 @@ export function TheaterPreview({
   )
 
   // Auto-scroll active transcript cue into view as playback advances
-  useEffect(() => {
-    if (previewTab === 'transcript' && autoScrollTranscript && activeCueRef.current) {
-      activeCueRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-    }
-  }, [activeCueIndex, previewTab, autoScrollTranscript])
-
   const [downloadingTxt, setDownloadingTxt] = useState(false)
   const [downloadedTxt, setDownloadedTxt] = useState(false)
 
@@ -329,6 +323,12 @@ export function TheaterPreview({
     }
   }
 
+  /**
+   * Fixed row height for the windowed transcript (T13). Two lines of 11.5px/leading-relaxed
+   * text (~37px) plus py-1.5 and the border, with ~5px of gap baked in.
+   */
+  const TRANSCRIPT_ROW_HEIGHT = 56
+
   const filteredCues = useMemo(() => {
     if (!transcriptFilter.trim()) return cues
     const q = transcriptFilter.toLowerCase()
@@ -342,6 +342,13 @@ export function TheaterPreview({
     setChapterFilter('')
     setTranscriptFilter('')
   }, [entry.url, chapters.length])
+
+  /** Position of the active cue within the filtered list, for the windowed auto-scroll. */
+  const activeFilteredCueIndex = useMemo(() => {
+    const activeId = cues[activeCueIndex]?.id
+    if (activeId === undefined) return -1
+    return filteredCues.findIndex((cue) => cue.id === activeId)
+  }, [cues, activeCueIndex, filteredCues])
 
   const filteredChapters = useMemo(() => {
     if (!chapterFilter.trim()) return chapters
@@ -966,57 +973,69 @@ export function TheaterPreview({
                     />
                   </div>
 
-                  {/* Scrollable list of cues */}
-                  <div class="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-1">
-                    {filteredCues.map((cue) => {
-                      const isCurrent = cue.id === cues[activeCueIndex]?.id
-                      return (
-                        <button
-                          key={cue.id}
-                          ref={isCurrent ? activeCueRef : undefined}
-                          type="button"
-                          onClick={() => {
-                            setSeekSec(cue.startSec)
-                            setCurrentTimeSec(cue.startSec)
-                          }}
-                          class={`group flex w-full items-start gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs transition ${
-                            isCurrent
-                              ? 'border border-[#ea580c] bg-orange-50/90 font-medium text-[#ea580c] shadow-xs dark:border-orange-500 dark:bg-orange-950/40 dark:text-orange-300'
-                              : 'border border-transparent hover:border-neutral-200 hover:bg-neutral-50 text-neutral-700 dark:text-neutral-300 dark:hover:border-neutral-700 dark:hover:bg-neutral-800/60'
-                          }`}
-                        >
-                          <span
-                            class={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] font-bold ${
-                              isCurrent
-                                ? 'bg-[#ea580c] text-white shadow-xs'
-                                : 'bg-neutral-100 text-neutral-600 group-hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400'
-                            }`}
-                          >
-                            {cue.time}
-                          </span>
-                          <span class="flex-1 text-[11.5px] leading-relaxed break-words">
-                            {cue.text}
-                          </span>
-                          {isCurrent && (
-                            <div
-                              class="flex items-end gap-0.5 h-3 shrink-0 mt-0.5"
-                              title="Currently playing"
-                            >
-                              <span class="w-0.5 h-3 bg-[#ea580c] dark:bg-orange-400 rounded-full animate-pulse" />
-                              <span class="w-0.5 h-1.5 bg-[#ea580c] dark:bg-orange-400 rounded-full" />
-                              <span
-                                class="w-0.5 h-2.5 bg-[#ea580c] dark:bg-orange-400 rounded-full animate-pulse"
-                                style={{ animationDelay: '150ms' }}
-                              />
-                            </div>
-                          )}
-                        </button>
-                      )
-                    })}
-                    {filteredCues.length === 0 && (
+                  {/* Scrollable list of cues — windowed (T13): a 5,000-cue transcript
+                      rendered ~6 DOM nodes per cue and diffed all of them on every
+                      active-cue change. */}
+                  <div class="flex-1 min-h-0 pr-1">
+                    {filteredCues.length === 0 ? (
                       <div class="py-6 text-center text-[11px] text-neutral-400">
                         No transcript lines match "{transcriptFilter}"
                       </div>
+                    ) : (
+                      <VirtualList
+                        items={filteredCues}
+                        rowHeight={TRANSCRIPT_ROW_HEIGHT}
+                        height="100%"
+                        keyFor={(cue) => cue.id}
+                        scrollToIndex={
+                          autoScrollTranscript && activeFilteredCueIndex >= 0
+                            ? activeFilteredCueIndex
+                            : undefined
+                        }
+                        renderRow={(cue) => {
+                          const isCurrent = cue.id === cues[activeCueIndex]?.id
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSeekSec(cue.startSec)
+                                setCurrentTimeSec(cue.startSec)
+                              }}
+                              class={`group flex h-[calc(100%-6px)] w-full items-start gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs transition ${
+                                isCurrent
+                                  ? 'border border-[#ea580c] bg-orange-50/90 font-medium text-[#ea580c] shadow-xs dark:border-orange-500 dark:bg-orange-950/40 dark:text-orange-300'
+                                  : 'border border-transparent hover:border-neutral-200 hover:bg-neutral-50 text-neutral-700 dark:text-neutral-300 dark:hover:border-neutral-700 dark:hover:bg-neutral-800/60'
+                              }`}
+                            >
+                              <span
+                                class={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] font-bold ${
+                                  isCurrent
+                                    ? 'bg-[#ea580c] text-white shadow-xs'
+                                    : 'bg-neutral-100 text-neutral-600 group-hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400'
+                                }`}
+                              >
+                                {cue.time}
+                              </span>
+                              <span class="line-clamp-2 flex-1 text-[11.5px] leading-relaxed break-words">
+                                {cue.text}
+                              </span>
+                              {isCurrent && (
+                                <div
+                                  class="flex items-end gap-0.5 h-3 shrink-0 mt-0.5"
+                                  title="Currently playing"
+                                >
+                                  <span class="w-0.5 h-3 bg-[#ea580c] dark:bg-orange-400 rounded-full animate-pulse" />
+                                  <span class="w-0.5 h-1.5 bg-[#ea580c] dark:bg-orange-400 rounded-full" />
+                                  <span
+                                    class="w-0.5 h-2.5 bg-[#ea580c] dark:bg-orange-400 rounded-full animate-pulse"
+                                    style={{ animationDelay: '150ms' }}
+                                  />
+                                </div>
+                              )}
+                            </button>
+                          )
+                        }}
+                      />
                     )}
                   </div>
                 </div>
