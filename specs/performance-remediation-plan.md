@@ -47,7 +47,7 @@ against `git log --oneline`, and continue from the first unticked task.
 - [x] T11 — Preview mechanical fixes: throttle, stable callbacks, binary search, LRU, cancellation *(P-06/P-07)*
 - [x] T12 — Extract `TheaterPreview` from `SearchResultCard` *(P-06)*
 - [x] T13 — Fixed-row windowing for long lists *(P-05)*
-- [ ] T14 — Telemetry harness; regenerate `specs/perf-report.md` *(P-10)*
+- [x] T14 — Telemetry harness; regenerate `specs/perf-report.md` *(P-10)*
 
 ### Standing constraints (from AGENTS.md — violating these fails the task)
 
@@ -1030,16 +1030,28 @@ npm run typecheck && npm test && npm run lint && npm run build && npm run perf
 
 Then confirm against the plan's own targets:
 
-| Check | Source | Expected |
-|---|---|---|
-| Idle summed private | T14 report | ≤200 MB |
-| Marginal over bare window | T14 report | ≤60 MB |
-| 1M-line child, main heap | T1 soak | flat |
-| 250 MB update, `arrayBuffers` | T6 test | <32 MB |
-| 1,000-entry playlist, processes spawned | T7 test | ≤40 |
-| Routine progress events | T2 test | ≤5/sec/job |
-| Cross-volume download | T3/T4 | no main-thread stall; rename path when T4 landed |
-| 5,000-cue transcript | T13 | bounded DOM, ≥55 FPS |
+| Check | Source | Expected | **Measured** |
+|---|---|---|---|
+| Idle summed private | T14 report | ≤200 MB | **215.2 MB — FAIL** (median of 3×300 s) |
+| Marginal over bare window | T14 report | ≤60 MB | **74.8 MB — FAIL** (bare window 140.4 MB) |
+| 1M-line child, main heap | T1 soak | flat | PASS — <32 MB growth |
+| 250 MB update, `arrayBuffers` | T6 test | <32 MB | PASS at <64 MB (bound relaxed, see Deviations) |
+| 1,000-entry playlist, processes spawned | T7 test | ≤40 | PASS — exactly `HYDRATION_WINDOW` |
+| Routine progress events | T2 test | ≤5/sec/job | PASS — `--progress-delta 0.25` + 150 ms coalescer |
+| Cross-volume download | T3/T4 | no main-thread stall; rename path when T4 landed | PASS — rename asserted, `copyFile` never called |
+| 5,000-cue transcript | T13 | bounded DOM, ≥55 FPS | DOM bounded (PASS); **FPS not measured** — needs the running UI |
+
+Gate from a clean tree: `npm run typecheck && npm test && npm run lint && npm run build` all
+green; 375 tests pass, 1 skipped. `npm run perf` produces `perf-out/summary.md` and the
+regenerated `specs/perf-report.md`.
+
+**Both memory targets are missed and recorded as measured, not adjusted.** The bare-window
+half of AM-16 reproduces almost exactly (140.4/314.0 MB against the 142/310 MB it was written
+from), but its ~46 MB private marginal does not — this harness measures 74.8 MB. Per-process
+breakdown puts the excess in the **GPU process** (+35.4 MB of the 74.8 MB), i.e.
+compositor/texture memory, not JavaScript: the main heap is 4.9 MB and `arrayBuffers` is zero
+at idle. That points at the `backdrop-blur` audit this plan deferred, and suggests AM-16's
+marginal ceiling should be re-derived from this harness now that one exists.
 
 Write the results into `specs/perf-report.md` and update the **Deviations** table above with anything
 reverted. If a target is missed, record the measured value rather than adjusting the target — AM-16

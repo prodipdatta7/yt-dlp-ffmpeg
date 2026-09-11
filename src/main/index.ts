@@ -269,6 +269,14 @@ app.whenReady().then(() => {
     probe.start()
     memoryProbe = probe
     logger.info('memory probe enabled', { file: 'logs/mem.jsonl' })
+
+    // Benchmark runs quit the app themselves rather than being killed, so `before-quit`
+    // gets to flush the tail of the buffer and the process tree exits cleanly.
+    const exitAfterMs = Number(process.env.MF_PERF_EXIT_MS ?? '')
+    if (Number.isFinite(exitAfterMs) && exitAfterMs > 0) {
+      const timer = setTimeout(() => app.quit(), exitAfterMs)
+      timer.unref()
+    }
   }
 
   registerIpcHandlers(

@@ -208,16 +208,26 @@ async function main() {
 
   const baseline = await measureBaseline()
   const appRuns = []
-  for (let i = 0; i < LAUNCHES; i += 1) appRuns.push(await measureApp(i))
+  for (let i = 0; i < LAUNCHES; i += 1) {
+    appRuns.push(await measureApp(i))
+    // Let the previous process tree finish dying before the next launch starts.
+    await new Promise((resolve) => setTimeout(resolve, 5000))
+  }
 
-  const summary = markdown(baseline, appRuns)
+  const usable = appRuns.filter((r) => r.length > 0)
+  if (usable.length < LAUNCHES) {
+    console.error(`
+! ${LAUNCHES - usable.length} of ${LAUNCHES} launches were discarded.`)
+  }
+
+  const summary = markdown(baseline, usable)
   const summaryPath = join(OUT_DIR, 'summary.md')
   writeFileSync(summaryPath, summary)
 
   console.info(`\n${summary}`)
   console.info(`Wrote ${summaryPath}`)
 
-  if (baseline.length === 0 || appRuns.every((r) => r.length === 0)) {
+  if (baseline.length === 0 || usable.length === 0) {
     console.error('\nNo samples collected — the app may not have stayed up. See perf-out/.')
     process.exitCode = 1
   }
