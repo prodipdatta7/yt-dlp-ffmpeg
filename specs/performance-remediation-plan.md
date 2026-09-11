@@ -38,7 +38,7 @@ against `git log --oneline`, and continue from the first unticked task.
 - [x] T2 — `--progress-delta`, job-event coalescing, protocol-log gating *(P-04)*
 - [x] T3 — Asynchronous finalization *(P-02)*
 - [x] T4 — Same-volume staging root *(P-02 / R-03)*
-- [ ] T5 — Async fsops, startup sweep off critical path, sweep-abort bug *(P-02 / R-06)*
+- [x] T5 — Async fsops, startup sweep off critical path, sweep-abort bug *(P-02 / R-06)*
 - [ ] T6 — Streaming updaters with incremental SHA-256 *(P-03)*
 - [ ] T7 — Playlist hydration: windowed and cancellable *(R-02, new P0)*
 - [ ] T8 — Analyze generation token; awaited cancel; search `activeHandles` *(P-08a)*
@@ -67,6 +67,8 @@ against `git log --oneline`, and continue from the first unticked task.
 
 | Task | What changed | Why |
 |---|---|---|
+| T5 | Also converted `sanitizer.collisionFreeTarget` and `downloadManifest` to async, beyond T5's stated file list. | Both are on the download completion path, so leaving them sync would have made T3's "no `*Sync` in the completion path" bar false outside `orchestrator.ts`. `diskSpace`'s `existsSync` walk is left sync — it is a preflight. |
+| T5 | `sweepOrphanedTempDirs` takes an options object with a `stat` seam. | `vi.spyOn` cannot patch an ESM namespace, so the "one entry is locked" regression — the whole point of the R-06 fix — had no other deterministic way to be tested. |
 | T1 | `maxLineChars` applies under `'tail'` only, not under `'full'`. | A `-J` payload is a single very long line; capping it under `'full'` would silently corrupt every metadata/search result. `'full'` is bounded by `maxCaptureBytes` instead. |
 | T2 | Coalescing is latest-wins *within a phase*; a phase change flushes the outgoing phase's sample first. | `downloading-video` → `downloading-audio` is a state transition the renderer must see, not a droppable sample. |
 | T2 | `logConsoleOpen` takes `includeProtocol` as well as `open`. | The console already has a "protocol" toggle; suppressing protocol lines unconditionally would have made that toggle show only stale history. |

@@ -1,16 +1,20 @@
 import { spawn } from 'node:child_process'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import * as fsp from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   downloadBuffer,
+  downloadToFile,
   extractExpectedChecksum,
   isNewerVersion,
   releaseDownloadUrl,
   resolveLatestTag,
-  sha256Hex,
+  type DownloadToFileResult,
 } from '../binaries/updater'
 import type { Logger } from '../store/logger'
 import type { AppUpdatePhase } from '../../shared/models'
+
+/** Ceiling for the NSIS installer — currently ~150 MB. */
+const MAX_INSTALLER_BYTES = 1024 * 1024 * 1024
 
 const APP_OWNER = 'prodipdatta7'
 const APP_REPO = 'yt-dlp-ffmpeg'
@@ -113,8 +117,8 @@ function defaultLaunchInstaller(installerPath: string): void {
 /**
  * Downloads the current release's NSIS installer, checksum-verifies it against the `SHA256SUMS`
  * sidecar `release.yml` publishes alongside it (same shape as the yt-dlp SHA2-256SUMS check in
- * §7.6 — reuses `extractExpectedChecksum`/`sha256Hex`), writes it to `updatesDir`, then launches
- * it detached. The app never swaps its own installed files (AM-03's rationale for core drivers
+ * §7.6 — reuses `extractExpectedChecksum`), streams it to `updatesDir` while hashing it
+ * incrementally, then launches it detached. The app never swaps its own installed files (AM-03's rationale for core drivers
  * applies even harder to `Program Files`) — the installer wizard does that itself, which is why
  * the caller should quit the app right after this resolves `ok: true` so the installer isn't
  * fighting file locks held by the running instance.
@@ -140,24 +144,37 @@ export async function downloadAndInstallAppUpdate(
     )
     const sumsUrl = releaseDownloadUrl(APP_OWNER, APP_REPO, 'SHA256SUMS')
 
-    deps.onPhase?.('downloading')
-    const [exeBytes, sumsBytes] = await Promise.all([
-      downloadBuffer(exeUrl, fetchFn),
-      downloadBuffer(sumsUrl, fetchFn),
-    ])
+    await fsp.mkdir(deps.updatesDir, { recursive: true })
+    const installerPath = join(deps.updatesDir, fileName)
 
-    deps.onPhase?.('verifying')
-    const expected = extractExpectedChecksum(sumsBytes.toString('utf8'), fileName)
-    if (!expected) return { ok: false, error: 'checksum entry not found in SHA256SUMS' }
-    if (sha256Hex(exeBytes) !== expected) {
-      deps.logger?.warn('app update rejected: checksum mismatch')
-      return { ok: false, error: 'checksum mismatch — download rejected' }
+    // The NSIS installer is ~150 MB. It streams to disk and is hashed on the way past, so
+    // it is never held in main-process memory (P-03).
+    deps.onPhase?.('downloading')
+    let installer: DownloadToFileResult
+    try {
+      const [asset, sumsBytes] = await Promise.all([
+        downloadToFile(exeUrl, installerPath, fetchFn, MAX_INSTALLER_BYTES),
+        downloadBuffer(sumsUrl, fetchFn),
+      ])
+      installer = asset
+
+      deps.onPhase?.('verifying')
+      const expected = extractExpectedChecksum(sumsBytes.toString('utf8'), fileName)
+      if (!expected) {
+        await fsp.rm(installerPath, { force: true })
+        return { ok: false, error: 'checksum entry not found in SHA256SUMS' }
+      }
+      if (installer.sha256 !== expected) {
+        await fsp.rm(installerPath, { force: true })
+        deps.logger?.warn('app update rejected: checksum mismatch')
+        return { ok: false, error: 'checksum mismatch — download rejected' }
+      }
+    } catch (downloadError) {
+      await fsp.rm(installerPath, { force: true })
+      throw downloadError
     }
 
     deps.onPhase?.('launching-installer')
-    mkdirSync(deps.updatesDir, { recursive: true })
-    const installerPath = join(deps.updatesDir, fileName)
-    writeFileSync(installerPath, exeBytes)
     ;(deps.launchInstaller ?? defaultLaunchInstaller)(installerPath)
 
     deps.logger?.info('app installer launched', { version: latestVersion })

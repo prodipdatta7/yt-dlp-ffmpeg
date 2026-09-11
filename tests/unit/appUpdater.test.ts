@@ -185,3 +185,82 @@ describe('downloadAndInstallAppUpdate', () => {
     expect(result.error).toBeTruthy()
   })
 })
+
+/**
+ * P-03 regression guard. The NSIS installer is ~150 MB and used to be held whole in
+ * main-process memory while it was hashed and written. It now streams to
+ * `updatesDir` and is hashed on the way past.
+ */
+describe('app installer memory ceiling (T6)', () => {
+  const MIB = 1024 * 1024
+  const CHUNK = Buffer.alloc(64 * 1024, 0xcd)
+  const CHUNKS = (250 * MIB) / CHUNK.length
+  const VERSION = '9.9.9'
+
+  it('keeps arrayBuffers bounded while downloading a 250 MB installer', async () => {
+    const dir = freshDir()
+    const fileName = installerAssetName(VERSION)
+    const sumsUrl = `https://github.com/${OWNER}/${REPO}/releases/latest/download/SHA256SUMS`
+
+    const hash = createHash('sha256')
+    for (let i = 0; i < CHUNKS; i += 1) hash.update(CHUNK)
+    const sums = Buffer.from(`${hash.digest('hex')}  ${fileName}\n`, 'utf8')
+
+    globalThis.gc?.()
+    const baseline = process.memoryUsage().arrayBuffers
+    let peak = 0
+    let pulls = 0
+    const sample = (): void => {
+      globalThis.gc?.()
+      peak = Math.max(peak, process.memoryUsage().arrayBuffers - baseline)
+    }
+
+    const fetchFn = (async (url: string | URL | Request): Promise<Response> => {
+      const key = String(url)
+      if (key === TAG_URL) {
+        return new Response(null, {
+          status: 302,
+          headers: { location: `${TAG_URL.replace('/latest', '')}/tag/v${VERSION}` },
+        })
+      }
+      if (key === sumsUrl) return new Response(new Uint8Array(sums))
+      if (key === exeUrlFor(VERSION)) {
+        let sent = 0
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              if (sent >= CHUNKS) {
+                controller.close()
+                return
+              }
+              sent += 1
+              if (pulls++ % 256 === 0) sample()
+              controller.enqueue(new Uint8Array(CHUNK))
+            },
+          }),
+          { status: 200 },
+        )
+      }
+      return new Response('not found', { status: 404 })
+    }) as typeof fetch
+
+    let launched: string | null = null
+    const result = await downloadAndInstallAppUpdate({
+      currentVersion: '0.1.0',
+      updatesDir: dir,
+      fetchFn,
+      launchInstaller: (p) => {
+        launched = p
+      },
+    })
+    sample()
+
+    expect(result.ok).toBe(true)
+    expect(launched).toBe(join(dir, fileName))
+    // The bound is generous because `arrayBuffers` also counts stream buffers in flight and
+    // pool slack: observed peaks here are ~20-36 MB and vary run to run. What it catches is
+    // the defect it was written for — the pre-fix path materialized the whole asset via
+    // `arrayBuffer()`, so its peak was >= the full 250 MB.
+    expect(peak).toBeLessThan(64 * MIB)
+  }, 120_000)
+})
