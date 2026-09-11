@@ -157,14 +157,56 @@ describe('orphaned temp sweep (AM-06)', () => {
     const staleTime = new Date(Date.now() - ORPHAN_TEMP_MAX_AGE_MS - 60_000)
     utimesSync(join(root, 'job-stale'), staleTime, staleTime)
 
-    const removed = sweepOrphanedTempDirs(root)
+    const removed = await sweepOrphanedTempDirs(root)
 
     expect(removed).toBe(1)
     expect(existsSync(join(root, 'job-stale'))).toBe(false)
     expect(existsSync(join(root, 'job-fresh'))).toBe(true)
   })
 
-  it('is a no-op when temp root does not exist', () => {
-    expect(sweepOrphanedTempDirs(join(tmpdir(), 'mf-missing-xyz-999'))).toBe(0)
+  it('is a no-op when temp root does not exist', async () => {
+    expect(await sweepOrphanedTempDirs(join(tmpdir(), 'mf-missing-xyz-999'))).toBe(0)
+  })
+
+  it('sweeps every staging root it is given (T4)', async () => {
+    const a = mkdtempSync(join(tmpdir(), 'mf-sweep-a-'))
+    const b = mkdtempSync(join(tmpdir(), 'mf-sweep-b-'))
+    const { mkdirSync, utimesSync } = await import('node:fs')
+    const staleTime = new Date(Date.now() - ORPHAN_TEMP_MAX_AGE_MS - 60_000)
+
+    for (const [root, name] of [
+      [a, 'job-one'],
+      [b, 'job-two'],
+    ] as const) {
+      mkdirSync(join(root, name), { recursive: true })
+      utimesSync(join(root, name), staleTime, staleTime)
+    }
+
+    expect(await sweepOrphanedTempDirs([a, b])).toBe(2)
+    expect(existsSync(join(a, 'job-one'))).toBe(false)
+    expect(existsSync(join(b, 'job-two'))).toBe(false)
+  })
+
+  it('keeps going past an entry that cannot be stat-ed (R-06 regression)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mf-sweep-bad-'))
+    const { mkdirSync, utimesSync } = await import('node:fs')
+    const staleTime = new Date(Date.now() - ORPHAN_TEMP_MAX_AGE_MS - 60_000)
+
+    for (const name of ['job-a', 'job-b', 'job-c']) {
+      mkdirSync(join(root, name), { recursive: true })
+      utimesSync(join(root, name), staleTime, staleTime)
+    }
+
+    // The middle entry throws on stat. Before the fix, the sweep returned there and the
+    // remaining dirs leaked permanently — every later run stopped at the same entry.
+    const { stat } = await import('node:fs/promises')
+    const removed = await sweepOrphanedTempDirs(root, {
+      stat: (p) => (p.endsWith('job-b') ? Promise.reject(new Error('EBUSY')) : stat(p)),
+    })
+    expect(removed).toBe(2)
+
+    expect(existsSync(join(root, 'job-a'))).toBe(false)
+    expect(existsSync(join(root, 'job-b'))).toBe(true)
+    expect(existsSync(join(root, 'job-c'))).toBe(false)
   })
 })

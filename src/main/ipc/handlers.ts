@@ -115,9 +115,9 @@ export interface IpcDeps {
     >,
   ) => MfSettingsView
   markFirstRunSeen: () => boolean
-  listPartials: () => PartialsListResult
+  listPartials: () => Promise<PartialsListResult>
   openPartialDir: (path: string) => Promise<{ ok: boolean }>
-  clearPartials: (path?: string) => PartialsClearResult
+  clearPartials: (path?: string) => Promise<PartialsClearResult>
   revealPath: (path: string) => Promise<{ ok: boolean }>
   openFile: (path: string) => Promise<{ ok: boolean }>
   updaterCheck: (kind: UpdaterDriverKind) => Promise<{

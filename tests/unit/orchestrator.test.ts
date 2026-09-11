@@ -474,7 +474,8 @@ describe('staging root (T4 / R-03)', () => {
 
     const stagingRoot = join(destOf(root), STAGING_DIR_NAME)
     expect(done.partialDir?.startsWith(stagingRoot)).toBe(true)
-    expect(listPartialDirs([root, stagingRoot]).map((i) => i.path)).toContain(done.partialDir)
+    const listed = await listPartialDirs([root, stagingRoot])
+    expect(listed.map((i) => i.path)).toContain(done.partialDir)
   }, 30_000)
 })
 

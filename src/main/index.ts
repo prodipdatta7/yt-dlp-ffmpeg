@@ -1,4 +1,5 @@
 import { existsSync, copyFileSync, rmSync, appendFileSync, writeFileSync } from 'node:fs'
+import * as fsp from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   app,
@@ -177,9 +178,6 @@ app.whenReady().then(() => {
     const outputDir = settings.load().lastOutputDir || app.getPath('downloads')
     return [...new Set([tempRoot, join(outputDir, STAGING_DIR_NAME)])]
   }
-
-  const swept = sweepOrphanedTempDirs(tempRoot)
-  if (swept > 0) logger.info('orphaned temp dirs swept', { count: swept })
 
   const binariesService = new BinariesService({
     platform: process.platform,
@@ -439,23 +437,30 @@ app.whenReady().then(() => {
         settings.save({ ...settings.load(), firstRunNoticeSeen: true })
         return true
       },
-      listPartials: () => ({
+      listPartials: async () => ({
         tempRoot,
-        items: listPartialDirs(stagingRoots()),
+        items: await listPartialDirs(stagingRoots()),
       }),
       openPartialDir: async (dirPath: string) => {
-        if (!isUnderAnyRoot(stagingRoots(), dirPath) || !existsSync(dirPath)) return { ok: false }
+        if (!isUnderAnyRoot(stagingRoots(), dirPath)) return { ok: false }
+        if (
+          !(await fsp
+            .stat(dirPath)
+            .then(() => true)
+            .catch(() => false))
+        )
+          return { ok: false }
         const result = await shell.openPath(dirPath)
         return { ok: result.length === 0 }
       },
-      clearPartials: (dirPath?: string) => {
+      clearPartials: async (dirPath?: string) => {
         const roots = stagingRoots()
         if (dirPath) {
-          const ok = clearPartialDir(roots, dirPath)
+          const ok = await clearPartialDir(roots, dirPath)
           if (ok) logger.info('partial dir cleared', { pathSet: true })
           return { ok, cleared: ok ? 1 : 0, failed: ok ? 0 : 1 }
         }
-        const result = clearAllPartialDirs(roots)
+        const result = await clearAllPartialDirs(roots)
         logger.info('all partial dirs cleared', result)
         return { ok: result.failed === 0, ...result }
       },
@@ -572,6 +577,16 @@ app.whenReady().then(() => {
   )
 
   mainWindow = createMainWindow(resolvedTheme(settings.load().theme))
+
+  // Off the critical path: sweeping stale job dirs used to run before the window existed,
+  // so it landed directly on cold-start time. The window never waits on it (P-02).
+  mainWindow.once('ready-to-show', () => {
+    void sweepOrphanedTempDirs(stagingRoots())
+      .then((count) => {
+        if (count > 0) logger.info('orphaned temp dirs swept', { count })
+      })
+      .catch((error) => logger.debug('temp sweep failed', { error: String(error) }))
+  })
 
   nativeTheme.on('updated', () => {
     applyChromeTheme(resolvedTheme(settings.load().theme))

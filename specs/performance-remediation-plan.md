@@ -37,7 +37,7 @@ against `git log --oneline`, and continue from the first unticked task.
 - [x] T1 — Runner capture policy; delete dead orchestrator arrays *(P-01)*
 - [x] T2 — `--progress-delta`, job-event coalescing, protocol-log gating *(P-04)*
 - [x] T3 — Asynchronous finalization *(P-02)*
-- [ ] T4 — Same-volume staging root *(P-02 / R-03)*
+- [x] T4 — Same-volume staging root *(P-02 / R-03)*
 - [ ] T5 — Async fsops, startup sweep off critical path, sweep-abort bug *(P-02 / R-06)*
 - [ ] T6 — Streaming updaters with incremental SHA-256 *(P-03)*
 - [ ] T7 — Playlist hydration: windowed and cancellable *(R-02, new P0)*

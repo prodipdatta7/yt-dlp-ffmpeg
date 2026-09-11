@@ -221,7 +221,7 @@ export class DownloadOrchestrator {
       : config.destDir
 
     if (!config.isLive) {
-      const existingPath = findExistingDownload(effectiveDestDir, config)
+      const existingPath = await findExistingDownload(effectiveDestDir, config)
       if (existingPath) {
         const jobId = randomUUID()
         this.deps.logger?.info('download skipped — already exists at this quality', {
@@ -448,7 +448,7 @@ export class DownloadOrchestrator {
       }
 
       await this.fs.mkdir(job.destDir, { recursive: true })
-      const target = collisionFreeTarget(job.destDir, basename(finalSource))
+      const target = await collisionFreeTarget(job.destDir, basename(finalSource))
       const moved = await this.moveIntoPlace(finalSource, target, () =>
         emit('finalizing', 100, null, null),
       )
@@ -461,7 +461,7 @@ export class DownloadOrchestrator {
       await this.fs.rm(job.tempDir, { recursive: true, force: true })
       await this.removeStagingRootIfEmpty(job)
       this.deps.logger?.info('download completed', { jobId, target })
-      recordDownload(job.destDir, job.config, target)
+      await recordDownload(job.destDir, job.config, target)
       await this.finish(job, sendDone, { status: 'completed', outputPath: target })
     } catch (error) {
       this.deps.logger?.error('orchestrator error', { jobId, error: String(error) })
@@ -512,7 +512,7 @@ export class DownloadOrchestrator {
     if (!partSource) return null
     const finalName = sanitizeFileName(basename(partSource).replace(/\.part$/i, ''))
     await this.fs.mkdir(job.destDir, { recursive: true })
-    const target = collisionFreeTarget(job.destDir, finalName)
+    const target = await collisionFreeTarget(job.destDir, finalName)
     if (!(await this.moveIntoPlace(partSource, target))) return null
     await this.fs.rm(job.tempDir, { recursive: true, force: true })
     await this.removeStagingRootIfEmpty(job)

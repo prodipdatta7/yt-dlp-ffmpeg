@@ -46,23 +46,23 @@ describe('sanitizeFileName (PRD §3.4 / AGENTS.md §7.4)', () => {
 })
 
 describe('collisionFreeTarget (PRD §3.4 auto-rename)', () => {
-  it('returns the plain path when free', () => {
+  it('returns the plain path when free', async () => {
     const dir = freshDir()
-    expect(collisionFreeTarget(dir, 'Video.mp4')).toBe(join(dir, 'Video.mp4'))
+    expect(await collisionFreeTarget(dir, 'Video.mp4')).toBe(join(dir, 'Video.mp4'))
   })
 
-  it('appends _1 then _2 (case-insensitive compare)', () => {
+  it('appends _1 then _2 (case-insensitive compare)', async () => {
     const dir = freshDir()
     writeFileSync(join(dir, 'Video.mp4'), 'x')
-    expect(collisionFreeTarget(dir, 'Video.mp4')).toBe(join(dir, 'Video_1.mp4'))
+    expect(await collisionFreeTarget(dir, 'Video.mp4')).toBe(join(dir, 'Video_1.mp4'))
     writeFileSync(join(dir, 'video_1.mp4'), 'x')
-    expect(collisionFreeTarget(dir, 'VIDEO.MP4')).toBe(join(dir, 'VIDEO_2.MP4'))
+    expect(await collisionFreeTarget(dir, 'VIDEO.MP4')).toBe(join(dir, 'VIDEO_2.MP4'))
   })
 
-  it('sanitizes the requested name before collision check', () => {
+  it('sanitizes the requested name before collision check', async () => {
     const dir = freshDir()
     writeFileSync(join(dir, 'a-b-c.mp4'), 'x')
-    expect(collisionFreeTarget(dir, 'a<b>c.mp4')).toBe(join(dir, 'a-b-c_1.mp4'))
+    expect(await collisionFreeTarget(dir, 'a<b>c.mp4')).toBe(join(dir, 'a-b-c_1.mp4'))
   })
 })
 
