@@ -97,3 +97,94 @@ describe('version parsers', () => {
     expect(parseFfmpegVersion(['garbage'])).toBeNull()
   })
 })
+
+/** Capture policy (P-01 / T1). */
+describe('capture policy', () => {
+  const emitter = 'tests/fixtures/fake-bin/line-emitter.mjs'
+
+  it("'none' retains nothing but still invokes onStdoutLine for every line", async () => {
+    const seen: string[] = []
+    const res = await runCapture(process.execPath, [emitter, '50'], {
+      capture: { stdout: 'none' },
+      onStdoutLine: (l) => seen.push(l),
+    })
+    expect(res.code).toBe(0)
+    expect(res.stdoutLines).toEqual([])
+    expect(seen).toHaveLength(50)
+    expect(seen[49]).toBe('line 49')
+  })
+
+  it("'tail' retains exactly the last N lines, in order, and flags truncation", async () => {
+    const res = await runCapture(process.execPath, [emitter, '100'], {
+      capture: { stdout: 'tail', tailLines: 10 },
+    })
+    expect(res.stdoutLines).toHaveLength(10)
+    expect(res.stdoutLines[0]).toBe('line 90')
+    expect(res.stdoutLines[9]).toBe('line 99')
+    expect(res.stdoutTruncated).toBe(true)
+  })
+
+  it("'tail' under capacity retains everything and does not flag truncation", async () => {
+    const res = await runCapture(process.execPath, [emitter, '5'], {
+      capture: { stdout: 'tail', tailLines: 10 },
+    })
+    expect(res.stdoutLines).toHaveLength(5)
+    expect(res.stdoutLines[0]).toBe('line 0')
+    expect(res.stdoutTruncated).toBe(false)
+  })
+
+  it("'full' stops appending at maxCaptureBytes and flags truncation", async () => {
+    const res = await runCapture(process.execPath, [emitter, '1000'], {
+      capture: { stdout: 'full', maxCaptureBytes: 200 },
+    })
+    expect(res.stdoutTruncated).toBe(true)
+    expect(res.stdoutLines.length).toBeGreaterThan(0)
+    expect(res.stdoutLines.length).toBeLessThan(1000)
+    expect(res.stdoutLines[0]).toBe('line 0')
+  })
+
+  it("'full' retains a long single line exactly — a -J payload must not be clipped", async () => {
+    const res = await runCapture(process.execPath, [emitter, '1', 'x'.repeat(20_000)], {
+      capture: { stdout: 'full' },
+    })
+    expect(res.stdoutLines).toHaveLength(1)
+    expect(res.stdoutLines[0]).toHaveLength(20_002)
+    expect(res.stdoutTruncated).toBe(false)
+  })
+
+  it('maxLineChars truncates retained tail lines but not the onLine argument', async () => {
+    const seen: string[] = []
+    const res = await runCapture(process.execPath, [emitter, '1', 'y'.repeat(500)], {
+      capture: { stdout: 'tail', maxLineChars: 100 },
+      onStdoutLine: (l) => seen.push(l),
+    })
+    expect(seen[0]).toHaveLength(502)
+    expect(res.stdoutLines[0]).toBe(`${'y'.repeat(100)}…`)
+    expect(res.stdoutTruncated).toBe(true)
+  })
+
+  it('defaults both streams to tail when no policy is given', async () => {
+    const res = await runCapture(process.execPath, [emitter, '300'])
+    expect(res.stdoutLines).toHaveLength(200)
+    expect(res.stdoutLines[199]).toBe('line 299')
+  })
+
+  describe('soak', () => {
+    it('leaves the main heap flat over 1,000,000 lines under stdout: none', async () => {
+      globalThis.gc?.()
+      const before = process.memoryUsage().heapUsed
+      let count = 0
+      const res = await runCapture(process.execPath, [emitter, '1000000'], {
+        capture: { stdout: 'none' },
+        onStdoutLine: () => {
+          count++
+        },
+      })
+      globalThis.gc?.()
+      const after = process.memoryUsage().heapUsed
+      expect(count).toBe(1_000_000)
+      expect(res.stdoutLines).toEqual([])
+      expect(after - before).toBeLessThan(32 * 1024 * 1024)
+    }, 120_000)
+  })
+})

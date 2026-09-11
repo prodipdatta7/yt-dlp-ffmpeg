@@ -229,6 +229,44 @@ describe('DownloadOrchestrator', () => {
   }, 30_000)
 })
 
+describe('final path resolution (T1)', () => {
+  it('uses the --print after_move:filepath line when yt-dlp emits one', async () => {
+    const root = tempRoot()
+    const box: DoneBox = { value: null }
+    const orch = makeOrch(root, 'tests/fixtures/fake-bin/fake-ytdlp-download.mjs')
+    await orch.launch(
+      CONFIG(root),
+      () => undefined,
+      (d) => {
+        box.value = d
+      },
+    )
+
+    const finished = await waitForDone(box)
+    expect(finished.status).toBe('completed')
+    expect(finished.outputPath?.startsWith(destOf(root))).toBe(true)
+    expect(readFileSync(finished.outputPath!, 'utf8')).toContain('FAKE-MP4-CONTENT')
+  }, 30_000)
+
+  it('falls back to the largest completed temp file when no --print line arrives', async () => {
+    const root = tempRoot()
+    const box: DoneBox = { value: null }
+    const orch = makeOrch(root, 'tests/fixtures/fake-bin/fake-ytdlp-noprint.mjs')
+    await orch.launch(
+      CONFIG(root),
+      () => undefined,
+      (d) => {
+        box.value = d
+      },
+    )
+
+    const finished = await waitForDone(box)
+    expect(finished.status).toBe('completed')
+    expect(finished.outputPath?.startsWith(destOf(root))).toBe(true)
+    expect(readFileSync(finished.outputPath!, 'utf8')).toContain('FAKE-MP4-CONTENT')
+  }, 30_000)
+})
+
 function destOf(root: string): string {
   return join(root, 'dest')
 }

@@ -493,8 +493,6 @@ export class SearchService {
     // Never send imported cookies to Google discovery. Target hydration may still use them.
     const args = buildAnalyzeArgs(urlOrQuery, this.opts.getCookiesPath?.() ?? null, extraFlags)
 
-    const stdoutLines: string[] = []
-    const stderrLines: string[] = []
     this.opts.logger?.debug('search spawn started', {
       platform: platformId,
       limit,
@@ -503,12 +501,12 @@ export class SearchService {
     })
     this.opts.onProcessLine?.(`$ yt-dlp ${args.join(' ')}`, 'out')
     const handle = spawnProcess(binary.path, args, {
+      // stdout is the -J JSON payload and must be complete; stderr only needs a tail (P-01).
+      capture: { stdout: 'full', stderr: 'tail', tailLines: 100 },
       onStdoutLine: (line) => {
-        stdoutLines.push(line)
         this.opts.onProcessLine?.(line, 'out')
       },
       onStderrLine: (line) => {
-        stderrLines.push(line)
         this.opts.onProcessLine?.(line, 'err')
       },
       timeoutMs: SEARCH_TIMEOUT_MS,
@@ -525,11 +523,16 @@ export class SearchService {
     if (generation !== this.searchGeneration) throw new MfError('MF_CANCELLED')
 
     if (result.code !== 0) {
-      this.opts.logger?.debug('search failed', { stderrTail: stderrLines.slice(-5).join(' / ') })
-      throw new MfError(classifyStderr(stderrLines))
+      this.opts.logger?.debug('search failed', {
+        stderrTail: result.stderrLines.slice(-5).join(' / '),
+      })
+      throw new MfError(classifyStderr(result.stderrLines))
     }
 
-    const jsonText = stdoutLines.join('\n').trim()
+    // A partial payload would JSON.parse into nonsense; fail explicitly instead.
+    if (result.stdoutTruncated) throw new MfError('MF_EXTRACTOR_STALE')
+
+    const jsonText = result.stdoutLines.join('\n').trim()
     let raw: RawInfo
     try {
       raw = JSON.parse(jsonText) as RawInfo
@@ -795,6 +798,8 @@ export class SearchService {
         args.push(...urls)
 
         const handle = spawnProcess(binaryPath, args, {
+          // Lines are parsed live; nothing needs retaining (P-01).
+          capture: { stdout: 'none', stderr: 'tail', tailLines: 20 },
           onStdoutLine: (line) => {
             const parsed = parseHydrateLine(line)
             if (parsed && generation === this.searchGeneration) {
@@ -827,12 +832,10 @@ export class SearchService {
     const worker = async (): Promise<void> => {
       while (nextEntry < entries.length && generation === this.searchGeneration) {
         const entry = entries[nextEntry++]
-        const stdoutLines: string[] = []
-        const stderrLines: string[] = []
         const args = buildEntryInfoArgs(entry.url, this.opts.getCookiesPath?.() ?? null)
         const handle = spawnProcess(binaryPath, args, {
-          onStdoutLine: (line) => stdoutLines.push(line),
-          onStderrLine: (line) => stderrLines.push(line),
+          // stdout is the -J JSON payload and must be complete (P-01).
+          capture: { stdout: 'full', stderr: 'tail', tailLines: 100 },
           timeoutMs: 30_000,
         })
         this.searchHandles.add(handle)
@@ -844,14 +847,14 @@ export class SearchService {
         }
         try {
           const result = await handle.result
-          if (result.code === 0 && stdoutLines.length > 0) {
+          if (result.code === 0 && !result.stdoutTruncated && result.stdoutLines.length > 0) {
             update = parseFederatedHydration(
               entry.url,
               entry.platform,
-              stdoutLines.join('\n').trim(),
+              result.stdoutLines.join('\n').trim(),
             )
           } else if (result.code !== 0) {
-            const errorCode = classifyStderr(stderrLines)
+            const errorCode = classifyStderr(result.stderrLines)
             update = { ...update, errorCode }
             this.opts.logger?.debug('federated result hydration failed', {
               platform: entry.platform,
@@ -888,7 +891,11 @@ export class SearchService {
     if (cookies) args.push('--cookies', cookies)
     args.push(url)
 
-    const handle = spawnProcess(binaryPath, args, { timeoutMs: 15_000 })
+    const handle = spawnProcess(binaryPath, args, {
+      // --print payload (chapters JSON + description) must be complete (P-01).
+      capture: { stdout: 'full', stderr: 'tail', tailLines: 20 },
+      timeoutMs: 15_000,
+    })
     this.activeHandles.add(handle)
     try {
       const res = await handle.result
@@ -927,7 +934,11 @@ export class SearchService {
       if (cookies) primaryArgs.push('--cookies', cookies)
       primaryArgs.push(url)
 
-      const handle = spawnProcess(binaryPath, primaryArgs, { timeoutMs: 25_000 })
+      // Subtitles land on disk; stdout is never read (P-01).
+      const handle = spawnProcess(binaryPath, primaryArgs, {
+        capture: { stdout: 'none', stderr: 'tail', tailLines: 20 },
+        timeoutMs: 25_000,
+      })
       this.activeHandles.add(handle)
       try {
         await handle.result
@@ -955,7 +966,10 @@ export class SearchService {
         if (cookies) fallbackArgs.push('--cookies', cookies)
         fallbackArgs.push(url)
 
-        const fbHandle = spawnProcess(binaryPath, fallbackArgs, { timeoutMs: 20_000 })
+        const fbHandle = spawnProcess(binaryPath, fallbackArgs, {
+          capture: { stdout: 'none', stderr: 'tail', tailLines: 20 },
+          timeoutMs: 20_000,
+        })
         this.activeHandles.add(fbHandle)
         try {
           await fbHandle.result

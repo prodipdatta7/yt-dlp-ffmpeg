@@ -292,18 +292,15 @@ export class AnalyzeService {
     const args = flatPlaylist
       ? buildAnalyzeArgs(url, this.opts.getCookiesPath?.() ?? null)
       : buildEntryInfoArgs(url, this.opts.getCookiesPath?.() ?? null)
-    const stdoutLines: string[] = []
-    const stderrLines: string[] = []
-
     this.opts.logger?.debug('analyze spawn started', { url, flatPlaylist })
     this.opts.onProcessLine?.(`$ yt-dlp ${args.join(' ')}`, 'out')
     const handle = spawnProcess(binaryPath, args, {
+      // stdout is the -J JSON payload and must be complete; stderr only needs a tail (P-01).
+      capture: { stdout: 'full', stderr: 'tail', tailLines: 100 },
       onStdoutLine: (line) => {
-        stdoutLines.push(line)
         this.opts.onProcessLine?.(line, 'out')
       },
       onStderrLine: (line) => {
-        stderrLines.push(line)
         this.opts.onProcessLine?.(line, 'err')
       },
       timeoutMs: flatPlaylist ? undefined : ENTRY_INFO_TIMEOUT_MS,
@@ -318,11 +315,16 @@ export class AnalyzeService {
     }
 
     if (result.code !== 0) {
-      this.opts.logger?.debug('analyze failed', { stderrTail: stderrLines.slice(-5).join(' / ') })
-      throw new MfError(classifyStderr(stderrLines))
+      this.opts.logger?.debug('analyze failed', {
+        stderrTail: result.stderrLines.slice(-5).join(' / '),
+      })
+      throw new MfError(classifyStderr(result.stderrLines))
     }
 
-    const jsonText = stdoutLines.join('\n').trim()
+    // A partial payload would JSON.parse into nonsense; fail explicitly instead.
+    if (result.stdoutTruncated) throw new MfError('MF_EXTRACTOR_STALE')
+
+    const jsonText = result.stdoutLines.join('\n').trim()
     let raw: RawInfo
     try {
       raw = JSON.parse(jsonText) as RawInfo

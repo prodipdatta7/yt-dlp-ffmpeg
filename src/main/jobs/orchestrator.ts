@@ -28,7 +28,7 @@ import type { Logger } from '../store/logger'
 import { buildDownloadArgs, outputTemplateFor } from './argBuilders'
 import {
   computeSegmentPercent,
-  extractFinalPathLine,
+  isFinalPathLine,
   isPostprocessorLine,
   parseDownloadLine,
   parsePostprocessLine,
@@ -271,14 +271,14 @@ export class DownloadOrchestrator {
     try {
       const delays = this.deps.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS
       const cookiesPath = this.deps.getCookiesPath?.() ?? null
-      const allStdoutLines: string[] = []
+      // P-01: the `--print after_move:filepath` payload is the only stdout line we need to
+      // outlive the process, so keep one string instead of retaining every decoded line.
+      let finalPathFromPrint: string | null = null
 
       let attempt = 0
       let result: RunResult | null = null
       for (;;) {
         attempt += 1
-        const stdoutLines: string[] = []
-        const stderrLines: string[] = []
 
         if (job.cancelRequested) break
 
@@ -290,10 +290,12 @@ export class DownloadOrchestrator {
         this.deps.onProcessLine?.(`$ yt-dlp ${args.join(' ')}`, 'out')
 
         const handle = spawnProcess(ytdlpPath, args, {
+          // stdout is parsed live; nothing needs retaining past the callback (P-01).
+          capture: { stdout: 'none', stderr: 'tail', tailLines: 100 },
           onStdoutLine: (line) => {
-            stdoutLines.push(line)
-            allStdoutLines.push(line)
             this.deps.onProcessLine?.(line, 'out')
+
+            if (isFinalPathLine(line)) finalPathFromPrint = line.trim()
 
             const post = parsePostprocessLine(line)
             if (post !== null) {
@@ -328,7 +330,6 @@ export class DownloadOrchestrator {
             }
           },
           onStderrLine: (line) => {
-            stderrLines.push(line)
             this.deps.onProcessLine?.(line, 'err')
           },
         })
@@ -345,7 +346,7 @@ export class DownloadOrchestrator {
 
         if (result.code === 0) break
 
-        const code: MfErrorCode = classifyStderr(stderrLines.slice(-40))
+        const code: MfErrorCode = classifyStderr(result.stderrLines.slice(-40))
         if (code !== 'MF_NETWORK' || attempt > delays.length) {
           this.deps.logger?.warn('download failed', {
             jobId,
@@ -387,8 +388,7 @@ export class DownloadOrchestrator {
 
       emit('finalizing', 100, null, null)
 
-      const finalSource =
-        extractFinalPathLine(allStdoutLines) ?? findLargestCompletedFile(job.tempDir)
+      const finalSource = finalPathFromPrint ?? findLargestCompletedFile(job.tempDir)
       if (!finalSource || !existsSync(finalSource) || statSync(finalSource).size <= 0) {
         this.deps.logger?.error('final output missing after success', { jobId })
         this.finish(job, sendDone, { status: 'failed', errorCode: 'MF_UNKNOWN' })

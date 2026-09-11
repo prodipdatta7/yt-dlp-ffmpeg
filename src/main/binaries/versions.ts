@@ -25,6 +25,7 @@ export interface BinaryInfoInternal {
 
 async function probe(kind: BinaryKind, path: string): Promise<string | null> {
   const res: RunResult = await runCapture(path, [kind === 'yt-dlp' ? '--version' : '-version'], {
+    capture: { stdout: 'tail', stderr: 'tail', tailLines: 20 },
     timeoutMs: 15_000
   })
   return kind === 'yt-dlp' ? parseYtDlpVersion(res.stdoutLines) : parseFfmpegVersion(res.stdoutLines)

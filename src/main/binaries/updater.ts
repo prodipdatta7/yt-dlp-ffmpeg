@@ -211,7 +211,10 @@ export class YtDlpUpdater {
 
 async function defaultVerify(exePath: string): Promise<string | null> {
   try {
-    const result = await runCapture(exePath, ['--version'], { timeoutMs: 20000 })
+    const result = await runCapture(exePath, ['--version'], {
+      capture: { stdout: 'tail', stderr: 'tail', tailLines: 20 },
+      timeoutMs: 20000,
+    })
     if (result.code !== 0) return null
     return parseYtDlpVersion(result.stdoutLines)
   } catch {

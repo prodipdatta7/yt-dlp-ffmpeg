@@ -93,14 +93,20 @@ function writeState(dir: string, state: FfmpegState): void {
 
 async function defaultExtract(archivePath: string, destDir: string): Promise<void> {
   mkdirSync(destDir, { recursive: true })
-  const handle = spawnProcess('tar', ['-xf', archivePath, '-C', destDir], { timeoutMs: 120_000 })
+  const handle = spawnProcess('tar', ['-xf', archivePath, '-C', destDir], {
+    capture: { stdout: 'none', stderr: 'tail', tailLines: 20 },
+    timeoutMs: 120_000,
+  })
   const res = await handle.result
   if (res.code !== 0) throw new Error(`failed to extract FFmpeg archive (exit ${res.code})`)
 }
 
 async function defaultVerify(exePath: string): Promise<string | null> {
   try {
-    const result = await runCapture(exePath, ['-version'], { timeoutMs: 20000 })
+    const result = await runCapture(exePath, ['-version'], {
+      capture: { stdout: 'tail', stderr: 'tail', tailLines: 20 },
+      timeoutMs: 20000,
+    })
     if (result.code !== 0) return null
     return parseFfmpegVersion(result.stdoutLines)
   } catch {
