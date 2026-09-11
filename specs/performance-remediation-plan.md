@@ -42,7 +42,7 @@ against `git log --oneline`, and continue from the first unticked task.
 - [x] T6 — Streaming updaters with incremental SHA-256 *(P-03)*
 - [x] T7 — Playlist hydration: windowed and cancellable *(R-02, new P0)*
 - [x] T8 — Analyze generation token; awaited cancel; search `activeHandles` *(P-08a)*
-- [ ] T9 — Job early-completion buffer *(P-08b)*
+- [x] T9 — Job early-completion buffer *(P-08b)*
 - [ ] T10 — Normalized playlist state, batched hydration *(P-05)*
 - [ ] T11 — Preview mechanical fixes: throttle, stable callbacks, binary search, LRU, cancellation *(P-06/P-07)*
 - [ ] T12 — Extract `TheaterPreview` from `SearchResultCard` *(P-06)*

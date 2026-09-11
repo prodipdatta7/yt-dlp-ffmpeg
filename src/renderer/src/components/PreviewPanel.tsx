@@ -3,7 +3,7 @@ import type { AnalyzeResult } from '../../../shared/models'
 import { fmtCount, fmtDuration, fmtEta, fmtSize, fmtSpeed } from '../utils/format'
 import { sourceLabel } from '../utils/source'
 import { jobEventsById, lastJobEvent } from '../signals/jobState'
-import { requestMorePlaylistHydration } from '../signals/appState'
+import { hydratedEntries, requestMorePlaylistHydration } from '../signals/appState'
 import {
   clearAllQueueLeftovers,
   patchQueueRow,
@@ -493,7 +493,8 @@ export function PlaylistEntries({
   onToggleEntry?: (url: string) => void
   onToggleAll?: (select: boolean) => void
 }) {
-  const entries = result.playlistEntries ?? []
+  // Rows come from the outline (order) with hydrated detail overlaid (P-05).
+  const entries = hydratedEntries(result.playlistEntries ?? [])
   const total = entries.length
   const selectedCount = entries.filter((e) => selectedUrls?.has(e.url) ?? true).length
   const allSelected = total > 0 && selectedCount === total

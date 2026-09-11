@@ -33,6 +33,7 @@ import {
   analyzing,
   analysis,
   applyAnalyzeStream,
+  hydratedEntries,
   playlistHydration,
   resetAnalysis,
   triggerAnalyze,
@@ -769,7 +770,9 @@ export function App() {
     }
 
     if (r.kind === 'playlist') {
-      const entries = (r.playlistEntries ?? []).filter((e) => selectedEntries.has(e.url))
+      const entries = hydratedEntries(r.playlistEntries ?? []).filter((e) =>
+        selectedEntries.has(e.url),
+      )
       if (entries.length === 0) return
       setPaused(null)
       runCtxRef.current = {
@@ -881,7 +884,9 @@ export function App() {
 
   const playlistSummary = (() => {
     if (!isPlaylist || result?.kind !== 'playlist' || !selection) return null
-    const chosen = (result.playlistEntries ?? []).filter((e) => selectedEntries.has(e.url))
+    const chosen = hydratedEntries(result.playlistEntries ?? []).filter((e) =>
+      selectedEntries.has(e.url),
+    )
     let sum = 0
     let any = false
     for (const entry of chosen) {

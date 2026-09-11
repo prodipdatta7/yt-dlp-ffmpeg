@@ -1,5 +1,5 @@
-import { signal } from '@preact/signals'
-import type { AnalyzeResult, MfErrorCode } from '../../../shared/models'
+import { batch, signal } from '@preact/signals'
+import type { AnalyzeResult, MfErrorCode, PlaylistEntryPreview } from '../../../shared/models'
 import { PLAYLIST_HYDRATION_WINDOW } from '../../../shared/models'
 import type { AnalyzeStreamEvent } from '../../../shared/ipcContract'
 import { resetJobStatus } from './jobState'
@@ -9,6 +9,59 @@ export const analyzing = signal(false)
 export const analysis = signal<AnalyzeResult | null>(null)
 export const analyzeError = signal<{ code: MfErrorCode; message: string } | null>(null)
 export const playlistHydration = signal<{ done: number; total: number } | null>(null)
+
+/**
+ * Hydrated playlist entries keyed by `index`, so one arriving entry is an O(1) patch rather
+ * than a rebuild-and-republish of the whole `analysis` object (P-05). Row order still comes
+ * from the outline's array; this only carries detail.
+ */
+export const playlistEntriesById = signal<Map<number, PlaylistEntryPreview>>(new Map())
+
+/** Outline rows with hydrated detail overlaid, preserving the outline's order. */
+export function hydratedEntries(entries: readonly PlaylistEntryPreview[]): PlaylistEntryPreview[] {
+  const byIndex = playlistEntriesById.value
+  if (byIndex.size === 0) return entries as PlaylistEntryPreview[]
+  return entries.map((entry) => byIndex.get(entry.index) ?? entry)
+}
+
+/** Hydration events are applied in one commit per window rather than one per entry. */
+const ENTRY_FLUSH_MS = 80
+let entryBuffer: PlaylistEntryPreview[] = []
+let pendingHydration: { done: number; total: number } | null = null
+let entryFlushTimer: ReturnType<typeof setTimeout> | null = null
+
+function flushEntries(): void {
+  entryFlushTimer = null
+  if (entryBuffer.length === 0 && pendingHydration === null) return
+  const buffered = entryBuffer
+  const hydration = pendingHydration
+  entryBuffer = []
+  pendingHydration = null
+
+  batch(() => {
+    if (buffered.length > 0) {
+      const next = new Map(playlistEntriesById.value)
+      for (const entry of buffered) next.set(entry.index, entry)
+      playlistEntriesById.value = next
+    }
+    if (hydration) playlistHydration.value = hydration
+  })
+}
+
+function clearEntryBuffer(): void {
+  entryBuffer = []
+  pendingHydration = null
+  if (entryFlushTimer !== null) {
+    clearTimeout(entryFlushTimer)
+    entryFlushTimer = null
+  }
+}
+
+/** Test seam: applies any buffered hydration without waiting for the timer. */
+export function flushPlaylistEntries(): void {
+  if (entryFlushTimer !== null) clearTimeout(entryFlushTimer)
+  flushEntries()
+}
 
 /** The URL text in the link bar. Kept in a signal so it survives view switches/remounts. */
 export const urlInput = signal('')
@@ -36,9 +89,11 @@ export function requestMorePlaylistHydration(): void {
 
 export function resetAnalysis(): void {
   analyzeGeneration += 1
+  clearEntryBuffer()
   analysis.value = null
   analyzeError.value = null
   playlistHydration.value = null
+  playlistEntriesById.value = new Map()
   hydrationRequestedTo = 0
   resetJobStatus()
   resetQueueForNewAnalysis()
@@ -99,18 +154,22 @@ export function currentAnalyzeGeneration(): number {
  */
 export function applyAnalyzeStream(event: AnalyzeStreamEvent): void {
   if (event.kind === 'outline') {
-    analysis.value = event.result
-    analyzing.value = false
+    clearEntryBuffer()
+    batch(() => {
+      analysis.value = event.result
+      analyzing.value = false
+      playlistEntriesById.value = new Map(
+        (event.result.playlistEntries ?? []).map((entry) => [entry.index, entry]),
+      )
+    })
     // main hydrates the first window itself before analyze() resolves.
     hydrationRequestedTo = PLAYLIST_HYDRATION_WINDOW
     return
   }
-  playlistHydration.value = { done: event.done, total: event.total }
-  const current = analysis.value
-  if (!current || current.kind !== 'playlist' || !current.playlistEntries) return
-  const entries = [...current.playlistEntries]
-  const idx = entries.findIndex((e) => e.index === event.index)
-  if (idx === -1) return
-  entries[idx] = { ...event.entry }
-  analysis.value = { ...current, playlistEntries: entries }
+
+  // Buffered rather than published per event: a hydration window is 40 entries arriving
+  // within a few hundred milliseconds, and each publication re-renders the whole list.
+  entryBuffer.push({ ...event.entry })
+  pendingHydration = { done: event.done, total: event.total }
+  if (entryFlushTimer === null) entryFlushTimer = setTimeout(flushEntries, ENTRY_FLUSH_MS)
 }
