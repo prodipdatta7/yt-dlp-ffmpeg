@@ -4,6 +4,10 @@ node_modules/
 /binaries/
 *.log
 *.tsbuildinfo
+
+# npm run perf output (raw JSONL samples + generated summary); the report that
+# matters is committed at specs/perf-report.md
+/perf-out/
 .DS_Store
 Thumbs.db
 

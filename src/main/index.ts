@@ -1,4 +1,4 @@
-import { existsSync, copyFileSync, rmSync, appendFileSync, writeFileSync } from 'node:fs'
+import { existsSync, copyFileSync, rmSync, writeFileSync } from 'node:fs'
 import * as fsp from 'node:fs/promises'
 import { join } from 'node:path'
 import {
@@ -17,6 +17,7 @@ import {
 import { BinariesService } from './binaries/service'
 import { platformDir, type BinaryCandidate } from './binaries/locator'
 import { registerIpcHandlers } from './ipc/handlers'
+import { MemoryProbe } from './telemetry/memoryProbe'
 import { AnalyzeService, MfError } from './media/metadata'
 import { SearchService } from './media/search'
 import { DownloadOrchestrator } from './jobs/orchestrator'
@@ -112,6 +113,8 @@ function createMainWindow(theme: 'light' | 'dark'): BrowserWindow {
 }
 
 let mainWindow: BrowserWindow | null = null
+/** Set only when MF_MEMORY_PROBE=1; flushed on quit so no samples are lost (P-10). */
+let memoryProbe: MemoryProbe | null = null
 let tray: Tray | null = null
 let forceClose = false
 
@@ -255,39 +258,16 @@ app.whenReady().then(() => {
     }
   }
 
+  // Opt-in and off by default; no telemetry leaves the machine (P-10).
   if (process.env.MF_MEMORY_PROBE === '1') {
-    const probePath = join(logsDir, 'mem.jsonl')
-    if (!existsSync(probePath)) {
-      try {
-        writeFileSync(probePath, `${JSON.stringify({ note: 'AM-10 probe', unit: 'MB' })}\n`)
-      } catch {
-        /* best-effort */
-      }
-    }
-    setInterval(() => {
-      try {
-        const byType: Record<string, number> = {}
-        let electronSum = 0
-        for (const metric of app.getAppMetrics()) {
-          const mb = (metric.memory?.workingSetSize ?? 0) / 1024
-          electronSum += mb
-          const type = String(metric.type ?? 'unknown')
-          byType[type] = Math.round(((byType[type] ?? 0) + mb) * 10) / 10
-        }
-        appendFileSync(
-          probePath,
-          `${JSON.stringify({
-            t: new Date().toISOString(),
-            mainRssMB: Math.round((process.memoryUsage().rss / 1024 / 1024) * 10) / 10,
-            electronSumMB: Math.round(electronSum * 10) / 10,
-            byType,
-            busy: orchestrator.isBusy(),
-          })}\n`,
-        )
-      } catch {
-        /* best-effort */
-      }
-    }, 2000).unref()
+    const probe = new MemoryProbe({
+      // scripts/perf-bench.mjs points this at its own run directory.
+      filePath: join(process.env.MF_PERF_LOG_DIR || logsDir, 'mem.jsonl'),
+      app,
+      isBusy: () => orchestrator.isBusy(),
+    })
+    probe.start()
+    memoryProbe = probe
     logger.info('memory probe enabled', { file: 'logs/mem.jsonl' })
   }
 
@@ -539,6 +519,10 @@ app.whenReady().then(() => {
         await searchService.cancel()
         return { ok: true }
       },
+      setProbeScenario: (scenario: string) => {
+        memoryProbe?.setScenario(scenario)
+        return { ok: true }
+      },
       cancelPreview: async (requestId: string) => {
         await searchService.cancelPreviewRequest(requestId)
         return { ok: true }
@@ -631,6 +615,10 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0)
       createMainWindow(resolvedTheme(settings.load().theme))
   })
+})
+
+app.on('before-quit', () => {
+  void memoryProbe?.stop()
 })
 
 app.on('window-all-closed', () => {

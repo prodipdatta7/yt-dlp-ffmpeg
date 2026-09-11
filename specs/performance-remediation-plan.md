@@ -46,7 +46,7 @@ against `git log --oneline`, and continue from the first unticked task.
 - [x] T10 — Normalized playlist state, batched hydration *(P-05)*
 - [x] T11 — Preview mechanical fixes: throttle, stable callbacks, binary search, LRU, cancellation *(P-06/P-07)*
 - [x] T12 — Extract `TheaterPreview` from `SearchResultCard` *(P-06)*
-- [ ] T13 — Fixed-row windowing for long lists *(P-05)*
+- [x] T13 — Fixed-row windowing for long lists *(P-05)*
 - [ ] T14 — Telemetry harness; regenerate `specs/perf-report.md` *(P-10)*
 
 ### Standing constraints (from AGENTS.md — violating these fails the task)
@@ -67,6 +67,9 @@ against `git log --oneline`, and continue from the first unticked task.
 
 | Task | What changed | Why |
 |---|---|---|
+| T13 | Only the transcript is windowed. Playlist rows, queue rows, search cards and the format matrix get `content-visibility: auto` instead. | The plan's own rule: rows whose height varies with content are not candidates. Playlist/queue rows grow a progress bar while downloading, cards size to content, and the format matrix is a `<table>` a translateY spacer would break. |
+| T13 | Windowing the transcript required fixing its row height at 56 px, so a cue longer than two lines now clamps instead of wrapping. | Windowing needs a fixed row. Cues are short by nature so this is rare, but it is a real visual change rather than a silent one. One-line revert. |
+| T13 | `onNearEnd` exists on `VirtualList` but the playlist keeps T7's scroll check. | The playlist list is not windowed (above), so there is no `VirtualList` on it to fire the callback. |
 | T12 | Landed, but **behavior parity is unverified** — it needs the running Electron UI, which this run could not drive. Gate (typecheck/tests/lint/build) is green. | Recorded rather than silently claimed. The commit is self-contained: `git revert` it if the manual checklist in its message fails. |
 | T12 | `TheaterPreview` also takes `currentPreset` and `onOpenInDownloader`, not just `{ entry, onClose }`. | The bitrate/resolution readouts derive from the selected preset, and the modal has an "Open in Downloader" action. Both change only on user action, never per playback tick, so the render-scope goal holds. |
 | T11 | One `previewCancel(requestId)` instead of separate `chaptersCancel`/`transcriptCancel`. | Both would have been the same function — kill the children registered under an id. One channel, less surface. |

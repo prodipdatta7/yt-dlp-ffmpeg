@@ -32,6 +32,7 @@ import {
   MF_FETCH_CHAPTERS,
   MF_FETCH_TRANSCRIPT,
   MF_PREVIEW_CANCEL,
+  MF_PROBE_SCENARIO,
   MF_SAVE_TEXT_FILE,
   MF_PREVIEW_SET_VOLUME_BOOST,
   MF_UPDATER_APPLY,
@@ -154,6 +155,7 @@ export interface IpcDeps {
   fetchChapters: (url: string, requestId?: string) => Promise<VideoChaptersResult>
   fetchTranscript: (url: string, requestId?: string) => Promise<VideoTranscriptResult>
   cancelPreview: (requestId: string) => Promise<{ ok: boolean }>
+  setProbeScenario: (scenario: string) => { ok: boolean }
   saveTextFile: (defaultFilename: string, content: string) => Promise<SaveTextFileResult>
 }
 
@@ -331,6 +333,10 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
     }
   })
   ipcMain.handle(MF_SEARCH_CANCEL, () => deps.cancelSearch())
+
+  ipcMain.handle(MF_PROBE_SCENARIO, (_event, payload: unknown) =>
+    deps.setProbeScenario(typeof payload === 'string' ? payload.slice(0, 64) : 'unknown'),
+  )
 
   ipcMain.handle(MF_PREVIEW_CANCEL, async (_event, payload: unknown) => {
     const requestId = typeof payload === 'string' ? payload : ''

@@ -360,6 +360,7 @@ All channel names + payload types live in `src/shared/ipcContract.ts`. Handlers 
 | R→M invoke | `search:start` (M8) | `SearchRequest{platform, query, limit, sort, filters?}` → `{kind:'ok', results: SearchResultItem[]}` or `{kind:'error', code, message}` |
 | R→M invoke | `search:cancel` (M8) | `{}` → `{ok}` — kills both search and preview (chapter/transcript) children (AM-09) |
 | R→M invoke | `media:fetch-chapters` / `media:fetch-transcript` | `{url, requestId?}` → `VideoChaptersResult` / `VideoTranscriptResult` |
+| R→M invoke | `probe:scenario` (P-10) | `scenario` → `{ok}` — labels subsequent memory-probe samples so a benchmark run can mark phases. No-op unless `MF_MEMORY_PROBE=1` |
 | R→M invoke | `media:preview-cancel` (P-06) | `requestId` → `{ok}` — kills that preview request's children and blocks any follow-up spawn it would make; fired when a preview closes or its card unmounts |
 | M→R event | `search:entry` (M8) | `{sourceUrl, metadataState, patch}` progressive exact-key metadata update |
 | R→M invoke | `log:console-open` (P-04) | `{open, includeProtocol?}` → `{ok}` — while the live console is closed, main broadcasts no CLI line at all; entries are still stored and `log:history` supplies the tail on open. Raw `MF\|`/`MFPOST\|` protocol lines are withheld unless `includeProtocol` is set. |

@@ -58,6 +58,7 @@ export const MF_SEARCH_ENTRY = 'mf:search:entry' as const
 export const MF_FETCH_CHAPTERS = 'mf:media:fetch-chapters' as const
 export const MF_FETCH_TRANSCRIPT = 'mf:media:fetch-transcript' as const
 export const MF_PREVIEW_CANCEL = 'mf:media:preview-cancel' as const
+export const MF_PROBE_SCENARIO = 'mf:probe:scenario' as const
 export const MF_SAVE_TEXT_FILE = 'mf:dialog:save-text-file' as const
 export const MF_PREVIEW_SET_VOLUME_BOOST = 'mf:preview:set-volume-boost' as const
 
@@ -297,6 +298,11 @@ export interface MfApi {
   previewCancel(requestId: string): Promise<{ ok: boolean }>
   saveTextFile(defaultFilename: string, content: string): Promise<SaveTextFileResult>
   setPreviewVolumeBoost(boost: number): Promise<boolean>
+  /**
+   * Labels subsequent memory-probe samples so a benchmark run can mark phases. No-op
+   * unless MF_MEMORY_PROBE=1 (P-10).
+   */
+  setProbeScenario(scenario: string): Promise<{ ok: boolean }>
 }
 
 export type {
