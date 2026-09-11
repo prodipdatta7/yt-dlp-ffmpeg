@@ -1,14 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  renameSync,
-  rmSync,
-  statSync,
-  unlinkSync,
-} from 'node:fs'
+import * as fsp from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import type {
   JobConfig,
@@ -37,6 +28,31 @@ import {
 
 export const DEFAULT_RETRY_DELAYS_MS: readonly number[] = [5000, 15000, 30000]
 
+/** Cadence of the `finalizing` heartbeat emitted while a cross-volume copy is in flight. */
+export const FINALIZE_HEARTBEAT_MS = 500
+
+/**
+ * The filesystem surface used by finalization, injectable so tests can drive the EXDEV,
+ * permission-denied and zero-byte-destination branches without a second volume.
+ */
+export interface FinalizeFs {
+  mkdir(path: string, options: { recursive: true }): Promise<string | undefined>
+  rename(source: string, target: string): Promise<void>
+  copyFile(source: string, target: string): Promise<void>
+  stat(path: string): Promise<{ size: number }>
+  unlink(path: string): Promise<void>
+  rm(path: string, options: { recursive: true; force: true }): Promise<void>
+}
+
+const NODE_FS: FinalizeFs = {
+  mkdir: (path, options) => fsp.mkdir(path, options),
+  rename: (source, target) => fsp.rename(source, target),
+  copyFile: (source, target) => fsp.copyFile(source, target),
+  stat: (path) => fsp.stat(path),
+  unlink: (path) => fsp.unlink(path),
+  rm: (path, options) => fsp.rm(path, options),
+}
+
 export interface OrchestratorDeps {
   resolveYtDlp(): Promise<LocatedBinary | null>
   resolveFfmpeg(): Promise<LocatedBinary | null>
@@ -59,6 +75,10 @@ export interface OrchestratorDeps {
   getFreeDiskBytes?: (destDir: string) => Promise<number | null>
   /** Test seam: flush cadence for coalesced progress events. */
   coalesceIntervalMs?: number
+  /** Test seam: filesystem used by finalization. Defaults to node:fs/promises. */
+  fs?: Partial<FinalizeFs>
+  /** Test seam: `finalizing` heartbeat cadence during a cross-volume copy. */
+  finalizeHeartbeatMs?: number
 }
 
 export type SendEvent = (event: JobEvent) => void
@@ -83,13 +103,13 @@ export class MfLaunchError extends Error {
   }
 }
 
-function findLargestCompletedFile(dir: string): string | null {
+async function findLargestCompletedFile(dir: string): Promise<string | null> {
   let best: string | null = null
   let bestSize = -1
-  for (const name of readdirSync(dir)) {
+  for (const name of await fsp.readdir(dir)) {
     if (name.endsWith('.part') || name.endsWith('.ytdl')) continue
     const full = join(dir, name)
-    const stat = statSync(full)
+    const stat = await fsp.stat(full)
     if (!stat.isFile()) continue
     if (stat.size > bestSize) {
       best = full
@@ -99,14 +119,14 @@ function findLargestCompletedFile(dir: string): string | null {
   return best !== null && bestSize > 0 ? best : null
 }
 
-function findLargestPartFile(dir: string): string | null {
+async function findLargestPartFile(dir: string): Promise<string | null> {
   let best: string | null = null
   let bestSize = -1
-  for (const name of readdirSync(dir)) {
+  for (const name of await fsp.readdir(dir)) {
     if (!name.endsWith('.part')) continue
     const full = join(dir, name)
     try {
-      const size = statSync(full).size
+      const size = (await fsp.stat(full)).size
       if (size > bestSize) {
         best = full
         bestSize = size
@@ -132,8 +152,11 @@ export class DownloadOrchestrator {
   /** P-04: rate-limits routine progress events on their way across IPC. */
   private readonly events: JobEventCoalescer
 
+  private readonly fs: FinalizeFs
+
   constructor(private readonly deps: OrchestratorDeps) {
     this.events = new JobEventCoalescer(deps.coalesceIntervalMs)
+    this.fs = { ...NODE_FS, ...deps.fs }
   }
 
   isBusy(): boolean {
@@ -228,7 +251,7 @@ export class DownloadOrchestrator {
 
     const jobId = randomUUID()
     const tempDir = tempDirForUrl(this.deps.tempRoot, config.url)
-    mkdirSync(tempDir, { recursive: true })
+    await fsp.mkdir(tempDir, { recursive: true })
 
     const job: ActiveJob = {
       id: jobId,
@@ -367,7 +390,7 @@ export class DownloadOrchestrator {
             exitCode: result.code,
             attempts: attempt,
           })
-          this.finish(job, sendDone, { status: 'failed', errorCode: code })
+          await this.finish(job, sendDone, { status: 'failed', errorCode: code })
           return
         }
 
@@ -389,80 +412,114 @@ export class DownloadOrchestrator {
 
       if (result && job.cancelRequested) {
         if (job.config.isLive) {
-          const saved = this.finalizeLiveRecording(job)
+          const saved = await this.finalizeLiveRecording(job)
           if (saved) {
             this.deps.logger?.info('live recording saved on stop', { jobId, target: saved })
-            this.finish(job, sendDone, { status: 'completed', outputPath: saved })
+            await this.finish(job, sendDone, { status: 'completed', outputPath: saved })
           } else {
-            this.finish(job, sendDone, { status: 'cancelled' })
+            await this.finish(job, sendDone, { status: 'cancelled' })
           }
         } else {
-          this.finish(job, sendDone, { status: 'cancelled' })
+          await this.finish(job, sendDone, { status: 'cancelled' })
         }
         return
       }
 
       emit('finalizing', 100, null, null)
 
-      const finalSource = finalPathFromPrint ?? findLargestCompletedFile(job.tempDir)
-      if (!finalSource || !existsSync(finalSource) || statSync(finalSource).size <= 0) {
+      const finalSource = finalPathFromPrint ?? (await findLargestCompletedFile(job.tempDir))
+      const sourceStat = finalSource ? await this.fs.stat(finalSource).catch(() => null) : null
+      if (!finalSource || !sourceStat || sourceStat.size <= 0) {
         this.deps.logger?.error('final output missing after success', { jobId })
-        this.finish(job, sendDone, { status: 'failed', errorCode: 'MF_UNKNOWN' })
+        await this.finish(job, sendDone, { status: 'failed', errorCode: 'MF_UNKNOWN' })
         return
       }
 
-      mkdirSync(job.destDir, { recursive: true })
+      await this.fs.mkdir(job.destDir, { recursive: true })
       const target = collisionFreeTarget(job.destDir, basename(finalSource))
-      try {
-        renameSync(finalSource, target)
-      } catch {
-        copyFileSync(finalSource, target)
-        unlinkSync(finalSource)
-      }
-
-      if (!existsSync(target) || statSync(target).size <= 0) {
+      const moved = await this.moveIntoPlace(finalSource, target, () =>
+        emit('finalizing', 100, null, null),
+      )
+      if (!moved) {
         this.deps.logger?.error('moved output failed verification', { jobId, target })
-        this.finish(job, sendDone, { status: 'failed', errorCode: 'MF_UNKNOWN' })
+        await this.finish(job, sendDone, { status: 'failed', errorCode: 'MF_UNKNOWN' })
         return
       }
 
-      rmSync(job.tempDir, { recursive: true, force: true })
+      await this.fs.rm(job.tempDir, { recursive: true, force: true })
       this.deps.logger?.info('download completed', { jobId, target })
       recordDownload(job.destDir, job.config, target)
-      this.finish(job, sendDone, { status: 'completed', outputPath: target })
+      await this.finish(job, sendDone, { status: 'completed', outputPath: target })
     } catch (error) {
       this.deps.logger?.error('orchestrator error', { jobId, error: String(error) })
-      this.finish(job, sendDone, { status: 'failed', errorCode: 'MF_UNKNOWN' })
+      await this.finish(job, sendDone, { status: 'failed', errorCode: 'MF_UNKNOWN' })
     }
   }
 
-  private finalizeLiveRecording(job: ActiveJob): string | null {
-    const partSource = findLargestPartFile(job.tempDir)
+  /**
+   * Moves `source` onto `target`, preferring a same-volume rename. Only EXDEV falls through
+   * to a copy — a permission or collision failure is a real error and rethrows rather than
+   * being retried as a copy that would fail differently.
+   *
+   * AM-06 throughout: the source is unlinked, and the caller removes the temp tree, only
+   * after the destination is confirmed to exist and be non-zero. Returns false when that
+   * verification fails, leaving the source in place so the download is still recoverable.
+   */
+  private async moveIntoPlace(
+    source: string,
+    target: string,
+    heartbeat?: () => void,
+  ): Promise<boolean> {
+    let copied = false
+    try {
+      await this.fs.rename(source, target)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EXDEV') throw error
+      // A multi-gigabyte cross-volume copy can take minutes. The copy itself no longer
+      // blocks the main loop; the heartbeat lets the UI show that it hasn't (P-02).
+      const every = this.deps.finalizeHeartbeatMs ?? FINALIZE_HEARTBEAT_MS
+      const timer = heartbeat ? setInterval(heartbeat, every) : null
+      timer?.unref?.()
+      try {
+        await this.fs.copyFile(source, target)
+      } finally {
+        if (timer) clearInterval(timer)
+      }
+      copied = true
+    }
+
+    const stat = await this.fs.stat(target).catch(() => null)
+    if (!stat || stat.size <= 0) return false
+    if (copied) await this.fs.unlink(source)
+    return true
+  }
+
+  private async finalizeLiveRecording(job: ActiveJob): Promise<string | null> {
+    const partSource = await findLargestPartFile(job.tempDir)
     if (!partSource) return null
     const finalName = sanitizeFileName(basename(partSource).replace(/\.part$/i, ''))
-    mkdirSync(job.destDir, { recursive: true })
+    await this.fs.mkdir(job.destDir, { recursive: true })
     const target = collisionFreeTarget(job.destDir, finalName)
-    try {
-      renameSync(partSource, target)
-    } catch {
-      copyFileSync(partSource, target)
-      unlinkSync(partSource)
-    }
-    if (!existsSync(target) || statSync(target).size <= 0) return null
-    rmSync(job.tempDir, { recursive: true, force: true })
+    if (!(await this.moveIntoPlace(partSource, target))) return null
+    await this.fs.rm(job.tempDir, { recursive: true, force: true })
     return target
   }
 
-  private finish(
+  private async finish(
     job: ActiveJob,
     sendDone: SendDone,
     payload: Omit<JobDonePayload, 'jobId'> & { jobId?: string },
-  ): void {
+  ): Promise<void> {
     // Drain before the terminal event so no sample is stranded behind it (P-04).
     this.events.release(job.id)
     const keepPartials = payload.status === 'cancelled' || payload.status === 'failed'
-    const partialDir =
-      keepPartials && existsSync(job.tempDir) ? job.tempDir : (payload.partialDir ?? undefined)
+    const tempExists =
+      keepPartials &&
+      (await fsp
+        .stat(job.tempDir)
+        .then(() => true)
+        .catch(() => false))
+    const partialDir = tempExists ? job.tempDir : (payload.partialDir ?? undefined)
     sendDone({
       ...payload,
       jobId: job.id,

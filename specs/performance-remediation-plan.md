@@ -35,7 +35,7 @@ against `git log --oneline`, and continue from the first unticked task.
 
 - [x] T0 — Spec: AM-16 memory budget amendment
 - [x] T1 — Runner capture policy; delete dead orchestrator arrays *(P-01)*
-- [ ] T2 — `--progress-delta`, job-event coalescing, protocol-log gating *(P-04)*
+- [x] T2 — `--progress-delta`, job-event coalescing, protocol-log gating *(P-04)*
 - [ ] T3 — Asynchronous finalization *(P-02)*
 - [ ] T4 — Same-volume staging root *(P-02 / R-03)*
 - [ ] T5 — Async fsops, startup sweep off critical path, sweep-abort bug *(P-02 / R-06)*
@@ -68,6 +68,8 @@ against `git log --oneline`, and continue from the first unticked task.
 | Task | What changed | Why |
 |---|---|---|
 | T1 | `maxLineChars` applies under `'tail'` only, not under `'full'`. | A `-J` payload is a single very long line; capping it under `'full'` would silently corrupt every metadata/search result. `'full'` is bounded by `maxCaptureBytes` instead. |
+| T2 | Coalescing is latest-wins *within a phase*; a phase change flushes the outgoing phase's sample first. | `downloading-video` → `downloading-audio` is a state transition the renderer must see, not a droppable sample. |
+| T2 | `logConsoleOpen` takes `includeProtocol` as well as `open`. | The console already has a "protocol" toggle; suppressing protocol lines unconditionally would have made that toggle show only stale history. |
 | T1 | Soak test left ungated (no `MF_SOAK`). | It completes in ~2 s, well inside the plan's 30 s threshold, so it earns its place in the default run. |
 
 ---

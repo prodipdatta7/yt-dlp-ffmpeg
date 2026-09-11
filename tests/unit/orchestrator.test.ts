@@ -2,7 +2,8 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DownloadOrchestrator } from '../../src/main/jobs/orchestrator'
+import * as fsp from 'node:fs/promises'
+import { DownloadOrchestrator, type FinalizeFs } from '../../src/main/jobs/orchestrator'
 import { sanitizeFileName } from '../../src/main/fsops/sanitizer'
 import type { JobDonePayload, JobEvent } from '../../src/shared/ipcContract'
 
@@ -268,6 +269,125 @@ describe('final path resolution (T1)', () => {
     expect(finished.status).toBe('completed')
     expect(finished.outputPath?.startsWith(destOf(root))).toBe(true)
     expect(readFileSync(finished.outputPath!, 'utf8')).toContain('FAKE-MP4-CONTENT')
+  }, 30_000)
+})
+
+describe('finalization (T3 / P-02)', () => {
+  /**
+   * Runs a canned successful download with an injected filesystem, returning what the
+   * finalize path did. `fs` overlays only the calls a case cares about.
+   */
+  async function runWithFs(fs: Partial<FinalizeFs>, extra: Record<string, unknown> = {}) {
+    const root = tempRoot()
+    const box: DoneBox = { value: null }
+    const events: JobEvent[] = []
+    const calls: string[] = []
+    const traced: Partial<FinalizeFs> = {}
+    for (const [name, impl] of Object.entries(fs)) {
+      traced[name as keyof FinalizeFs] = ((...args: unknown[]) => {
+        calls.push(name)
+        return (impl as (...a: unknown[]) => unknown)(...args)
+      }) as never
+    }
+
+    const orch = new DownloadOrchestrator({
+      resolveYtDlp: async () => ({ kind: 'yt-dlp', path: NODE, source: 'bundled' }),
+      resolveFfmpeg: async () => ({ kind: 'ffmpeg', path: NODE, source: 'bundled' }),
+      tempRoot: root,
+      spawnArgPrefix: ['tests/fixtures/fake-bin/fake-ytdlp-download.mjs'],
+      coalesceIntervalMs: 0,
+      fs: traced,
+      ...extra,
+    })
+
+    await orch.launch(
+      CONFIG(root),
+      (e) => events.push(e),
+      (d) => {
+        box.value = d
+      },
+    )
+    return { done: await waitForDone(box), calls, events, root }
+  }
+
+  function errno(code: string): NodeJS.ErrnoException {
+    const error = new Error(code) as NodeJS.ErrnoException
+    error.code = code
+    return error
+  }
+
+  it('uses rename on the same volume and never copies', async () => {
+    const { done, calls } = await runWithFs({
+      rename: (a, b) => fsp.rename(a, b),
+      copyFile: async () => {
+        throw new Error('copyFile must not be called on the same volume')
+      },
+    })
+    expect(done.status).toBe('completed')
+    expect(calls).toContain('rename')
+    expect(calls).not.toContain('copyFile')
+  })
+
+  it('falls through to copy then unlink, in that order, only on EXDEV', async () => {
+    const { done, calls } = await runWithFs({
+      rename: async () => {
+        throw errno('EXDEV')
+      },
+      copyFile: (a, b) => fsp.copyFile(a, b),
+      unlink: (p) => fsp.unlink(p),
+    })
+    expect(done.status).toBe('completed')
+    expect(calls.indexOf('copyFile')).toBeGreaterThan(-1)
+    expect(calls.indexOf('unlink')).toBeGreaterThan(calls.indexOf('copyFile'))
+    expect(existsSync(done.outputPath!)).toBe(true)
+  })
+
+  it('does not attempt a copy when rename fails for any other reason', async () => {
+    const { done, calls } = await runWithFs({
+      rename: async () => {
+        throw errno('EACCES')
+      },
+      copyFile: async () => {
+        throw new Error('copyFile must not be called on EACCES')
+      },
+    })
+    expect(done.status).toBe('failed')
+    expect(calls).not.toContain('copyFile')
+  })
+
+  it('fails the job and leaves the source in place when the copy verifies as empty (AM-06)', async () => {
+    let source = ''
+    const { done, calls } = await runWithFs({
+      rename: async (a) => {
+        source = a
+        throw errno('EXDEV')
+      },
+      // Reports success but writes nothing, so the destination verifies as absent.
+      copyFile: async () => undefined,
+    })
+    expect(done.status).toBe('failed')
+    expect(calls).not.toContain('unlink')
+    expect(source).not.toBe('')
+    expect(existsSync(source)).toBe(true)
+  })
+
+  it('emits a finalizing heartbeat while a long copy is in flight', async () => {
+    const { done, events } = await runWithFs(
+      {
+        rename: async () => {
+          throw errno('EXDEV')
+        },
+        copyFile: async (a, b) => {
+          await new Promise((r) => setTimeout(r, 400))
+          await fsp.copyFile(a, b)
+        },
+        unlink: (p) => fsp.unlink(p),
+      },
+      { finalizeHeartbeatMs: 50 },
+    )
+    expect(done.status).toBe('completed')
+    const finalizing = events.filter((e) => e.phase === 'finalizing')
+    expect(finalizing.length).toBeGreaterThanOrEqual(3)
   }, 30_000)
 })
 
