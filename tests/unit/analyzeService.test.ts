@@ -11,7 +11,7 @@ describe('cancel semantics (AM-09: kill tree <500ms)', () => {
     expect(handle.pid).toBeGreaterThan(0)
 
     const t0 = Date.now()
-    service.cancel()
+    await service.cancel()
     void handle.killTree()
     await handle.result
     const elapsed = Date.now() - t0
@@ -19,9 +19,9 @@ describe('cancel semantics (AM-09: kill tree <500ms)', () => {
     expect(elapsed).toBeLessThan(1500)
   }, 10_000)
 
-  it('cancel without active job is a safe no-op', () => {
+  it('cancel without active job is a safe no-op', async () => {
     const service = new AnalyzeService({ resolveYtDlp: async () => null })
-    expect(() => service.cancel()).not.toThrow()
+    await expect(service.cancel()).resolves.toBeUndefined()
   })
 })
 

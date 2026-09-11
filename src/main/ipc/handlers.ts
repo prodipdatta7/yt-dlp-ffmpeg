@@ -2,6 +2,7 @@ import { ipcMain, type WebFrameMain } from 'electron'
 import {
   MF_ANALYZE_CANCEL,
   MF_ANALYZE_ENTRY,
+  MF_ANALYZE_HYDRATE_RANGE,
   MF_ANALYZE_START,
   MF_BINARIES_INFO,
   MF_DOWNLOAD_CANCEL,
@@ -89,7 +90,12 @@ export interface IpcDeps {
     url: string,
     sendEntry?: (event: AnalyzeStreamEvent) => void,
   ) => Promise<AnalyzeResponse>
-  cancelAnalyze: () => { ok: boolean }
+  cancelAnalyze: () => Promise<{ ok: boolean }> | { ok: boolean }
+  hydrateAnalyzeRange: (
+    fromIndex: number,
+    count: number,
+    sendEntry: (event: AnalyzeStreamEvent) => void,
+  ) => Promise<{ ok: boolean }>
   startDownload: (
     config: JobConfig,
     sendEvent: (event: JobEvent) => void,
@@ -175,6 +181,25 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
   })
 
   ipcMain.handle(MF_ANALYZE_CANCEL, () => deps.cancelAnalyze())
+
+  ipcMain.handle(MF_ANALYZE_HYDRATE_RANGE, async (event, payload: unknown) => {
+    const raw = (payload ?? {}) as { fromIndex?: unknown; count?: unknown }
+    const fromIndex = Number(raw.fromIndex)
+    const count = Number(raw.count)
+    if (!Number.isInteger(fromIndex) || !Number.isInteger(count) || count <= 0) {
+      return { ok: false }
+    }
+    const sender = event.sender
+    const sendEntry = (streamEvent: AnalyzeStreamEvent): void => {
+      if (!sender.isDestroyed()) sender.send(MF_ANALYZE_ENTRY, streamEvent)
+    }
+    try {
+      return await deps.hydrateAnalyzeRange(fromIndex, count, sendEntry)
+    } catch (error) {
+      logger?.debug('playlist range hydration failed', { error: String(error) })
+      return { ok: false }
+    }
+  })
 
   ipcMain.handle(
     MF_DOWNLOAD_START,

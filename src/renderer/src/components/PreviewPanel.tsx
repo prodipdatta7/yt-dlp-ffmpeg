@@ -3,6 +3,7 @@ import type { AnalyzeResult } from '../../../shared/models'
 import { fmtCount, fmtDuration, fmtEta, fmtSize, fmtSpeed } from '../utils/format'
 import { sourceLabel } from '../utils/source'
 import { jobEventsById, lastJobEvent } from '../signals/jobState'
+import { requestMorePlaylistHydration } from '../signals/appState'
 import {
   clearAllQueueLeftovers,
   patchQueueRow,
@@ -576,7 +577,17 @@ export function PlaylistEntries({
       </div>
 
       {total > 0 ? (
-        <ol class="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-1.5 text-[13px]">
+        <ol
+          class="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-1.5 text-[13px]"
+          onScroll={(event) => {
+            // Pull the next hydration window as the list nears its end (R-02). T13 replaces
+            // this with VirtualList's onNearEnd once the rows are windowed.
+            const el = event.currentTarget as HTMLOListElement
+            if (el.scrollTop + el.clientHeight > el.scrollHeight - 600) {
+              requestMorePlaylistHydration()
+            }
+          }}
+        >
           {entries.map((entry) => {
             const checked = selectedUrls?.has(entry.url) ?? true
             const rowStatus = statusByUrl.get(entry.url)

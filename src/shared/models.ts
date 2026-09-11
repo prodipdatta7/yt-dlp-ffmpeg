@@ -303,3 +303,10 @@ export type AppUpdatePhase = 'checking' | 'downloading' | 'verifying' | 'launchi
  */
 export const LEFTOVER_RETENTION_DAYS = 7
 export const LEFTOVER_RETENTION_MS = LEFTOVER_RETENTION_DAYS * 24 * 60 * 60 * 1000
+
+/**
+ * Playlist entries hydrated per pass (R-02). Each hydration spawns its own yt-dlp, so the
+ * whole list is never hydrated up front — the renderer asks for the next window as the list
+ * scrolls. Shared so both sides agree on the slice size.
+ */
+export const PLAYLIST_HYDRATION_WINDOW = 40

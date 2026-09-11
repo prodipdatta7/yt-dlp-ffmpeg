@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import {
   MF_ANALYZE_CANCEL,
   MF_ANALYZE_ENTRY,
+  MF_ANALYZE_HYDRATE_RANGE,
   MF_ANALYZE_START,
   MF_BINARIES_INFO,
   MF_DOWNLOAD_CANCEL,
@@ -76,6 +77,8 @@ const api: MfApi = {
   analyzeStart: (url: string): Promise<AnalyzeResponse> =>
     ipcRenderer.invoke(MF_ANALYZE_START, url),
   analyzeCancel: (): Promise<{ ok: boolean }> => ipcRenderer.invoke(MF_ANALYZE_CANCEL),
+  analyzeHydrateRange: (fromIndex: number, count: number): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke(MF_ANALYZE_HYDRATE_RANGE, { fromIndex, count }),
   onAnalyzeEntry: (listener: (event: AnalyzeStreamEvent) => void): (() => void) => {
     const wrapped = (_event: IpcRendererEvent, payload: AnalyzeStreamEvent): void =>
       listener(payload)

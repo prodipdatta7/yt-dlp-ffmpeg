@@ -21,6 +21,7 @@ export const MF_BINARIES_INFO = 'mf:binaries:info' as const
 export const MF_ANALYZE_START = 'mf:analyze:start' as const
 export const MF_ANALYZE_CANCEL = 'mf:analyze:cancel' as const
 export const MF_ANALYZE_ENTRY = 'mf:analyze:entry' as const
+export const MF_ANALYZE_HYDRATE_RANGE = 'mf:analyze:hydrate-range' as const
 export const MF_DOWNLOAD_START = 'mf:download:start' as const
 export const MF_DOWNLOAD_CANCEL = 'mf:download:cancel' as const
 export const MF_JOB_EVENT = 'mf:job:event' as const
@@ -232,6 +233,12 @@ export interface MfApi {
   getBinariesInfo(): Promise<BinariesInfoResult>
   analyzeStart(url: string): Promise<AnalyzeResponse>
   analyzeCancel(): Promise<{ ok: boolean }>
+  /**
+   * Hydrates a further slice of the current playlist, streaming the same `analyze:entry`
+   * events as the initial window. No-ops when there is no current playlist, when the range
+   * is already hydrated, or when a newer analysis has started (R-02).
+   */
+  analyzeHydrateRange(fromIndex: number, count: number): Promise<{ ok: boolean }>
   onAnalyzeEntry(listener: (event: AnalyzeStreamEvent) => void): () => void
   downloadStart(config: JobConfig): Promise<DownloadStartResponse>
   downloadCancel(jobId: string): Promise<{ ok: boolean }>

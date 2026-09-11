@@ -302,8 +302,12 @@ app.whenReady().then(() => {
           return { kind: 'error', code, message: ERROR_MESSAGES[code] }
         }
       },
-      cancelAnalyze: () => {
-        analyzeService.cancel()
+      cancelAnalyze: async () => {
+        await analyzeService.cancel()
+        return { ok: true }
+      },
+      hydrateAnalyzeRange: async (fromIndex, count, sendEntry) => {
+        await analyzeService.hydrateRange(fromIndex, count, sendEntry)
         return { ok: true }
       },
       startDownload: async (
