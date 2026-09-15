@@ -130,6 +130,19 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
   useDismiss(platformOpen, platformRef, () => setPlatformOpen(false))
   useDismiss(infoOpen, infoRef, () => setInfoOpen(false))
 
+  useEffect(() => {
+    const onFocusSearch = (): void => {
+      window.requestAnimationFrame(() => {
+        const input = inputRef.current
+        if (!input) return
+        input.focus()
+        input.setSelectionRange(input.value.length, input.value.length)
+      })
+    }
+    window.addEventListener('mf:focus-search', onFocusSearch)
+    return () => window.removeEventListener('mf:focus-search', onFocusSearch)
+  }, [])
+
   return (
     <div class="mf-search-panel flex min-w-0 flex-col gap-2.5">
       <form
@@ -137,7 +150,7 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
           e.preventDefault()
           submit()
         }}
-        class="mf-search-form app-no-drag flex items-stretch overflow-visible border border-line-strong bg-[var(--surface-input)] transition-all duration-200 focus-within:border-sky-400/60 focus-within:shadow-[0_0_0_3px_var(--mf-glow)]"
+        class="mf-search-form app-no-drag flex items-stretch overflow-visible border border-line-strong bg-[var(--surface-input)] transition-[background-color,border-color,box-shadow] duration-200 focus-within:border-sky-400/60 focus-within:shadow-[0_0_0_3px_var(--mf-glow)]"
       >
         {/* left: platform picker (dropdown) */}
         <div ref={platformRef} class="relative flex shrink-0 items-center border-r border-line">
@@ -216,6 +229,8 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
         <input
           ref={inputRef}
           type="text"
+          name="search-query"
+          autocomplete="off"
           spellcheck={false}
           placeholder={`Search ${platform.label}…`}
           value={query}
@@ -270,7 +285,7 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
             <button
               type="submit"
               disabled={query.trim().length === 0}
-              className={`mf-focus-ring inline-flex shrink-0 items-center gap-1.5 rounded-md bg-sky-500 px-4 py-1.5 text-[11px] font-bold text-white shadow-sm shadow-sky-500/30 transition-all duration-150 hover:bg-sky-600 active:scale-[0.98] ${
+              className={`mf-focus-ring inline-flex shrink-0 items-center gap-1.5 rounded-md bg-sky-500 px-4 py-1.5 text-[11px] font-bold text-white shadow-sm shadow-sky-500/30 transition-[background-color,box-shadow,opacity,transform] duration-150 hover:bg-sky-600 active:scale-[0.98] ${
                 query.trim().length === 0 ? 'cursor-not-allowed opacity-35 shadow-none' : ''
               }`}
               title="Search (Enter)"
@@ -295,7 +310,7 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
             title={federated ? 'Public-web search options' : 'Advanced filters & criteria'}
             className={`mf-focus-ring inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] font-semibold transition ${
               filtersOpen || totalActiveFilters > 0
-                ? 'border-orange-500/60 bg-orange-500/10 text-orange-500 dark:text-orange-400'
+                ? 'border-orange-500/60 bg-orange-500/10 text-orange-500 dark:text-[var(--mf-detail-bright)]'
                 : 'border-line-strong text-slate-300 hover:border-orange-500/40 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40'
             }`}
           >
@@ -360,7 +375,7 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
               <div
                 role="dialog"
                 aria-label="Supported Search Platforms Info"
-                class="mf-card mf-rise flex flex-col gap-2 rounded-xl border border-neutral-200/90 bg-white p-3.5 shadow-2xl text-neutral-800 dark:border-line-strong dark:bg-[#131722] dark:text-slate-100"
+                class="mf-card mf-rise flex flex-col gap-2 rounded-xl border border-neutral-200/90 bg-white p-3.5 shadow-2xl text-neutral-800 dark:border-line-strong dark:bg-[var(--mf-surface)] dark:text-slate-100"
               >
                 <div class="flex items-start justify-between gap-2 border-b border-neutral-100 pb-2 dark:border-line">
                   <div class="flex items-center gap-1.5">
@@ -502,7 +517,7 @@ function FederatedSearchOptions({
 
   return (
     <div class="absolute right-0 top-full z-40 mt-2 w-72 max-w-[calc(100vw-2rem)]">
-      <div class="mf-card mf-rise rounded-xl border border-neutral-200/90 bg-white p-3.5 text-neutral-800 shadow-2xl dark:border-line-strong dark:bg-[#131722] dark:text-slate-100">
+      <div class="mf-card mf-rise rounded-xl border border-neutral-200/90 bg-white p-3.5 text-neutral-800 shadow-2xl dark:border-line-strong dark:bg-[var(--mf-surface)] dark:text-slate-100">
         <div class="flex items-start justify-between gap-3 border-b border-neutral-100 pb-2 dark:border-line">
           <div>
             <p class="text-xs font-bold">Public-web search options</p>
@@ -531,7 +546,7 @@ function FederatedSearchOptions({
                 onClick={() => setDraftLimit(limit)}
                 class={`rounded-lg border py-1 text-xs transition ${
                   draftLimit === limit
-                    ? 'border-orange-500 bg-orange-500/10 font-bold text-orange-600 dark:text-orange-400'
+                    ? 'border-orange-500 bg-orange-500/10 font-bold text-orange-600 dark:text-[var(--mf-detail-bright)]'
                     : 'border-neutral-200 text-neutral-600 hover:border-neutral-300 dark:border-line dark:text-slate-300 dark:hover:border-line-strong'
                 }`}
               >
@@ -693,7 +708,7 @@ function AdvancedFilters({
       <div
         role="dialog"
         aria-label="Search Filters & Criteria"
-        class="mf-card mf-rise flex flex-col rounded-2xl border border-neutral-200/90 dark:border-line-strong bg-white dark:bg-[#131722] p-4 shadow-2xl text-neutral-800 dark:text-slate-100 max-h-[min(85vh,540px)] overflow-y-auto"
+        class="mf-card mf-rise flex flex-col rounded-2xl border border-neutral-200/90 dark:border-line-strong bg-white dark:bg-[var(--mf-surface)] p-4 shadow-2xl text-neutral-800 dark:text-slate-100 max-h-[min(85vh,540px)] overflow-y-auto"
       >
         {/* Header */}
         <div class="flex items-start justify-between gap-2 pb-3 border-b border-neutral-200/70 dark:border-line">
@@ -724,7 +739,7 @@ function AdvancedFilters({
             <button
               type="button"
               onClick={handleResetAll}
-              class="text-[11px] font-semibold text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 transition"
+              class="text-[11px] font-semibold text-orange-600 dark:text-[var(--mf-detail-bright)] hover:text-orange-700 dark:hover:text-[var(--mf-detail-bright)] transition"
             >
               Reset All
             </button>
@@ -770,7 +785,7 @@ function AdvancedFilters({
                     onClick={() => setDraftContentType('all')}
                     class={`col-span-2 rounded-lg py-1 px-2 text-[11px] transition text-center ${
                       draftContentType === 'all'
-                        ? 'bg-white dark:bg-[#1e2330] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
+                        ? 'bg-white dark:bg-[var(--mf-hover)] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
                         : 'font-medium text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200'
                     }`}
                   >
@@ -781,7 +796,7 @@ function AdvancedFilters({
                     onClick={() => setDraftContentType('video')}
                     class={`rounded-lg py-1 px-2 text-[11px] transition text-center ${
                       draftContentType === 'video'
-                        ? 'bg-white dark:bg-[#1e2330] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
+                        ? 'bg-white dark:bg-[var(--mf-hover)] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
                         : 'font-medium text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200'
                     }`}
                   >
@@ -834,7 +849,7 @@ function AdvancedFilters({
                     onClick={() => setDraftSort('relevance')}
                     class={`flex-1 rounded-lg py-1 text-[11px] transition ${
                       draftSort === 'relevance'
-                        ? 'bg-white dark:bg-[#1e2330] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
+                        ? 'bg-white dark:bg-[var(--mf-hover)] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
                         : 'font-medium text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200'
                     }`}
                   >
@@ -847,7 +862,7 @@ function AdvancedFilters({
                     title={dateSortSupported ? '' : 'Platform has no date-sort extractor'}
                     class={`flex-1 rounded-lg py-1 text-[11px] transition ${
                       draftSort === 'newest'
-                        ? 'bg-white dark:bg-[#1e2330] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
+                        ? 'bg-white dark:bg-[var(--mf-hover)] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
                         : 'font-medium text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200 disabled:opacity-40'
                     }`}
                   >
@@ -858,7 +873,7 @@ function AdvancedFilters({
                     onClick={() => setDraftSort('views')}
                     class={`flex-1 rounded-lg py-1 text-[11px] transition ${
                       draftSort === 'views'
-                        ? 'bg-white dark:bg-[#1e2330] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
+                        ? 'bg-white dark:bg-[var(--mf-hover)] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
                         : 'font-medium text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200'
                     }`}
                   >
@@ -885,7 +900,7 @@ function AdvancedFilters({
                       onClick={() => setDraftLimit(lim)}
                       class={`rounded-xl py-1 text-xs text-center transition ${
                         draftLimit === lim
-                          ? 'border-2 border-orange-500 text-orange-600 dark:text-orange-400 font-bold bg-orange-500/5'
+                          ? 'border-2 border-orange-500 text-orange-600 dark:text-[var(--mf-detail-bright)] font-bold bg-orange-500/5'
                           : 'border border-neutral-200 dark:border-line bg-neutral-50/50 dark:bg-recess text-neutral-700 dark:text-slate-300 hover:border-neutral-300 dark:hover:border-line-strong'
                       }`}
                     >
@@ -915,7 +930,7 @@ function AdvancedFilters({
                     onClick={() => setDraftRecency(item.id as UploadRecency)}
                     class={`rounded-xl px-2.5 py-1 text-[11px] transition ${
                       draftRecency === item.id
-                        ? 'border-2 border-orange-500 text-orange-600 dark:text-orange-400 font-bold bg-orange-500/5'
+                        ? 'border-2 border-orange-500 text-orange-600 dark:text-[var(--mf-detail-bright)] font-bold bg-orange-500/5'
                         : 'border border-neutral-200 dark:border-line bg-neutral-50/50 dark:bg-recess text-neutral-700 dark:text-slate-300 hover:border-neutral-300 dark:hover:border-line-strong'
                     }`}
                   >
@@ -1012,7 +1027,7 @@ function AdvancedFilters({
                       onClick={() => setDraftFps(null)}
                       class={`flex-1 rounded-lg py-1 text-[11px] transition ${
                         draftFps === null
-                          ? 'bg-white dark:bg-[#1e2330] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
+                          ? 'bg-white dark:bg-[var(--mf-hover)] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
                           : 'font-medium text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200'
                       }`}
                     >
@@ -1023,7 +1038,7 @@ function AdvancedFilters({
                       onClick={() => setDraftFps(60)}
                       class={`flex-1 rounded-lg py-1 text-[11px] transition ${
                         draftFps === 60
-                          ? 'bg-white dark:bg-[#1e2330] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
+                          ? 'bg-white dark:bg-[var(--mf-hover)] font-bold text-neutral-900 dark:text-slate-100 shadow-xs'
                           : 'font-medium text-neutral-500 dark:text-slate-400 hover:text-neutral-800 dark:hover:text-slate-200'
                       }`}
                     >
@@ -1049,7 +1064,7 @@ function AdvancedFilters({
                     class={`flex size-4 shrink-0 items-center justify-center rounded transition ${
                       draftSubtitles
                         ? 'bg-orange-500 text-white'
-                        : 'border border-neutral-300 dark:border-line-strong bg-white dark:bg-[#1a202c]'
+                        : 'border border-neutral-300 dark:border-line-strong bg-white dark:bg-[var(--surface-input)]'
                     }`}
                   >
                     {draftSubtitles && <CheckIcon class="size-3 stroke-[3]" />}
@@ -1066,7 +1081,7 @@ function AdvancedFilters({
                     class={`flex size-4 shrink-0 items-center justify-center rounded transition ${
                       draft4K
                         ? 'bg-orange-500 text-white'
-                        : 'border border-neutral-300 dark:border-line-strong bg-white dark:bg-[#1a202c]'
+                        : 'border border-neutral-300 dark:border-line-strong bg-white dark:bg-[var(--surface-input)]'
                     }`}
                   >
                     {draft4K && <CheckIcon class="size-3 stroke-[3]" />}
@@ -1083,7 +1098,7 @@ function AdvancedFilters({
                     class={`flex size-4 shrink-0 items-center justify-center rounded transition ${
                       draftVerified
                         ? 'bg-orange-500 text-white'
-                        : 'border border-neutral-300 dark:border-line-strong bg-white dark:bg-[#1a202c]'
+                        : 'border border-neutral-300 dark:border-line-strong bg-white dark:bg-[var(--surface-input)]'
                     }`}
                   >
                     {draftVerified && <CheckIcon class="size-3 stroke-[3]" />}

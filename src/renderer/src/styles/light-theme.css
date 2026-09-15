@@ -1,0 +1,271 @@
+/* Digital Daylight component refinements. Layout is shared with Digital Night. */
+:root {
+  --mf-detail-accent: #245cda;
+  --mf-detail-bright: #2563eb;
+  --mf-detail-border: #bfd4ff;
+  --mf-detail-wash: #eff5ff;
+  --mf-detail-active: #e0ecff;
+}
+
+:root[data-theme='dark'] {
+  --mf-detail-accent: #4f89ff;
+  --mf-detail-bright: #72a5ff;
+  --mf-detail-border: #294a78;
+  --mf-detail-wash: #132746;
+  --mf-detail-active: #19345b;
+}
+
+:root {
+  --mf-radius-panel: 24px;
+  --mf-radius-card: 20px;
+  --mf-radius-control: 12px;
+  --mf-shadow-panel: 0 10px 30px rgb(var(--mf-shadow-rgb) / 0.08);
+  --mf-shadow-card:
+    0 4px 16px rgb(var(--mf-shadow-rgb) / 0.06), 0 1px 3px rgb(var(--mf-shadow-rgb) / 0.04);
+  --mf-shadow-card-hover: 0 12px 28px rgb(var(--mf-shadow-rgb) / 0.16);
+  --mf-focus: 0 0 0 3px rgb(var(--mf-primary-rgb) / 0.25);
+}
+
+:root body {
+  background-color: var(--mf-canvas);
+  background-image:
+    radial-gradient(ellipse at 8% 20%, rgba(89, 155, 255, 0.16), transparent 48%),
+    radial-gradient(ellipse at 94% 40%, rgba(255, 144, 119, 0.12), transparent 44%),
+    radial-gradient(ellipse at 65% 100%, rgba(44, 196, 179, 0.13), transparent 48%);
+  color: var(--mf-text);
+  font-weight: 400;
+  letter-spacing: normal;
+}
+
+:root .mf-card {
+  background: var(--mf-surface);
+  border: 1px solid var(--mf-border);
+  border-radius: var(--mf-radius-card);
+  box-shadow: var(--mf-shadow-card);
+}
+
+/* Cards with their own padded header/body keep those internal divisions. */
+:root .mf-card:is(.p-3, .p-3\.5, .p-4) {
+  padding: 20px;
+}
+
+:root .mf-card-hover {
+  transition:
+    border-color 200ms cubic-bezier(0.2, 0, 0, 1),
+    transform 200ms cubic-bezier(0.2, 0, 0, 1),
+    box-shadow 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+:root .mf-card-hover:hover {
+  box-shadow: var(--mf-shadow-card-hover);
+}
+
+:root .mf-search-panel {
+  background: linear-gradient(115deg, var(--mf-panel), var(--mf-teal-wash));
+  border: 1px solid var(--mf-border);
+  border-radius: var(--mf-radius-panel);
+  box-shadow: var(--mf-shadow-panel);
+  padding: 24px;
+}
+
+:root
+  :is(
+    button,
+    select,
+    textarea,
+    input:not([type='checkbox']):not([type='radio']):not([type='range']),
+    .mf-search-form
+  ) {
+  border-radius: var(--mf-radius-control);
+}
+
+:root :is(select, textarea, input:not([type='checkbox']):not([type='radio']):not([type='range'])) {
+  background-color: var(--mf-surface);
+  color: var(--mf-text);
+  border-color: var(--mf-border);
+}
+
+:root ::placeholder {
+  color: var(--mf-text-muted);
+  opacity: 1;
+}
+
+:root :is(input, select, textarea, button, .mf-focus-ring):focus-visible {
+  outline: none;
+  box-shadow: var(--mf-focus);
+}
+
+:root button.border-line-strong {
+  background-color: var(--mf-surface);
+  color: var(--mf-foreground-strong);
+  border-color: var(--mf-border);
+  box-shadow: 0 2px 6px rgb(var(--mf-shadow-rgb) / 0.08);
+}
+
+:root button[role='switch'] {
+  border-radius: 9999px;
+}
+
+:root button.border-line-strong:hover:not(:disabled) {
+  background-color: var(--mf-hover);
+}
+
+:root
+  :is(
+    button.from-go-500,
+    button.from-sky-500,
+    button.bg-sky-600,
+    .mf-search-form button[type='submit'],
+    .mf-search-filter-chip.is-active
+  ) {
+  background: linear-gradient(115deg, var(--mf-accent), var(--mf-teal));
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow: 0 4px 12px rgb(var(--mf-primary-rgb) / 0.22);
+}
+
+:root
+  :is(
+    button.from-go-500,
+    button.from-sky-500,
+    button.bg-sky-600,
+    .mf-search-form button[type='submit'],
+    .mf-search-filter-chip.is-active
+  ):hover:not(:disabled) {
+  background: linear-gradient(115deg, var(--mf-accent-deep), var(--mf-teal-text));
+  filter: none;
+}
+
+:root
+  :is(
+    button.from-go-500,
+    button.from-sky-500,
+    button.bg-sky-600,
+    .mf-search-form button[type='submit']
+  ):active:not(:disabled) {
+  background: var(--mf-accent-deep);
+}
+
+:root
+  :is(
+    button,
+    button.from-go-500,
+    button.from-sky-500,
+    button.bg-sky-600,
+    .mf-search-form button[type='submit']
+  ):disabled {
+  background: var(--mf-hover);
+  color: var(--color-slate-700);
+  border-color: var(--mf-border-soft);
+  box-shadow: none;
+  opacity: 1;
+}
+
+:root .mf-search-filter-chip:not(.is-active) {
+  background: var(--mf-surface);
+  border-color: var(--mf-border);
+  color: var(--mf-text-secondary);
+}
+
+:root .mf-search-filter-chip:hover:not(.is-active) {
+  background: var(--mf-hover);
+  border-color: var(--mf-focus-ring);
+}
+
+:root :is(.mf-search-form, .mf-search-note, .mf-search-filter-rail) {
+  box-shadow: inset 0 1px 0 rgb(var(--mf-surface-rgb) / 0.32);
+}
+
+:root .mf-hairline::before {
+  background: linear-gradient(135deg, var(--color-sky-300), var(--color-indigo-300));
+}
+
+:root .mf-row-hover:hover {
+  box-shadow: 0 2px 6px rgb(var(--mf-shadow-rgb) / 0.08);
+}
+
+:root h1 {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  color: var(--mf-text);
+}
+
+:root h2 {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  color: var(--mf-text);
+}
+
+:root .mf-label {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--mf-foreground-strong);
+}
+
+:root ::selection {
+  background: rgba(32, 43, 58, 0.16);
+}
+
+:root ::-webkit-scrollbar-thumb {
+  background-color: var(--mf-focus-ring);
+}
+
+:root ::-webkit-scrollbar-thumb:hover {
+  background-color: var(--mf-text-muted);
+}
+
+/* Keep keyboard focus visible over each button's resting elevation. */
+:root :is(button, .mf-focus-ring):focus-visible {
+  box-shadow: var(--mf-focus);
+}
+
+:root .mf-welcome {
+  background: linear-gradient(120deg, var(--mf-surface) 60%, var(--mf-hover));
+  border: 1px solid var(--mf-border);
+  border-radius: 24px;
+  box-shadow: var(--mf-shadow-card);
+}
+
+:root .mf-welcome:hover {
+  border-color: var(--mf-focus-ring);
+  box-shadow: var(--mf-shadow-card-hover);
+}
+
+/* The three accents identify the actual Analyze → Configure → Save workflow. */
+:root .mf-workflow-card {
+  --workflow-accent: var(--mf-coral-text);
+  --workflow-wash: var(--mf-coral-wash);
+  border-top: 3px solid var(--mf-accent-warm);
+}
+
+:root .mf-workflow-card:nth-child(2) {
+  --workflow-accent: var(--mf-accent);
+  --workflow-wash: var(--mf-active);
+  border-top-color: var(--color-sky-400);
+}
+
+:root .mf-workflow-card:nth-child(3) {
+  --workflow-accent: var(--mf-teal-text);
+  --workflow-wash: var(--mf-teal-wash);
+  border-top-color: var(--mf-teal);
+}
+
+:root .mf-workflow-icon {
+  color: var(--workflow-accent);
+  background: var(--workflow-wash);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+:root nav button[aria-current='page'] {
+  color: var(--mf-accent);
+  background: var(--mf-active);
+  box-shadow: none;
+}

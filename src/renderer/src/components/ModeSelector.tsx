@@ -234,7 +234,7 @@ export function ModeSelector({
                 streamlessAdvanced ? 'Per-stream picking needs a single video analysis' : label
               }
               aria-pressed={active}
-              class={`mf-focus-ring flex flex-col items-center gap-1 rounded-lg px-1 py-1.5 text-[10px] font-semibold leading-none transition-all duration-150 ${
+              class={`mf-focus-ring flex flex-col items-center gap-1 rounded-lg px-1 py-1.5 text-[10px] font-semibold leading-none transition-[background-color,border-color,color,box-shadow,transform] duration-150 ${
                 active
                   ? 'bg-gradient-to-br from-sky-500 to-indigo-500 text-white shadow shadow-sky-500/25'
                   : 'text-slate-400 hover:bg-wash-2 hover:text-ink'
@@ -288,7 +288,7 @@ export function ModeSelector({
                   onClick={() => setAudioFormat(opt.id)}
                   disabled={disabled}
                   aria-pressed={audioFormat === opt.id}
-                  className={`mf-focus-ring rounded-lg border px-2.5 py-1 text-left transition-all duration-150 ${
+                  className={`mf-focus-ring rounded-lg border px-2.5 py-1 text-left transition-[background-color,border-color,color,box-shadow,transform] duration-150 ${
                     audioFormat === opt.id
                       ? 'border-sky-400/60 bg-sky-500/15 shadow-[0_0_10px_-4px_var(--mf-glow)]'
                       : 'border-line bg-wash-1 hover:border-line-strong'

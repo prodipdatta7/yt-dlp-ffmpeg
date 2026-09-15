@@ -83,15 +83,18 @@ export function SettingsScreen() {
 
   return (
     <div class="mx-auto flex w-full max-w-4xl flex-col gap-5">
-      <header class="flex items-start justify-between gap-3">
+      <div class="mf-digital-only mf-workspace-heading">
         <div>
-          <h2 class="text-lg font-bold tracking-tight text-ink">Settings</h2>
-          <p class="mt-0.5 text-[12.5px] text-slate-500">
-            App behavior, storage, and updates — for MediaForge itself and its core engines.
-          </p>
+          <p class="mf-workspace-kicker">SYSTEM & ENGINES</p>
+          <h2>
+            Settings & Control<span>.</span>
+          </h2>
         </div>
-        <Pill tone="sky">MediaForge{appVersion ? ` v${appVersion}` : ''}</Pill>
-      </header>
+        <div class="flex items-center gap-3">
+          <span class="mf-workspace-hint hidden sm:inline">Engine Config & Diagnostics</span>
+          <Pill tone="sky">MediaForge{appVersion ? ` v${appVersion}` : ''}</Pill>
+        </div>
+      </div>
 
       <div class="flex items-start gap-6">
         <SideNav

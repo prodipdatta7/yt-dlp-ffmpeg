@@ -1,4 +1,6 @@
 @import 'tailwindcss';
+@import './light-theme.css';
+@import './digital-layout.css';
 
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
@@ -9,31 +11,31 @@
   --font-mono:
     'Cascadia Code', 'Cascadia Mono', 'JetBrains Mono', Consolas, ui-monospace, monospace;
   /* Keep in sync with THEME_CHROME.light.ink950 in src/shared/themeChrome.ts */
-  --color-ink-950: #f1e9db;
-  --color-ink-900: #f4eddf;
-  --color-ink-850: #f7f1e5;
-  --color-ink-800: #faf5eb;
+  --color-ink-950: #f5f8ff;
+  --color-ink-900: #edf3ff;
+  --color-ink-850: #e4eeff;
+  --color-ink-800: #fbfcff;
 
   /* Semantic surface tokens — MUST live in @theme so utilities like
      border-line / bg-wash-1 / text-ink are generated. :root overrides values. */
-  --color-ink: #1c1917;
-  --color-wash-1: rgb(120 80 30 / 0.04);
-  --color-wash-2: rgb(120 80 30 / 0.07);
-  --color-recess: rgb(120 80 30 / 0.06);
-  --color-line: rgb(120 80 30 / 0.09);
-  --color-line-strong: rgb(120 80 30 / 0.16);
+  --color-ink: #172440;
+  --color-wash-1: #f0f5ff;
+  --color-wash-2: #e4eeff;
+  --color-recess: #e4eeff;
+  --color-line: #e5ebf5;
+  --color-line-strong: #d5e0f2;
 
   /* fixed tokens — never remapped by theme */
   --color-scrim: rgb(15 12 9);
-  --color-paper: #fffbf4;
+  --color-paper: #ffffff;
 
   /* CTA ramp (light values; overridden per theme below) */
-  --color-go-400: #f59e0b;
-  --color-go-500: #e2551f;
+  --color-go-400: #3878ed;
+  --color-go-500: #245cda;
 }
 
 /* ------------------------------------------------------------------ */
-/* Warm Studio (light) — the base palette.                             */
+/* Digital Daylight (light) — the product's structural design source.  */
 /* Semantic surface/line/ink tokens are the preferred styling surface; */
 /* white/black stay literal so CTA text and future utilities don't     */
 /* silently invert.                                                    */
@@ -41,42 +43,41 @@
 :root {
   color-scheme: light;
 
-  /* neutral ramp — warm stone (contrast-tuned for cream body ≈ #faf6f0) */
-  --color-slate-100: #1c1917;
-  --color-slate-200: #292524;
-  --color-slate-300: #44403c;
-  --color-slate-400: #57534e;
-  --color-slate-500: #6b6156;
-  --color-slate-600: #7a6f63; /* ≥4.5:1 on cream body for small text */
-  --color-slate-700: #8f8274; /* ≥3:1 large / decorative */
-  --color-slate-800: #ddd2c2;
-  --color-slate-900: #ede5d8;
-  --color-slate-950: #f7f1e7;
+  /* neutral ramp — blue-grey, contrast-tuned for the daylight canvas */
+  --color-slate-100: #172440;
+  --color-slate-200: #263553;
+  --color-slate-300: #3e506d;
+  --color-slate-400: #4e607c;
+  --color-slate-500: #62738e;
+  --color-slate-600: #70819b;
+  --color-slate-700: #93a2b8;
+  --color-slate-800: #d5e0f2;
+  --color-slate-900: #e4eeff;
+  --color-slate-950: #fbfcff;
 
   /* literal white/black — do NOT invert; use wash/recess/ink tokens instead */
   --color-white: #ffffff;
-  --color-black: #0d0a07;
+  --color-black: #08111f;
 
   /* primary readable ink (was dark-mode-authored text-white on surfaces) */
-  --color-ink: #1c1917;
+  --color-ink: #172440;
 
   /* semantic washes — art-directed per theme, not opacity-over-inverted-base */
-  --color-wash-1: rgb(120 80 30 / 0.04);
-  --color-wash-2: rgb(120 80 30 / 0.07);
-  --color-recess: rgb(120 80 30 / 0.06);
-  /* Warm amber hairlines — not near-black ink (that boxed every panel). */
-  --color-line: rgb(120 80 30 / 0.09);
-  --color-line-strong: rgb(120 80 30 / 0.16);
+  --color-wash-1: #f0f5ff;
+  --color-wash-2: #e4eeff;
+  --color-recess: #e4eeff;
+  --color-line: #e5ebf5;
+  --color-line-strong: #d5e0f2;
 
-  /* accent duo — vermillion × gold */
-  --color-sky-200: #9a3412;
-  --color-sky-300: #c2410c;
-  --color-sky-400: #dc4a12;
-  --color-sky-500: #e2551f;
-  --color-sky-600: #c2410c;
-  --color-indigo-300: #92400e;
-  --color-indigo-400: #b45309;
-  --color-indigo-500: #d97706;
+  /* accent duo — cobalt × signal teal */
+  --color-sky-200: #bfd4ff;
+  --color-sky-300: #77a8ff;
+  --color-sky-400: #3878ed;
+  --color-sky-500: #2563eb;
+  --color-sky-600: #1d4ed8;
+  --color-indigo-300: #56cbbb;
+  --color-indigo-400: #25b7a7;
+  --color-indigo-500: #087f8c;
 
   /* success — moss green */
   --color-emerald-200: #166534;
@@ -105,69 +106,96 @@
   /* supporting accents */
   --color-violet-300: #6d28d9;
   --color-violet-500: #7c3aed;
-  --color-teal-400: #d97706;
-  --color-cyan-300: #a16207;
-  --color-cyan-400: #ca8a04;
+  --color-teal-400: #25b7a7;
+  --color-cyan-300: #56cbbb;
+  --color-cyan-400: #25b7a7;
   --color-red-400: #dc2626;
   --color-red-500: #b91c1c;
 
   --mf-line: var(--color-line);
   --mf-line-strong: var(--color-line-strong);
-  --mf-accent: #e2551f;
-  --mf-accent-warm: #f59e0b;
-  --mf-accent-deep: #b45309;
-  --mf-go: #16a34a;
-  --mf-glow: rgb(226 85 31 / 0.5);
-  --mf-thumb-shadow: 0 10px 24px -12px rgb(67 45 20 / 0.28);
-  --mf-console-chip: rgb(250 246 240 / 0.95);
+  --mf-canvas: #f5f8ff;
+  --mf-panel: #edf3ff;
+  --mf-surface: #ffffff;
+  --mf-surface-subtle: #fbfcff;
+  --mf-border: #d5e0f2;
+  --mf-border-soft: #e5ebf5;
+  --mf-text: #172440;
+  --mf-text-secondary: #4e607c;
+  --mf-text-muted: #62738e;
+  --mf-foreground-strong: #263553;
+  --mf-hover: #f0f5ff;
+  --mf-active: #e4eeff;
+  --mf-focus-ring: #6495ed;
+  --mf-accent: #245cda;
+  --mf-accent-warm: #f46a50;
+  --mf-accent-deep: #1d4ed8;
+  --mf-teal: #25b7a7;
+  --mf-teal-text: #087f78;
+  --mf-teal-wash: #e8f9f5;
+  --mf-teal-border: #ccefe7;
+  --mf-coral-text: #c54932;
+  --mf-coral-wash: #fff0eb;
+  --mf-coral-border: #ffd9cf;
+  --mf-blue-border: #d4e2ff;
+  --mf-primary-rgb: 37 99 235;
+  --mf-teal-rgb: 37 183 167;
+  --mf-coral-rgb: 244 106 80;
+  --mf-surface-rgb: 255 255 255;
+  --mf-border-rgb: 213 227 250;
+  --mf-shadow-rgb: 53 91 161;
+  --mf-go: #25b7a7;
+  --mf-glow: rgb(37 99 235 / 0.24);
+  --mf-thumb-shadow: 0 10px 24px -12px rgb(53 91 161 / 0.24);
+  --mf-console-chip: rgb(251 252 255 / 0.95);
 
-  /* component surfaces — full immersion cream stack */
-  --surface-card-hi: #fffdf9;
-  --surface-card-lo: #faf4ea;
-  --surface-input: #fffdf9;
-  --surface-console: #fbf6ec;
-  --thead-bg: rgb(247 240 228 / 0.96);
+  /* component surfaces */
+  --surface-card-hi: #ffffff;
+  --surface-card-lo: #ffffff;
+  --surface-input: #ffffff;
+  --surface-console: #fbfcff;
+  --thead-bg: rgb(240 245 255 / 0.96);
   --step-done-bg: #e7f6ec;
   --step-error-bg: #fbe9eb;
-  --step-active-bg: #fdf0e0;
-  --step-idle-bg: #f2ebdd;
+  --step-active-bg: #e4eeff;
+  --step-idle-bg: #f0f5ff;
 }
 
 /* ------------------------------------------------------------------ */
-/* Warm Ember (dark) — deep warm charcoal, ember + gold accents.       */
+/* Digital Night (dark) — the same workspace language after sundown.   */
 /* ------------------------------------------------------------------ */
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  --color-slate-100: #f3ece1;
-  --color-slate-200: #ded4c5;
-  --color-slate-300: #b8ae9f;
-  --color-slate-400: #8a7e70;
-  --color-slate-500: #7d7264; /* ≥4.5:1 on charcoal body for small muted text */
-  --color-slate-600: #6e6357; /* was too dark; lifted for AA */
-  --color-slate-700: #5c5248;
-  --color-slate-800: #33281f;
-  --color-slate-900: #241b14;
-  --color-slate-950: #171310;
+  --color-slate-100: #f3f7ff;
+  --color-slate-200: #d9e4f3;
+  --color-slate-300: #bfcee1;
+  --color-slate-400: #a5b5ca;
+  --color-slate-500: #91a3bc;
+  --color-slate-600: #7487a2;
+  --color-slate-700: #5f728d;
+  --color-slate-800: #263653;
+  --color-slate-900: #17243a;
+  --color-slate-950: #0d1728;
 
   --color-white: #ffffff;
-  --color-black: #0d0a07;
-  --color-ink: #f3ece1;
+  --color-black: #050b14;
+  --color-ink: #f3f7ff;
 
-  --color-wash-1: rgb(245 239 230 / 0.04);
-  --color-wash-2: rgb(245 239 230 / 0.07);
-  --color-recess: rgb(0 0 0 / 0.22);
-  --color-line: rgb(138 126 112 / 0.12);
-  --color-line-strong: rgb(138 126 112 / 0.2);
+  --color-wash-1: rgb(132 169 226 / 0.06);
+  --color-wash-2: rgb(132 169 226 / 0.1);
+  --color-recess: rgb(3 10 22 / 0.38);
+  --color-line: rgb(151 179 222 / 0.14);
+  --color-line-strong: rgb(151 179 222 / 0.24);
 
-  --color-sky-200: #fed7aa;
-  --color-sky-300: #fdba74;
-  --color-sky-400: #fb923c;
-  --color-sky-500: #f97316;
-  --color-sky-600: #ea580c;
-  --color-indigo-300: #fcd34d;
-  --color-indigo-400: #fbbf24;
-  --color-indigo-500: #f59e0b;
+  --color-sky-200: #c8dbff;
+  --color-sky-300: #9fc0ff;
+  --color-sky-400: #72a5ff;
+  --color-sky-500: #4f89ff;
+  --color-sky-600: #3775ea;
+  --color-indigo-300: #78e6d7;
+  --color-indigo-400: #3ad1bd;
+  --color-indigo-500: #20b9a7;
 
   --color-emerald-200: #a7f3d0;
   --color-emerald-300: #6ee7b7;
@@ -198,34 +226,61 @@
   --color-red-400: #f87171;
   --color-red-500: #ef4444;
 
-  --color-go-400: #fbbf24;
-  --color-go-500: #fb923c;
+  --color-go-400: #72a5ff;
+  --color-go-500: #4f89ff;
 
   /* Keep in sync with THEME_CHROME.dark.ink950 in src/shared/themeChrome.ts */
-  --color-ink-950: #14100c;
-  --color-ink-900: #191410;
-  --color-ink-850: #1e1813;
-  --color-ink-800: #241d16;
+  --color-ink-950: #08111f;
+  --color-ink-900: #0d1728;
+  --color-ink-850: #111d31;
+  --color-ink-800: #17243a;
 
   --mf-line: var(--color-line);
-  --mf-line-strong: rgb(251 146 60 / 0.22);
-  --mf-accent: #fb923c;
-  --mf-accent-warm: #f59e0b;
-  --mf-accent-deep: #d97706;
-  --mf-go: #34d399;
-  --mf-glow: rgb(251 146 60 / 0.55);
-  --mf-thumb-shadow: 0 10px 24px -12px rgb(0 0 0 / 0.65);
-  --mf-console-chip: rgb(36 29 22 / 0.95);
+  --mf-line-strong: rgb(114 165 255 / 0.3);
+  --mf-canvas: #08111f;
+  --mf-panel: #0d1728;
+  --mf-surface: #111d31;
+  --mf-surface-subtle: #0d1728;
+  --mf-border: #263653;
+  --mf-border-soft: #1e2d47;
+  --mf-text: #f3f7ff;
+  --mf-text-secondary: #bfcee1;
+  --mf-text-muted: #91a3bc;
+  --mf-foreground-strong: #d9e4f3;
+  --mf-hover: #17243a;
+  --mf-active: #1b3154;
+  --mf-focus-ring: #72a5ff;
+  --mf-accent: #4f89ff;
+  --mf-accent-warm: #ff7c66;
+  --mf-accent-deep: #3775ea;
+  --mf-teal: #3ad1bd;
+  --mf-teal-text: #78e6d7;
+  --mf-teal-wash: #102d32;
+  --mf-teal-border: #24565a;
+  --mf-coral-text: #ff9a88;
+  --mf-coral-wash: #35202a;
+  --mf-coral-border: #6e3940;
+  --mf-blue-border: #294a78;
+  --mf-primary-rgb: 79 137 255;
+  --mf-teal-rgb: 58 209 189;
+  --mf-coral-rgb: 255 124 102;
+  --mf-surface-rgb: 17 29 49;
+  --mf-border-rgb: 38 54 83;
+  --mf-shadow-rgb: 2 7 16;
+  --mf-go: #3ad1bd;
+  --mf-glow: rgb(79 137 255 / 0.38);
+  --mf-thumb-shadow: 0 12px 28px -14px rgb(0 0 0 / 0.72);
+  --mf-console-chip: rgb(17 29 49 / 0.95);
 
-  --surface-card-hi: #251d15;
-  --surface-card-lo: #1c1611;
-  --surface-input: #201913;
-  --surface-console: #1b1510;
-  --thead-bg: rgb(23 17 12 / 0.95);
-  --step-done-bg: #14231a;
-  --step-error-bg: #2a1518;
-  --step-active-bg: #27190f;
-  --step-idle-bg: #201913;
+  --surface-card-hi: #142139;
+  --surface-card-lo: #0e192b;
+  --surface-input: #101c30;
+  --surface-console: #0c1627;
+  --thead-bg: rgb(13 23 40 / 0.95);
+  --step-done-bg: #102d2b;
+  --step-error-bg: #321b28;
+  --step-active-bg: #162b4b;
+  --step-idle-bg: #101c30;
 }
 
 html {
@@ -245,24 +300,24 @@ body {
   font-size: 14px;
   line-height: 1.5;
   letter-spacing: -0.006em;
-  background-color: var(--mf-page, #faf6f0);
+  background-color: var(--mf-page, #f5f8ff);
   background-image:
-    radial-gradient(1100px 520px at 78% -14%, rgb(226 85 31 / 0.075), transparent 55%),
-    radial-gradient(950px 640px at -16% 112%, rgb(217 119 6 / 0.06), transparent 60%),
-    radial-gradient(720px 420px at 52% 118%, rgb(22 163 74 / 0.04), transparent 62%);
+    radial-gradient(1100px 520px at 78% -14%, rgb(37 99 235 / 0.1), transparent 55%),
+    radial-gradient(950px 640px at -16% 112%, rgb(244 106 80 / 0.07), transparent 60%),
+    radial-gradient(720px 420px at 52% 118%, rgb(37 183 167 / 0.08), transparent 62%);
   background-attachment: fixed;
-  color: var(--mf-body-ink, #292524);
+  color: var(--mf-body-ink, #172440);
   overflow: hidden;
   user-select: none;
 }
 
 :root[data-theme='dark'] body {
-  background-color: #131009;
+  background-color: var(--mf-canvas);
   background-image:
-    radial-gradient(1100px 520px at 78% -12%, rgb(249 115 22 / 0.08), transparent 55%),
-    radial-gradient(950px 620px at -14% 110%, rgb(245 158 11 / 0.05), transparent 60%),
-    radial-gradient(720px 420px at 52% 118%, rgb(52 211 153 / 0.03), transparent 62%);
-  color: #f3ece1;
+    radial-gradient(1100px 520px at 78% -12%, rgb(79 137 255 / 0.14), transparent 55%),
+    radial-gradient(950px 620px at -14% 110%, rgb(255 124 102 / 0.08), transparent 60%),
+    radial-gradient(720px 420px at 52% 118%, rgb(58 209 189 / 0.08), transparent 62%);
+  color: var(--mf-text);
 }
 
 ::selection {

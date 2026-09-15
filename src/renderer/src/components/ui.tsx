@@ -54,7 +54,7 @@ export function Segmented<T extends string | number>({
             aria-checked={active}
             disabled={disabled}
             onClick={() => onChange(opt.value)}
-            class={`mf-focus-ring rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all duration-150 ${
+            class={`mf-focus-ring rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-[background-color,color,box-shadow] duration-150 ${
               active
                 ? 'bg-gradient-to-br from-sky-500 to-indigo-500 text-white shadow shadow-sky-500/25'
                 : 'text-slate-400 hover:bg-wash-2 hover:text-ink'
@@ -88,7 +88,7 @@ export function Chip({
       disabled={disabled}
       title={title}
       aria-pressed={active}
-      class={`mf-focus-ring mf-num rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${
+      class={`mf-focus-ring mf-num rounded-lg border px-3 py-1.5 text-xs font-semibold transition-[background-color,border-color,color,box-shadow] duration-150 ${
         active
           ? 'border-sky-400/60 bg-sky-500/15 text-sky-200 shadow-[0_0_12px_-4px_var(--mf-glow)]'
           : 'border-line bg-wash-1 text-slate-400 hover:border-line-strong hover:text-ink'

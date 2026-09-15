@@ -120,7 +120,7 @@ export function UrlBar() {
   const showClipChip = !analyzing.value && value.trim().length === 0 && clipUrl !== null
 
   return (
-    <div class="flex flex-col gap-2">
+    <div class="mf-url-bar flex flex-col gap-2">
       <div class="relative">
         <div
           aria-hidden="true"
@@ -133,7 +133,7 @@ export function UrlBar() {
             e.preventDefault()
             void submit()
           }}
-          className={`app-no-drag group relative flex items-stretch overflow-hidden rounded-2xl border bg-[var(--surface-input)] transition-all duration-200 ${
+          className={`app-no-drag group relative flex items-stretch overflow-hidden rounded-2xl border bg-[var(--surface-input)] transition-[background-color,border-color,box-shadow] duration-200 ${
             dropping
               ? 'border-sky-400/80 bg-sky-500/[0.07]'
               : analyzing.value
@@ -154,6 +154,9 @@ export function UrlBar() {
           <input
             ref={inputRef}
             type="url"
+            name="media-url"
+            autocomplete="url"
+            inputMode="url"
             spellcheck={false}
             placeholder={
               dropping ? 'Drop the link to analyze…' : 'Paste a video, audio or playlist link…'
@@ -216,7 +219,7 @@ export function UrlBar() {
               <button
                 type="submit"
                 disabled={value.trim().length === 0}
-                className={`mf-focus-ring m-1.5 inline-flex shrink-0 items-center gap-2 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-500 px-5 text-sm font-bold text-white shadow-lg shadow-sky-500/25 transition-all duration-150 hover:brightness-110 active:scale-[0.98] ${
+                className={`mf-focus-ring m-1.5 inline-flex shrink-0 items-center gap-2 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-500 px-5 text-sm font-bold text-white shadow-lg shadow-sky-500/25 transition-[background-color,box-shadow,filter,opacity,transform] duration-150 hover:brightness-110 active:scale-[0.98] ${
                   value.trim().length === 0 ? 'cursor-not-allowed opacity-35 shadow-none' : ''
                 }`}
                 title="Analyze (Enter)"

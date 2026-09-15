@@ -22,7 +22,7 @@ function phaseLabel(event: UpdaterPhaseEvent): string {
 }
 
 const btn =
-  'mf-focus-ring rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50'
+  'mf-focus-ring rounded-lg px-4 py-2 text-sm font-medium transition-[background-color,border-color,color,box-shadow,opacity,transform] duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50'
 const btnPrimary = `${btn} bg-gradient-to-br from-sky-500 to-indigo-500 text-white shadow shadow-sky-500/20 hover:brightness-110`
 const btnGo = `${btn} bg-gradient-to-br from-emerald-500 to-teal-400 text-slate-950 font-semibold shadow shadow-emerald-500/25 hover:brightness-110`
 

@@ -416,7 +416,7 @@ export function TheaterPreview({
       onWheel={(e) => e.stopPropagation()}
     >
       <div
-        class="flex w-full max-w-[96vw] xl:max-w-[94vw] 2xl:max-w-[1560px] max-h-[96vh] flex-col overflow-y-auto rounded-2xl border-2 border-[#ea580c] bg-white p-3 sm:p-4 md:p-5 shadow-2xl ring-1 ring-[#ea580c]/30 text-left transition-all dark:border-orange-500/80 dark:bg-[#131722]"
+        class="flex w-full max-w-[96vw] xl:max-w-[94vw] 2xl:max-w-[1560px] max-h-[96vh] flex-col overflow-y-auto rounded-2xl border-2 border-[var(--mf-detail-accent)] bg-white p-3 sm:p-4 md:p-5 shadow-2xl ring-1 ring-[var(--mf-detail-accent)]/30 text-left transition-[background-color,border-color,box-shadow] dark:border-[var(--mf-detail-accent)] dark:bg-[var(--mf-surface)]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header Row */}
@@ -424,15 +424,15 @@ export function TheaterPreview({
           {/* Left Header info */}
           <div class="flex min-w-0 flex-1 items-center gap-2">
             {/* Theater Preview Active Pill */}
-            <span class="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-orange-200 bg-[#fff7ed] px-2.5 py-1 text-[11px] font-bold text-[#ea580c] dark:border-orange-500/30 dark:bg-orange-950/50 dark:text-orange-400">
-              <span class="size-1.5 rounded-full bg-[#ea580c] animate-pulse" />
+            <span class="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-orange-200 bg-[var(--mf-detail-wash)] px-2.5 py-1 text-[11px] font-bold text-[var(--mf-detail-accent)] dark:border-[var(--mf-detail-border)] dark:bg-[var(--mf-detail-wash)] dark:text-[var(--mf-detail-bright)]">
+              <span class="size-1.5 rounded-full bg-[var(--mf-detail-accent)] animate-pulse" />
               <span>Focused Preview</span>
             </span>
 
             {/* Title & Author */}
             <div class="flex min-w-0 flex-1 items-center gap-1.5 truncate">
               <span
-                class="truncate text-xs sm:text-sm font-bold text-neutral-900 transition hover:text-[#ea580c] dark:text-white"
+                class="truncate text-xs sm:text-sm font-bold text-neutral-900 transition hover:text-[var(--mf-detail-accent)] dark:text-white"
                 title={entry.title}
               >
                 {entry.title}
@@ -516,7 +516,7 @@ export function TheaterPreview({
                       setCurrentTimeSec(target)
                     }}
                     title="Jump 10 seconds backward"
-                    class="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:border-orange-400 hover:bg-orange-50 hover:text-[#ea580c] transition dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-300 dark:hover:bg-orange-950/40"
+                    class="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:border-orange-400 hover:bg-orange-50 hover:text-[var(--mf-detail-accent)] transition dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-300 dark:hover:bg-[var(--mf-detail-active)]"
                   >
                     <RotateCcwIcon class="size-3 text-neutral-400" />
                     <span>-10s</span>
@@ -529,7 +529,7 @@ export function TheaterPreview({
                       setCurrentTimeSec(target)
                     }}
                     title="Jump 10 seconds forward"
-                    class="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:border-orange-400 hover:bg-orange-50 hover:text-[#ea580c] transition dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-300 dark:hover:bg-orange-950/40"
+                    class="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:border-orange-400 hover:bg-orange-50 hover:text-[var(--mf-detail-accent)] transition dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-300 dark:hover:bg-[var(--mf-detail-active)]"
                   >
                     <span>+10s</span>
                   </button>
@@ -540,7 +540,7 @@ export function TheaterPreview({
                       setCurrentTimeSec(0)
                     }}
                     title="Restart from beginning"
-                    class="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:border-orange-400 hover:bg-orange-50 hover:text-[#ea580c] transition dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-300 dark:hover:bg-orange-950/40"
+                    class="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:border-orange-400 hover:bg-orange-50 hover:text-[var(--mf-detail-accent)] transition dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-300 dark:hover:bg-[var(--mf-detail-active)]"
                   >
                     <span>Restart (0:00)</span>
                   </button>
@@ -594,7 +594,7 @@ export function TheaterPreview({
                   onClick={() => setPreviewTab('chapters')}
                   class={`flex-1 rounded-md py-1 text-center text-xs font-semibold transition ${
                     previewTab === 'chapters'
-                      ? 'bg-white text-[#ea580c] shadow-xs dark:bg-neutral-900 dark:text-orange-400'
+                      ? 'bg-white text-[var(--mf-detail-accent)] shadow-xs dark:bg-neutral-900 dark:text-[var(--mf-detail-bright)]'
                       : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white'
                   }`}
                 >
@@ -606,7 +606,7 @@ export function TheaterPreview({
                   onClick={() => setPreviewTab('transcript')}
                   class={`flex-1 rounded-md py-1 text-center text-xs font-semibold transition ${
                     previewTab === 'transcript'
-                      ? 'bg-white text-[#ea580c] shadow-xs dark:bg-neutral-900 dark:text-orange-400'
+                      ? 'bg-white text-[var(--mf-detail-accent)] shadow-xs dark:bg-neutral-900 dark:text-[var(--mf-detail-bright)]'
                       : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white'
                   }`}
                 >
@@ -617,7 +617,7 @@ export function TheaterPreview({
                   onClick={() => setPreviewTab('info')}
                   class={`flex-1 rounded-md py-1 text-center text-xs font-semibold transition ${
                     previewTab === 'info'
-                      ? 'bg-white text-[#ea580c] shadow-xs dark:bg-neutral-900 dark:text-orange-400'
+                      ? 'bg-white text-[var(--mf-detail-accent)] shadow-xs dark:bg-neutral-900 dark:text-[var(--mf-detail-bright)]'
                       : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white'
                   }`}
                 >
@@ -628,7 +628,7 @@ export function TheaterPreview({
               {/* Tab 1: Chapters (while scanning) */}
               {previewTab === 'chapters' && loadingChapters && (
                 <div class="flex flex-col flex-1 min-h-0 items-center justify-center p-6 text-center gap-3">
-                  <div class="size-6 animate-spin rounded-full border-2 border-[#ea580c] border-t-transparent dark:border-orange-400" />
+                  <div class="size-6 animate-spin rounded-full border-2 border-[var(--mf-detail-accent)] border-t-transparent dark:border-[var(--mf-detail-bright)]" />
                   <p class="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
                     Scanning video chapters & timeline...
                   </p>
@@ -645,7 +645,7 @@ export function TheaterPreview({
                   <div class="mb-2 flex items-center justify-between shrink-0">
                     <div class="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
                       <span>Chapters</span>
-                      <span class="rounded bg-orange-50 px-1.5 py-0.5 font-mono text-[10.5px] font-bold text-[#ea580c] border border-orange-200/60 dark:border-orange-900/40 dark:bg-orange-950/60 dark:text-orange-400 normal-case tracking-normal">
+                      <span class="rounded bg-orange-50 px-1.5 py-0.5 font-mono text-[10.5px] font-bold text-[var(--mf-detail-accent)] border border-orange-200/60 dark:border-[var(--mf-detail-border)] dark:bg-[var(--mf-detail-wash)] dark:text-[var(--mf-detail-bright)] normal-case tracking-normal">
                         {chapters[activeChapterIndex]?.time ?? '00:00'}
                       </span>
                     </div>
@@ -696,7 +696,7 @@ export function TheaterPreview({
                         value={chapterFilter}
                         onInput={(e) => setChapterFilter(e.currentTarget.value)}
                         placeholder="Filter chapters by title..."
-                        class="w-full rounded-md border border-neutral-200 bg-neutral-50/80 px-2 py-1 text-[11px] text-neutral-800 placeholder-neutral-400 outline-none transition focus:border-[#ea580c] focus:bg-white dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-200"
+                        class="w-full rounded-md border border-neutral-200 bg-neutral-50/80 px-2 py-1 text-[11px] text-neutral-800 placeholder-neutral-400 outline-none transition focus:border-[var(--mf-detail-accent)] focus:bg-white dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-200"
                       />
                     </div>
                   )}
@@ -728,7 +728,7 @@ export function TheaterPreview({
                           <div
                             key={idx}
                             ref={activeChapterRef}
-                            class="group flex flex-col w-full rounded-xl border border-[#ea580c] bg-orange-50/90 p-2.5 text-left text-xs shadow-xs dark:border-orange-500 dark:bg-orange-950/40 transition"
+                            class="group flex flex-col w-full rounded-xl border border-[var(--mf-detail-accent)] bg-orange-50/90 p-2.5 text-left text-xs shadow-xs dark:border-[var(--mf-detail-accent)] dark:bg-[var(--mf-detail-wash)] transition"
                           >
                             {/* Top Row: Click to seek */}
                             <button
@@ -738,10 +738,10 @@ export function TheaterPreview({
                                 setCurrentTimeSec(ch.seconds)
                               }}
                               title="Jump to start of this chapter"
-                              class="flex w-full items-center justify-between gap-2 text-left text-xs font-semibold text-[#ea580c] dark:text-orange-300"
+                              class="flex w-full items-center justify-between gap-2 text-left text-xs font-semibold text-[var(--mf-detail-accent)] dark:text-[var(--mf-detail-bright)]"
                             >
                               <div class="flex min-w-0 flex-1 items-center gap-2">
-                                <span class="shrink-0 rounded bg-[#ea580c] px-1.5 py-0.5 font-mono text-[10.5px] font-bold text-white shadow-xs">
+                                <span class="shrink-0 rounded bg-[var(--mf-detail-accent)] px-1.5 py-0.5 font-mono text-[10.5px] font-bold text-white shadow-xs">
                                   {ch.time}
                                 </span>
                                 <span class="truncate text-[11.5px] leading-tight" title={ch.title}>
@@ -753,15 +753,15 @@ export function TheaterPreview({
                                   class="flex items-end gap-0.5 h-3 shrink-0"
                                   title="Currently playing"
                                 >
-                                  <span class="w-0.5 h-3 bg-[#ea580c] dark:bg-orange-400 rounded-full animate-pulse" />
-                                  <span class="w-0.5 h-1.5 bg-[#ea580c] dark:bg-orange-400 rounded-full" />
+                                  <span class="w-0.5 h-3 bg-[var(--mf-detail-accent)] dark:bg-[var(--mf-detail-bright)] rounded-full animate-pulse" />
+                                  <span class="w-0.5 h-1.5 bg-[var(--mf-detail-accent)] dark:bg-[var(--mf-detail-bright)] rounded-full" />
                                   <span
-                                    class="w-0.5 h-2.5 bg-[#ea580c] dark:bg-orange-400 rounded-full animate-pulse"
+                                    class="w-0.5 h-2.5 bg-[var(--mf-detail-accent)] dark:bg-[var(--mf-detail-bright)] rounded-full animate-pulse"
                                     style={{ animationDelay: '150ms' }}
                                   />
                                 </div>
                                 {ch.duration && (
-                                  <span class="text-[10px] font-mono text-orange-600/80 dark:text-orange-400/80">
+                                  <span class="text-[10px] font-mono text-orange-600/80 dark:text-[var(--mf-detail-bright)]/80">
                                     {ch.duration}
                                   </span>
                                 )}
@@ -769,12 +769,12 @@ export function TheaterPreview({
                             </button>
 
                             {/* In-Chapter Progress Sub-Card */}
-                            <div class="mt-2.5 rounded-lg border border-orange-200/80 bg-white/95 p-2 space-y-1.5 shadow-2xs dark:border-orange-800/40 dark:bg-neutral-900/90">
+                            <div class="mt-2.5 rounded-lg border border-orange-200/80 bg-white/95 p-2 space-y-1.5 shadow-2xs dark:border-[var(--mf-detail-border)] dark:bg-neutral-900/90">
                               <div class="flex items-center justify-between text-[11px] font-mono">
                                 <span class="text-[10px] font-medium text-neutral-500 dark:text-neutral-400">
                                   In-Chapter Progress:
                                 </span>
-                                <span class="font-bold text-[#ea580c] dark:text-orange-400">
+                                <span class="font-bold text-[var(--mf-detail-accent)] dark:text-[var(--mf-detail-bright)]">
                                   {formatChapterTime(elapsedSec)} /{' '}
                                   {formatChapterTime(chapterDurationSec)} ({progressPct}%)
                                 </span>
@@ -783,7 +783,7 @@ export function TheaterPreview({
                               {/* Progress Bar */}
                               <div class="h-1.5 w-full rounded-full bg-neutral-100 overflow-hidden dark:bg-neutral-800">
                                 <div
-                                  class="h-full rounded-full bg-[#ea580c] transition-all duration-200"
+                                  class="h-full rounded-full bg-[var(--mf-detail-accent)] transition-[width] duration-200"
                                   style={{ width: `${progressPct}%` }}
                                 />
                               </div>
@@ -805,9 +805,9 @@ export function TheaterPreview({
                                     setCurrentTimeSec(ch.seconds)
                                   }}
                                   title="Replay from start of this chapter"
-                                  class="inline-flex shrink-0 items-center gap-1 rounded border border-orange-200/80 bg-orange-50 px-2 py-0.5 text-[10px] font-semibold text-[#ea580c] shadow-2xs transition hover:bg-orange-100 hover:border-orange-300 dark:border-orange-800/50 dark:bg-orange-950/60 dark:text-orange-300 dark:hover:bg-orange-900/60"
+                                  class="inline-flex shrink-0 items-center gap-1 rounded border border-orange-200/80 bg-orange-50 px-2 py-0.5 text-[10px] font-semibold text-[var(--mf-detail-accent)] shadow-2xs transition hover:bg-orange-100 hover:border-orange-300 dark:border-[var(--mf-detail-border)] dark:bg-[var(--mf-detail-wash)] dark:text-[var(--mf-detail-bright)] dark:hover:bg-[var(--mf-detail-active)]"
                                 >
-                                  <RotateCcwIcon class="size-2.5 text-[#ea580c] dark:text-orange-300" />
+                                  <RotateCcwIcon class="size-2.5 text-[var(--mf-detail-accent)] dark:text-[var(--mf-detail-bright)]" />
                                   <span>Replay Section</span>
                                 </button>
                               </div>
@@ -883,7 +883,7 @@ export function TheaterPreview({
                             key={idx}
                             type="button"
                             onClick={() => setSeekSec(targetSec)}
-                            class="flex items-center justify-center rounded-md border border-neutral-200 bg-white py-1.5 text-[10.5px] font-medium text-neutral-700 transition hover:border-[#ea580c] hover:bg-orange-50/50 hover:text-[#ea580c] dark:border-white/10 dark:bg-neutral-900/50 dark:text-neutral-300 dark:hover:bg-orange-950/30"
+                            class="flex items-center justify-center rounded-md border border-neutral-200 bg-white py-1.5 text-[10.5px] font-medium text-neutral-700 transition hover:border-[var(--mf-detail-accent)] hover:bg-orange-50/50 hover:text-[var(--mf-detail-accent)] dark:border-white/10 dark:bg-neutral-900/50 dark:text-neutral-300 dark:hover:bg-[var(--mf-detail-active)]"
                           >
                             {step.label}
                           </button>
@@ -897,7 +897,7 @@ export function TheaterPreview({
               {/* Tab 2: Transcript */}
               {previewTab === 'transcript' && loadingTranscript && (
                 <div class="flex flex-col flex-1 min-h-0 items-center justify-center p-6 text-center gap-3">
-                  <div class="size-6 animate-spin rounded-full border-2 border-[#ea580c] border-t-transparent dark:border-orange-400" />
+                  <div class="size-6 animate-spin rounded-full border-2 border-[var(--mf-detail-accent)] border-t-transparent dark:border-[var(--mf-detail-bright)]" />
                   <p class="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
                     Extracting live video transcript...
                   </p>
@@ -914,7 +914,7 @@ export function TheaterPreview({
                     <div class="flex min-w-0 flex-1 items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
                       <span class="truncate">Live Transcript ({cues.length})</span>
                       {activeCueIndex >= 0 && cues[activeCueIndex] && (
-                        <span class="shrink-0 rounded bg-orange-50 px-1.5 py-0.5 font-mono text-[10.5px] font-bold text-[#ea580c] border border-orange-200/60 dark:border-orange-900/40 dark:bg-orange-950/60 dark:text-orange-400 normal-case tracking-normal">
+                        <span class="shrink-0 rounded bg-orange-50 px-1.5 py-0.5 font-mono text-[10.5px] font-bold text-[var(--mf-detail-accent)] border border-orange-200/60 dark:border-[var(--mf-detail-border)] dark:bg-[var(--mf-detail-wash)] dark:text-[var(--mf-detail-bright)] normal-case tracking-normal">
                           {cues[activeCueIndex].time}
                         </span>
                       )}
@@ -925,7 +925,7 @@ export function TheaterPreview({
                         onClick={handleDownloadTranscriptTxt}
                         disabled={downloadingTxt}
                         title="Download full transcript as formatted .txt file"
-                        class="flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-neutral-200 bg-white px-2 text-[10.5px] font-semibold text-neutral-700 shadow-xs transition hover:border-[#ea580c] hover:bg-orange-50/50 hover:text-[#ea580c] disabled:opacity-40 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:border-orange-500 dark:hover:bg-orange-950/30"
+                        class="flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-neutral-200 bg-white px-2 text-[10.5px] font-semibold text-neutral-700 shadow-xs transition hover:border-[var(--mf-detail-accent)] hover:bg-orange-50/50 hover:text-[var(--mf-detail-accent)] disabled:opacity-40 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:border-orange-500 dark:hover:bg-[var(--mf-detail-active)]"
                       >
                         {downloadedTxt ? (
                           <>
@@ -934,7 +934,7 @@ export function TheaterPreview({
                           </>
                         ) : (
                           <>
-                            <DownloadIcon class="size-3 text-[#ea580c] dark:text-orange-400" />
+                            <DownloadIcon class="size-3 text-[var(--mf-detail-accent)] dark:text-[var(--mf-detail-bright)]" />
                             <span>Export .txt</span>
                           </>
                         )}
@@ -949,13 +949,15 @@ export function TheaterPreview({
                         }
                         class={`flex size-6 shrink-0 items-center justify-center rounded-md border transition ${
                           autoScrollTranscript
-                            ? 'border-orange-200 bg-orange-100 text-[#ea580c] hover:bg-orange-200/80 dark:border-orange-800/40 dark:bg-orange-950/60 dark:text-orange-300 dark:hover:bg-orange-900/60'
+                            ? 'border-orange-200 bg-orange-100 text-[var(--mf-detail-accent)] hover:bg-orange-200/80 dark:border-[var(--mf-detail-border)] dark:bg-[var(--mf-detail-wash)] dark:text-[var(--mf-detail-bright)] dark:hover:bg-[var(--mf-detail-active)]'
                             : 'border-neutral-200 bg-neutral-100 text-neutral-500 hover:bg-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700'
                         }`}
                       >
                         <span
                           class={`size-2 rounded-full ${
-                            autoScrollTranscript ? 'bg-[#ea580c] animate-pulse' : 'bg-neutral-400'
+                            autoScrollTranscript
+                              ? 'bg-[var(--mf-detail-accent)] animate-pulse'
+                              : 'bg-neutral-400'
                           }`}
                         />
                       </button>
@@ -969,7 +971,7 @@ export function TheaterPreview({
                       value={transcriptFilter}
                       onInput={(e) => setTranscriptFilter(e.currentTarget.value)}
                       placeholder="Search spoken words in transcript..."
-                      class="w-full rounded-md border border-neutral-200 bg-neutral-50/80 px-2 py-1 text-[11px] text-neutral-800 placeholder-neutral-400 outline-none transition focus:border-[#ea580c] focus:bg-white dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-200"
+                      class="w-full rounded-md border border-neutral-200 bg-neutral-50/80 px-2 py-1 text-[11px] text-neutral-800 placeholder-neutral-400 outline-none transition focus:border-[var(--mf-detail-accent)] focus:bg-white dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-200"
                     />
                   </div>
 
@@ -1003,14 +1005,14 @@ export function TheaterPreview({
                               }}
                               class={`group flex h-[calc(100%-6px)] w-full items-start gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs transition ${
                                 isCurrent
-                                  ? 'border border-[#ea580c] bg-orange-50/90 font-medium text-[#ea580c] shadow-xs dark:border-orange-500 dark:bg-orange-950/40 dark:text-orange-300'
+                                  ? 'border border-[var(--mf-detail-accent)] bg-orange-50/90 font-medium text-[var(--mf-detail-accent)] shadow-xs dark:border-[var(--mf-detail-accent)] dark:bg-[var(--mf-detail-wash)] dark:text-[var(--mf-detail-bright)]'
                                   : 'border border-transparent hover:border-neutral-200 hover:bg-neutral-50 text-neutral-700 dark:text-neutral-300 dark:hover:border-neutral-700 dark:hover:bg-neutral-800/60'
                               }`}
                             >
                               <span
                                 class={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] font-bold ${
                                   isCurrent
-                                    ? 'bg-[#ea580c] text-white shadow-xs'
+                                    ? 'bg-[var(--mf-detail-accent)] text-white shadow-xs'
                                     : 'bg-neutral-100 text-neutral-600 group-hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400'
                                 }`}
                               >
@@ -1024,10 +1026,10 @@ export function TheaterPreview({
                                   class="flex items-end gap-0.5 h-3 shrink-0 mt-0.5"
                                   title="Currently playing"
                                 >
-                                  <span class="w-0.5 h-3 bg-[#ea580c] dark:bg-orange-400 rounded-full animate-pulse" />
-                                  <span class="w-0.5 h-1.5 bg-[#ea580c] dark:bg-orange-400 rounded-full" />
+                                  <span class="w-0.5 h-3 bg-[var(--mf-detail-accent)] dark:bg-[var(--mf-detail-bright)] rounded-full animate-pulse" />
+                                  <span class="w-0.5 h-1.5 bg-[var(--mf-detail-accent)] dark:bg-[var(--mf-detail-bright)] rounded-full" />
                                   <span
-                                    class="w-0.5 h-2.5 bg-[#ea580c] dark:bg-orange-400 rounded-full animate-pulse"
+                                    class="w-0.5 h-2.5 bg-[var(--mf-detail-accent)] dark:bg-[var(--mf-detail-bright)] rounded-full animate-pulse"
                                     style={{ animationDelay: '150ms' }}
                                   />
                                 </div>
@@ -1054,7 +1056,7 @@ export function TheaterPreview({
                   <button
                     type="button"
                     onClick={() => fetchTranscriptForEntry(true)}
-                    class="mt-1 flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 shadow-xs transition hover:border-[#ea580c] hover:text-[#ea580c] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:border-orange-500"
+                    class="mt-1 flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 shadow-xs transition hover:border-[var(--mf-detail-accent)] hover:text-[var(--mf-detail-accent)] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:border-orange-500"
                   >
                     <RotateCcwIcon class="size-3.5" />
                     <span>Retry Extraction</span>
@@ -1180,7 +1182,7 @@ export function TheaterPreview({
                   onClose()
                   onOpenInDownloader(entry)
                 }}
-                class="flex w-full items-center justify-center gap-2 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800/80 px-3.5 py-2 text-xs font-semibold text-neutral-800 dark:text-neutral-200 shadow-2xs transition hover:border-[#ea580c] hover:text-[#ea580c] hover:bg-orange-50/50 dark:hover:bg-orange-950/30"
+                class="flex w-full items-center justify-center gap-2 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800/80 px-3.5 py-2 text-xs font-semibold text-neutral-800 dark:text-neutral-200 shadow-2xs transition hover:border-[var(--mf-detail-accent)] hover:text-[var(--mf-detail-accent)] hover:bg-orange-50/50 dark:hover:bg-[var(--mf-detail-active)]"
               >
                 <LinkIcon class="size-3.5 text-neutral-500 dark:text-neutral-400" />
                 <span>Open in Downloader for Format Options</span>

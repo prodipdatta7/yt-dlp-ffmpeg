@@ -326,7 +326,7 @@ export function SearchResultCard({
   }
 
   const channelInitial = (entry.uploader?.trim() || 'U')[0].toUpperCase()
-  const avatarBg = channelInitial === 'C' ? 'bg-[#2563eb]' : 'bg-[#ff5500]'
+  const avatarBg = channelInitial === 'C' ? 'bg-[#2563eb]' : 'bg-[var(--mf-detail-bright)]'
   const isVerified =
     entry.isVerified === true ||
     (Boolean(entry.uploader) &&
@@ -342,12 +342,12 @@ export function SearchResultCard({
         clipped inside it. Containment must never wrap the overlay.
       */}
       <div
-        class={`mf-skip-offscreen-card w-full min-w-0 rounded-2xl border p-3.5 transition-all duration-150 sm:p-4 text-left ${
+        class={`mf-skip-offscreen-card w-full min-w-0 rounded-2xl border p-3.5 transition-[background-color,border-color,box-shadow,transform] duration-150 sm:p-4 text-left ${
           selected
-            ? 'border-[#ff5500]/70 bg-orange-50/40 shadow-md shadow-orange-500/10 dark:border-sky-500/50 dark:bg-[#161d2d]'
+            ? 'border-[var(--mf-detail-bright)]/70 bg-orange-50/40 shadow-md shadow-orange-500/10 dark:border-sky-500/50 dark:bg-[var(--mf-active)]'
             : previewActive
-              ? 'border-[#ea580c] bg-orange-50/20 shadow-md ring-2 ring-orange-500/20 dark:border-orange-500/60 dark:bg-orange-950/10'
-              : 'border-neutral-200 bg-white shadow-xs hover:border-neutral-300 hover:shadow-sm dark:border-white/10 dark:bg-[#131722]/95 dark:hover:border-neutral-700'
+              ? 'border-[var(--mf-detail-accent)] bg-orange-50/20 shadow-md ring-2 ring-orange-500/20 dark:border-[var(--mf-detail-accent)] dark:bg-[var(--mf-detail-wash)]'
+              : 'border-neutral-200 bg-white shadow-xs hover:border-neutral-300 hover:shadow-sm dark:border-white/10 dark:bg-[var(--mf-surface)] dark:hover:border-neutral-700'
         }`}
       >
         <div class="flex min-w-0 flex-col gap-3.5 sm:flex-row sm:items-start">
@@ -377,7 +377,7 @@ export function SearchResultCard({
                     loading="lazy"
                   />
                 ) : (
-                  <div class="flex size-full items-center justify-center bg-neutral-100 text-[#ff5500]/60 dark:bg-neutral-800 dark:text-orange-500/60">
+                  <div class="flex size-full items-center justify-center bg-neutral-100 text-[var(--mf-detail-bright)]/60 dark:bg-neutral-800 dark:text-[var(--mf-detail-accent)]/60">
                     <SoundcloudIcon class="size-10" />
                   </div>
                 )}
@@ -392,7 +392,7 @@ export function SearchResultCard({
                   title="Play audio preview"
                   class="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity duration-200 hover:opacity-100 hover:bg-black/45"
                 >
-                  <span class="flex items-center gap-1.5 rounded-full bg-[#ff5500] px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-md transition-transform duration-150 hover:scale-105 active:scale-95">
+                  <span class="flex items-center gap-1.5 rounded-full bg-[var(--mf-detail-bright)] px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-md transition-transform duration-150 hover:scale-105 active:scale-95">
                     <PlayIcon class="size-3.5 fill-white" />
                     <span>Preview</span>
                   </span>
@@ -400,7 +400,7 @@ export function SearchResultCard({
 
                 {/* Overlaid Badges (Top-Left) */}
                 <div class="pointer-events-none absolute left-2 top-2 z-10 flex items-center gap-1.5">
-                  <span class="flex items-center gap-1 rounded bg-[#ff5500] px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm">
+                  <span class="flex items-center gap-1 rounded bg-[var(--mf-detail-bright)] px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm">
                     <SoundcloudIcon class="size-3 fill-white" />
                     <span>{scSpecs.artworkBadge1}</span>
                   </span>
@@ -418,18 +418,18 @@ export function SearchResultCard({
                   </div>
                 ) : (
                   <div class="pointer-events-none absolute bottom-2 left-2 z-10 flex items-end gap-0.5 rounded bg-black/60 px-1.5 py-1 backdrop-blur-md">
-                    <span class="w-1 rounded-full bg-[#ff5500] h-2 animate-pulse" />
-                    <span class="w-1 rounded-full bg-[#ff5500] h-4" />
+                    <span class="w-1 rounded-full bg-[var(--mf-detail-bright)] h-2 animate-pulse" />
+                    <span class="w-1 rounded-full bg-[var(--mf-detail-bright)] h-4" />
                     <span
                       class="w-1 rounded-full bg-[#ff7700] h-3 animate-pulse"
                       style={{ animationDelay: '150ms' }}
                     />
-                    <span class="w-1 rounded-full bg-[#ff5500] h-5" />
+                    <span class="w-1 rounded-full bg-[var(--mf-detail-bright)] h-5" />
                     <span
                       class="w-1 rounded-full bg-[#ff7700] h-2.5 animate-pulse"
                       style={{ animationDelay: '300ms' }}
                     />
-                    <span class="w-1 rounded-full bg-[#ff5500] h-4" />
+                    <span class="w-1 rounded-full bg-[var(--mf-detail-bright)] h-4" />
                     <span class="w-1 rounded-full bg-[#ffaa00] h-1.5" />
                   </div>
                 )}
@@ -456,7 +456,7 @@ export function SearchResultCard({
                 {/* Header Row: Category Tag & Slug */}
                 <div>
                   <div class="flex flex-wrap items-center gap-2">
-                    <span class="rounded border border-[#fed7aa] bg-[#fff7ed] px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-[#ea580c] shadow-2xs dark:border-orange-500/30 dark:bg-orange-950/40 dark:text-orange-400">
+                    <span class="rounded border border-[var(--mf-detail-border)] bg-[var(--mf-detail-wash)] px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-[var(--mf-detail-accent)] shadow-2xs dark:border-[var(--mf-detail-border)] dark:bg-[var(--mf-detail-wash)] dark:text-[var(--mf-detail-bright)]">
                       {scSpecs.categoryTag}
                     </span>
                     <span
@@ -469,7 +469,7 @@ export function SearchResultCard({
 
                   {/* Title */}
                   <h3
-                    class="mt-1.5 cursor-pointer text-[14.5px] font-bold leading-snug tracking-tight text-neutral-900 transition hover:text-[#ff5500] dark:text-white dark:hover:text-orange-400 sm:text-[15.5px]"
+                    class="mt-1.5 cursor-pointer text-[14.5px] font-bold leading-snug tracking-tight text-neutral-900 transition hover:text-[var(--mf-detail-bright)] dark:text-white dark:hover:text-[var(--mf-detail-bright)] sm:text-[15.5px]"
                     title={entry.title}
                     onClick={() => onOpenInDownloader(entry)}
                   >
@@ -480,7 +480,9 @@ export function SearchResultCard({
                   <div class="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
                     <span
                       class={`flex size-5 shrink-0 items-center justify-center rounded-full ${
-                        scSpecs.isDjSet ? 'bg-neutral-900 dark:bg-neutral-700' : 'bg-[#ff5500]'
+                        scSpecs.isDjSet
+                          ? 'bg-neutral-900 dark:bg-neutral-700'
+                          : 'bg-[var(--mf-detail-bright)]'
                       } text-[10px] font-bold text-white shadow-sm`}
                     >
                       {scAvatarInitial}
@@ -543,14 +545,16 @@ export function SearchResultCard({
                 <div class="flex flex-col gap-1.5">
                   {/* Row 1: Size & Stream */}
                   <div class="flex flex-wrap items-center gap-2 text-[11px]">
-                    <div class="rounded-lg border border-[#fed7aa] bg-[#fff8f2] px-2.5 py-1 text-neutral-700 dark:border-orange-500/30 dark:bg-[#1f1915] dark:text-neutral-200">
-                      <span class="font-bold text-[#ea580c] dark:text-orange-400">Size:</span>{' '}
+                    <div class="rounded-lg border border-[var(--mf-detail-border)] bg-[var(--mf-detail-wash)] px-2.5 py-1 text-neutral-700 dark:border-[var(--mf-detail-border)] dark:bg-[var(--mf-detail-wash)] dark:text-neutral-200">
+                      <span class="font-bold text-[var(--mf-detail-accent)] dark:text-[var(--mf-detail-bright)]">
+                        Size:
+                      </span>{' '}
                       <span class="font-medium text-[#9a3412] dark:text-neutral-200">
                         {scSizeSummary}
                       </span>
                     </div>
 
-                    <div class="rounded-lg border border-neutral-200 bg-[#f4f4f5] px-2.5 py-1 text-neutral-700 dark:border-white/10 dark:bg-[#161c28] dark:text-neutral-200">
+                    <div class="rounded-lg border border-neutral-200 bg-[#f4f4f5] px-2.5 py-1 text-neutral-700 dark:border-white/10 dark:bg-[var(--mf-surface-subtle)] dark:text-neutral-200">
                       <span class="font-bold text-neutral-800 dark:text-neutral-300">
                         {scSpecs.isDjSet ? 'Audio:' : 'Stream:'}
                       </span>{' '}
@@ -587,7 +591,7 @@ export function SearchResultCard({
                         value={selectedPresetId}
                         onChange={(e) => setSelectedPresetId(e.currentTarget.value)}
                         disabled={disabled}
-                        class="max-w-full cursor-pointer appearance-none rounded-lg border border-neutral-300 bg-white py-1.5 pl-3 pr-8 text-xs font-medium text-neutral-800 shadow-xs outline-none transition hover:border-neutral-400 focus:border-[#ff5500] focus:ring-1 focus:ring-[#ff5500] disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-200 dark:hover:border-neutral-600 truncate"
+                        class="max-w-full cursor-pointer appearance-none rounded-lg border border-neutral-300 bg-white py-1.5 pl-3 pr-8 text-xs font-medium text-neutral-800 shadow-xs outline-none transition hover:border-neutral-400 focus:border-[var(--mf-detail-bright)] focus:ring-1 focus:ring-[var(--mf-detail-bright)] disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-[var(--surface-input)] dark:text-neutral-200 dark:hover:border-neutral-600 truncate"
                       >
                         {presets.map((preset) => {
                           const bytes = estimatePresetBytes(preset, entry.durationSec ?? null)
@@ -605,7 +609,7 @@ export function SearchResultCard({
                             <option
                               key={preset.id}
                               value={preset.id}
-                              class="bg-white text-neutral-800 dark:bg-[#141824] dark:text-neutral-200"
+                              class="bg-white text-neutral-800 dark:bg-[var(--surface-input)] dark:text-neutral-200"
                             >
                               {preset.label}
                               {sizeStr}
@@ -636,8 +640,8 @@ export function SearchResultCard({
                       title={previewActive ? 'Close audio preview' : 'Play audio preview'}
                       class={`mf-focus-ring flex items-center justify-center rounded-lg border p-2 shadow-xs transition disabled:cursor-not-allowed disabled:opacity-50 ${
                         previewActive
-                          ? 'border-[#ff5500] bg-[#fff5eb] text-[#ff5500] dark:border-orange-500 dark:bg-orange-950/40 dark:text-orange-400'
-                          : 'border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-300 dark:hover:bg-[#1e2536] dark:hover:text-white'
+                          ? 'border-[var(--mf-detail-bright)] bg-[var(--mf-detail-active)] text-[var(--mf-detail-bright)] dark:border-[var(--mf-detail-accent)] dark:bg-[var(--mf-detail-wash)] dark:text-[var(--mf-detail-bright)]'
+                          : 'border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 dark:border-neutral-700 dark:bg-[var(--surface-input)] dark:text-neutral-300 dark:hover:bg-[#1e2536] dark:hover:text-white'
                       }`}
                     >
                       <PlayIcon class="size-4 fill-current" />
@@ -649,7 +653,7 @@ export function SearchResultCard({
                       onClick={() => onQuickDownload(entry, currentPreset)}
                       disabled={disabled}
                       title={`Quick Download as ${currentPreset.label}`}
-                      class="mf-focus-ring flex items-center gap-1.5 rounded-lg bg-[#ff5500] hover:bg-[#e04e00] px-4 py-1.5 text-xs font-bold text-white shadow-sm transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                      class="mf-focus-ring flex items-center gap-1.5 rounded-lg bg-[var(--mf-detail-bright)] hover:bg-[#e04e00] px-4 py-1.5 text-xs font-bold text-white shadow-sm transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <DownloadIcon class="size-4" />
                       <span>Quick Download</span>
@@ -663,13 +667,13 @@ export function SearchResultCard({
                         disabled={disabled}
                         title="More actions"
                         aria-expanded={menuOpen}
-                        class="mf-focus-ring flex items-center justify-center rounded-lg border border-neutral-300 bg-white p-2 text-neutral-600 shadow-xs transition hover:bg-neutral-50 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-300 dark:hover:bg-[#1e2536] dark:hover:text-white"
+                        class="mf-focus-ring flex items-center justify-center rounded-lg border border-neutral-300 bg-white p-2 text-neutral-600 shadow-xs transition hover:bg-neutral-50 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-[var(--surface-input)] dark:text-neutral-300 dark:hover:bg-[#1e2536] dark:hover:text-white"
                       >
                         <MoreVerticalIcon class="size-4" />
                       </button>
 
                       {menuOpen && (
-                        <div class="absolute right-0 bottom-full mb-1 z-30 w-56 rounded-xl border border-neutral-200 bg-white p-1.5 text-xs text-neutral-800 shadow-xl backdrop-blur-md animate-in fade-in zoom-in-95 dark:border-neutral-700/90 dark:bg-[#161c28] dark:text-neutral-200">
+                        <div class="absolute right-0 bottom-full mb-1 z-30 w-56 rounded-xl border border-neutral-200 bg-white p-1.5 text-xs text-neutral-800 shadow-xl backdrop-blur-md animate-in fade-in zoom-in-95 dark:border-neutral-700/90 dark:bg-[var(--mf-surface-subtle)] dark:text-neutral-200">
                           <button
                             type="button"
                             onClick={() => {
@@ -790,7 +794,7 @@ export function SearchResultCard({
                   </span>
                   <span
                     class={`rounded px-1.5 py-0.5 text-[10px] font-extrabold tracking-wide text-white shadow-xs ${
-                      biliSpecs.isMultiPart ? 'bg-[#ea580c]' : 'bg-[#fb7299]'
+                      biliSpecs.isMultiPart ? 'bg-[var(--mf-detail-accent)]' : 'bg-[#fb7299]'
                     }`}
                   >
                     {biliSpecs.partBadge}
@@ -901,15 +905,17 @@ export function SearchResultCard({
                 {/* Spec Badges Row */}
                 <div class="flex flex-wrap items-center gap-2 text-[11px]">
                   {/* Size badge */}
-                  <div class="rounded-lg border border-[#fed7aa] bg-[#fff8f2] px-2.5 py-1 text-neutral-700 dark:border-orange-500/30 dark:bg-[#1f1915] dark:text-neutral-200">
-                    <span class="font-bold text-[#ea580c] dark:text-orange-400">Size:</span>{' '}
+                  <div class="rounded-lg border border-[var(--mf-detail-border)] bg-[var(--mf-detail-wash)] px-2.5 py-1 text-neutral-700 dark:border-[var(--mf-detail-border)] dark:bg-[var(--mf-detail-wash)] dark:text-neutral-200">
+                    <span class="font-bold text-[var(--mf-detail-accent)] dark:text-[var(--mf-detail-bright)]">
+                      Size:
+                    </span>{' '}
                     <span class="font-medium text-[#9a3412] dark:text-neutral-200">
                       {biliSizeSummary}
                     </span>
                   </div>
 
                   {/* Codec / Audio */}
-                  <div class="rounded-lg border border-neutral-200 bg-[#f4f4f5] px-2.5 py-1 text-neutral-700 dark:border-white/10 dark:bg-[#161c28] dark:text-neutral-200">
+                  <div class="rounded-lg border border-neutral-200 bg-[#f4f4f5] px-2.5 py-1 text-neutral-700 dark:border-white/10 dark:bg-[var(--mf-surface-subtle)] dark:text-neutral-200">
                     <span class="font-medium text-neutral-700 dark:text-neutral-300">
                       {biliSpecs.codecAudioBadge}
                     </span>
@@ -933,7 +939,7 @@ export function SearchResultCard({
                         value={selectedPresetId}
                         onChange={(e) => setSelectedPresetId(e.currentTarget.value)}
                         disabled={disabled}
-                        class="max-w-full cursor-pointer appearance-none rounded-lg border border-neutral-300 bg-white py-1.5 pl-3 pr-8 text-xs font-medium text-neutral-800 shadow-xs outline-none transition hover:border-neutral-400 focus:border-[#00aeec] focus:ring-1 focus:ring-[#00aeec] disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-200 dark:hover:border-neutral-600 truncate"
+                        class="max-w-full cursor-pointer appearance-none rounded-lg border border-neutral-300 bg-white py-1.5 pl-3 pr-8 text-xs font-medium text-neutral-800 shadow-xs outline-none transition hover:border-neutral-400 focus:border-[#00aeec] focus:ring-1 focus:ring-[#00aeec] disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-[var(--surface-input)] dark:text-neutral-200 dark:hover:border-neutral-600 truncate"
                       >
                         {presets.map((preset) => {
                           const bytes = estimatePresetBytes(preset, entry.durationSec ?? null)
@@ -941,7 +947,7 @@ export function SearchResultCard({
                             <option
                               key={preset.id}
                               value={preset.id}
-                              class="bg-white text-neutral-800 dark:bg-[#141824] dark:text-neutral-200"
+                              class="bg-white text-neutral-800 dark:bg-[var(--surface-input)] dark:text-neutral-200"
                             >
                               {preset.label}
                               {bytes !== null ? ` ~ ${fmtSize(bytes)}` : ''}
@@ -973,7 +979,7 @@ export function SearchResultCard({
                       class={`mf-focus-ring flex items-center justify-center rounded-lg border p-2 shadow-xs transition disabled:cursor-not-allowed disabled:opacity-50 ${
                         previewActive
                           ? 'border-[#00aeec] bg-[#00aeec]/10 text-[#00aeec] dark:border-[#00aeec] dark:bg-[#00aeec]/20'
-                          : 'border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-300 dark:hover:bg-[#1e2536] dark:hover:text-white'
+                          : 'border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 dark:border-neutral-700 dark:bg-[var(--surface-input)] dark:text-neutral-300 dark:hover:bg-[#1e2536] dark:hover:text-white'
                       }`}
                     >
                       <EyeIcon class="size-4" />
@@ -999,13 +1005,13 @@ export function SearchResultCard({
                         disabled={disabled}
                         title="More actions"
                         aria-expanded={menuOpen}
-                        class="mf-focus-ring flex items-center justify-center rounded-lg border border-neutral-300 bg-white p-2 text-neutral-600 shadow-xs transition hover:bg-neutral-50 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-300 dark:hover:bg-[#1e2536] dark:hover:text-white"
+                        class="mf-focus-ring flex items-center justify-center rounded-lg border border-neutral-300 bg-white p-2 text-neutral-600 shadow-xs transition hover:bg-neutral-50 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-[var(--surface-input)] dark:text-neutral-300 dark:hover:bg-[#1e2536] dark:hover:text-white"
                       >
                         <MoreVerticalIcon class="size-4" />
                       </button>
 
                       {menuOpen && (
-                        <div class="absolute bottom-full right-0 z-30 mb-1 w-56 rounded-xl border border-neutral-200 bg-white p-1.5 text-xs text-neutral-800 shadow-xl backdrop-blur-md animate-in fade-in zoom-in-95 dark:border-neutral-700/90 dark:bg-[#161c28] dark:text-neutral-200">
+                        <div class="absolute bottom-full right-0 z-30 mb-1 w-56 rounded-xl border border-neutral-200 bg-white p-1.5 text-xs text-neutral-800 shadow-xl backdrop-blur-md animate-in fade-in zoom-in-95 dark:border-neutral-700/90 dark:bg-[var(--mf-surface-subtle)] dark:text-neutral-200">
                           <button
                             type="button"
                             onClick={() => {
@@ -1098,7 +1104,7 @@ export function SearchResultCard({
                   title="Play inline video preview"
                   class="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity duration-200 hover:opacity-100 hover:bg-black/45 disabled:cursor-not-allowed"
                 >
-                  <span class="flex items-center gap-1.5 rounded-full bg-[#ff5500] px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-md transition-transform duration-150 hover:scale-105 active:scale-95">
+                  <span class="flex items-center gap-1.5 rounded-full bg-[var(--mf-detail-bright)] px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-md transition-transform duration-150 hover:scale-105 active:scale-95">
                     <PlayIcon class="size-3.5 fill-white" />
                     <span>Preview</span>
                   </span>
@@ -1135,7 +1141,7 @@ export function SearchResultCard({
                     </span>
                   ) : (
                     <>
-                      <span class="rounded bg-[#ff5500] px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm">
+                      <span class="rounded bg-[var(--mf-detail-bright)] px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-sm">
                         {specs.resolutionBadge}
                       </span>
                       <span class="rounded border border-white/10 bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-sm backdrop-blur-md">
@@ -1166,7 +1172,7 @@ export function SearchResultCard({
                 {/* Title */}
                 <div>
                   <h3
-                    class="cursor-pointer text-[14.5px] font-bold leading-snug tracking-tight text-neutral-900 transition hover:text-[#ff5500] dark:text-white dark:hover:text-orange-400 sm:text-[15.5px]"
+                    class="cursor-pointer text-[14.5px] font-bold leading-snug tracking-tight text-neutral-900 transition hover:text-[var(--mf-detail-bright)] dark:text-white dark:hover:text-[var(--mf-detail-bright)] sm:text-[15.5px]"
                     title={entry.title}
                     onClick={() => onOpenInDownloader(entry)}
                   >
@@ -1233,15 +1239,17 @@ export function SearchResultCard({
                 {!downloadDisabled && (
                   <div class="flex flex-wrap items-center gap-2 text-[11px]">
                     {/* Format-linked Dynamic Size Badge */}
-                    <div class="rounded-lg border border-[#fed7aa] bg-[#fff8f2] px-2.5 py-1 text-neutral-700 dark:border-orange-500/30 dark:bg-[#1f1915] dark:text-neutral-200">
-                      <span class="font-bold text-[#ea580c] dark:text-orange-400">Size:</span>{' '}
+                    <div class="rounded-lg border border-[var(--mf-detail-border)] bg-[var(--mf-detail-wash)] px-2.5 py-1 text-neutral-700 dark:border-[var(--mf-detail-border)] dark:bg-[var(--mf-detail-wash)] dark:text-neutral-200">
+                      <span class="font-bold text-[var(--mf-detail-accent)] dark:text-[var(--mf-detail-bright)]">
+                        Size:
+                      </span>{' '}
                       <span class="font-medium text-[#9a3412] dark:text-neutral-200">
                         {videoSizeSummary}
                       </span>
                     </div>
 
                     {/* Audio stream intelligence */}
-                    <div class="rounded-lg border border-neutral-200 bg-[#f4f4f5] px-2.5 py-1 text-neutral-700 dark:border-white/10 dark:bg-[#161c28] dark:text-neutral-200">
+                    <div class="rounded-lg border border-neutral-200 bg-[#f4f4f5] px-2.5 py-1 text-neutral-700 dark:border-white/10 dark:bg-[var(--mf-surface-subtle)] dark:text-neutral-200">
                       <span class="font-bold text-neutral-800 dark:text-neutral-300">Audio:</span>{' '}
                       <span class="font-medium text-neutral-600 dark:text-neutral-300">
                         {audioSub.audioBadge}
@@ -1282,7 +1290,7 @@ export function SearchResultCard({
                             value={selectedPresetId}
                             onChange={(e) => setSelectedPresetId(e.currentTarget.value)}
                             disabled={disabled || downloadDisabled}
-                            class="max-w-full cursor-pointer appearance-none rounded-lg border border-neutral-300 bg-white py-1.5 pl-3 pr-8 text-xs font-medium text-neutral-800 shadow-xs outline-none transition hover:border-neutral-400 focus:border-[#ff5500] focus:ring-1 focus:ring-[#ff5500] disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-200 dark:hover:border-neutral-600 truncate"
+                            class="max-w-full cursor-pointer appearance-none rounded-lg border border-neutral-300 bg-white py-1.5 pl-3 pr-8 text-xs font-medium text-neutral-800 shadow-xs outline-none transition hover:border-neutral-400 focus:border-[var(--mf-detail-bright)] focus:ring-1 focus:ring-[var(--mf-detail-bright)] disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-[var(--surface-input)] dark:text-neutral-200 dark:hover:border-neutral-600 truncate"
                           >
                             {SEARCH_FORMAT_PRESETS.map((preset) => {
                               const bytes = estimatePresetBytes(preset, entry.durationSec ?? null)
@@ -1290,7 +1298,7 @@ export function SearchResultCard({
                                 <option
                                   key={preset.id}
                                   value={preset.id}
-                                  class="bg-white text-neutral-800 dark:bg-[#141824] dark:text-neutral-200"
+                                  class="bg-white text-neutral-800 dark:bg-[var(--surface-input)] dark:text-neutral-200"
                                 >
                                   {preset.label}
                                   {bytes !== null ? ` ~ ${fmtSize(bytes)}` : ''}
@@ -1329,8 +1337,8 @@ export function SearchResultCard({
                         title={previewActive ? 'Close inline preview' : 'Quick preview video'}
                         class={`mf-focus-ring flex items-center justify-center rounded-lg border p-2 shadow-xs transition disabled:cursor-not-allowed disabled:opacity-50 ${
                           previewActive
-                            ? 'border-[#ff5500] bg-[#fff5eb] text-[#ff5500] dark:border-orange-500 dark:bg-orange-950/40 dark:text-orange-400'
-                            : 'border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-300 dark:hover:bg-[#1e2536] dark:hover:text-white'
+                            ? 'border-[var(--mf-detail-bright)] bg-[var(--mf-detail-active)] text-[var(--mf-detail-bright)] dark:border-[var(--mf-detail-accent)] dark:bg-[var(--mf-detail-wash)] dark:text-[var(--mf-detail-bright)]'
+                            : 'border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 dark:border-neutral-700 dark:bg-[var(--surface-input)] dark:text-neutral-300 dark:hover:bg-[#1e2536] dark:hover:text-white'
                         }`}
                       >
                         <EyeIcon class="size-4" />
@@ -1374,7 +1382,7 @@ export function SearchResultCard({
                             ? 'Waiting for link validation'
                             : `Quick Download as ${currentPreset.label}`
                         }
-                        class="mf-focus-ring flex items-center gap-1.5 rounded-lg bg-[#ff5500] hover:bg-[#e04e00] px-4 py-1.5 text-xs font-bold text-white shadow-sm transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                        class="mf-focus-ring flex items-center gap-1.5 rounded-lg bg-[var(--mf-detail-bright)] hover:bg-[#e04e00] px-4 py-1.5 text-xs font-bold text-white shadow-sm transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <DownloadIcon class="size-4" />
                         <span>Quick Download</span>
@@ -1389,13 +1397,13 @@ export function SearchResultCard({
                         disabled={disabled}
                         title="More actions"
                         aria-expanded={menuOpen}
-                        class="mf-focus-ring flex items-center justify-center rounded-lg border border-neutral-300 bg-white p-2 text-neutral-600 shadow-xs transition hover:bg-neutral-50 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-[#141824] dark:text-neutral-300 dark:hover:bg-[#1e2536] dark:hover:text-white"
+                        class="mf-focus-ring flex items-center justify-center rounded-lg border border-neutral-300 bg-white p-2 text-neutral-600 shadow-xs transition hover:bg-neutral-50 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-[var(--surface-input)] dark:text-neutral-300 dark:hover:bg-[#1e2536] dark:hover:text-white"
                       >
                         <MoreVerticalIcon class="size-4" />
                       </button>
 
                       {menuOpen && (
-                        <div class="absolute right-0 bottom-full mb-1 z-30 w-56 rounded-xl border border-neutral-200 bg-white p-1.5 text-xs text-neutral-800 shadow-xl backdrop-blur-md animate-in fade-in zoom-in-95 dark:border-neutral-700/90 dark:bg-[#161c28] dark:text-neutral-200">
+                        <div class="absolute right-0 bottom-full mb-1 z-30 w-56 rounded-xl border border-neutral-200 bg-white p-1.5 text-xs text-neutral-800 shadow-xl backdrop-blur-md animate-in fade-in zoom-in-95 dark:border-neutral-700/90 dark:bg-[var(--mf-surface-subtle)] dark:text-neutral-200">
                           <button
                             type="button"
                             onClick={() => {

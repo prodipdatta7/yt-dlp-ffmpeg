@@ -46,6 +46,7 @@ import {
   type ViewId,
 } from './signals/uiState'
 import { appendLogEntry, setLogHistory } from './signals/logState'
+import { lastSearchedQuery, searchError, searchResults, searching } from './signals/searchState'
 import {
   activeJob,
   activeJobsById,
@@ -162,7 +163,7 @@ function NavRail({
 }) {
   const view = activeView.value
   return (
-    <nav class="flex w-14 shrink-0 flex-col items-center gap-1.5 border-r border-line bg-recess py-3 sm:w-16">
+    <nav class="mf-nav-rail flex w-14 shrink-0 flex-col items-center gap-1.5 border-r border-line bg-recess py-3 sm:w-16">
       {NAV_ITEMS.map(({ id, label, Icon }) => {
         const isActive = view === id
         return (
@@ -172,7 +173,7 @@ function NavRail({
             title={label}
             aria-label={label}
             aria-current={isActive ? 'page' : undefined}
-            class={`mf-focus-ring group relative flex size-10 items-center justify-center rounded-xl transition-all duration-150 sm:size-11 ${
+            class={`mf-focus-ring group relative flex size-10 items-center justify-center rounded-xl transition-[background-color,color,box-shadow,transform] duration-150 sm:size-11 ${
               isActive
                 ? 'bg-gradient-to-br from-sky-500/25 to-indigo-500/20 text-sky-300 shadow-inner'
                 : 'text-slate-500 hover:bg-wash-2 hover:text-slate-200'
@@ -185,6 +186,7 @@ function NavRail({
               <span class="mf-breathe absolute right-2 top-2 size-1.5 rounded-full bg-emerald-400" />
             )}
             <Icon class="size-5" />
+            <span class="mf-digital-only mf-nav-label">{label}</span>
           </button>
         )
       })}
@@ -283,19 +285,24 @@ function HeroState() {
     window.dispatchEvent(new CustomEvent('mf:focus-url'))
   }
   return (
-    <div class="flex min-h-0 flex-1 items-center justify-center">
-      <div class="w-full max-w-xl text-center">
+    <div class="mf-home-shell flex min-h-0 flex-1 items-center justify-center">
+      <div class="mf-home-grid w-full max-w-xl text-center">
         <button
           type="button"
           onClick={focusUrl}
-          class="mf-focus-ring group mx-auto flex w-full cursor-pointer flex-col items-center rounded-2xl border border-dashed border-slate-600/60 bg-[var(--surface-card-lo)] px-6 py-9 transition-all duration-200 hover:border-sky-400/70 hover:bg-[var(--step-active-bg)]"
+          class="mf-welcome mf-focus-ring group mx-auto flex w-full cursor-pointer flex-col items-center rounded-2xl border border-dashed border-slate-600/60 bg-[var(--surface-card-lo)] px-6 py-9 transition-[background-color,border-color,box-shadow,transform] duration-200 hover:border-sky-400/70 hover:bg-[var(--step-active-bg)]"
         >
+          <span class="mf-digital-only mf-home-eyebrow">YOUR NEXT OFFLINE FAVORITE</span>
+          <span class="mf-digital-only mf-home-headline">
+            Great media.
+            <span>Yours to keep.</span>
+          </span>
           <span class="mf-hairline mb-4 flex size-14 items-center justify-center rounded-3xl transition-transform duration-200 group-hover:scale-105">
             <span class="flex size-full items-center justify-center rounded-3xl bg-gradient-to-br from-go-500/25 to-indigo-500/20 shadow-inner">
               <LinkIcon class="size-6 text-sky-400" />
             </span>
           </span>
-          <p class="text-base font-bold tracking-tight text-ink">
+          <p class="mf-welcome-prompt text-base font-bold tracking-tight text-ink">
             Paste a link, or drop one anywhere.
           </p>
           <p class="mt-1.5 max-w-sm text-xs leading-relaxed text-slate-500">
@@ -303,9 +310,34 @@ function HeroState() {
             pipeline. Press <kbd class="mf-kbd">Ctrl</kbd> <kbd class="mf-kbd">K</kbd> to jump to
             the link bar.
           </p>
+          <span class="mf-digital-only mf-welcome-action">
+            Add your first link <span aria-hidden="true">↗</span>
+          </span>
+          <svg
+            class="mf-digital-only mf-signal-art"
+            viewBox="0 0 480 72"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path d="M0 36H480" stroke="currentColor" strokeOpacity="0.12" />
+            <path
+              d="M0 36H56L66 25L78 47L90 13L103 60L116 5L130 66L144 18L158 51L170 28L180 36H216L228 17L240 54L252 6L266 66L280 13L294 58L308 25L320 44L332 36H480"
+              stroke="currentColor"
+              strokeWidth="2"
+            />
+            <circle
+              cx="392"
+              cy="36"
+              r="20"
+              fill="white"
+              stroke="currentColor"
+              strokeOpacity="0.25"
+            />
+            <path d="M388 27L401 36L388 45V27Z" fill="currentColor" />
+          </svg>
         </button>
 
-        <div class="mt-6 grid grid-cols-3 gap-3">
+        <div class="mf-workflow-grid mt-6 grid grid-cols-3 gap-3">
           {[
             { Icon: SlidersIcon, title: 'Analyze', text: 'Every stream mapped before you commit' },
             {
@@ -317,10 +349,13 @@ function HeroState() {
           ].map(({ Icon, title, text }, i) => (
             <div
               key={title}
-              class="mf-card mf-card-hover mf-rise p-3.5 text-left"
+              class="mf-workflow-card mf-card mf-card-hover mf-rise p-3.5 text-left"
               style={`animation-delay: ${80 + i * 70}ms`}
             >
-              <span class="flex size-8 items-center justify-center rounded-lg border border-line bg-wash-1 text-sky-300 shadow-inner">
+              <span class="mf-digital-only mf-step-number" aria-hidden="true">
+                0{i + 1}
+              </span>
+              <span class="mf-workflow-icon flex size-8 items-center justify-center rounded-lg border border-line bg-wash-1 text-sky-300 shadow-inner">
                 <Icon class="size-4" />
               </span>
               <p class="mt-2.5 text-xs font-semibold text-slate-200">{title}</p>
@@ -328,7 +363,8 @@ function HeroState() {
             </div>
           ))}
         </div>
-        <div class="mt-5 flex flex-wrap items-center justify-center gap-1.5">
+        <div class="mf-source-strip mt-5 flex flex-wrap items-center justify-center gap-1.5">
+          <span class="mf-digital-only mf-source-label">ALL YOUR FAVORITES</span>
           {POPULAR_SOURCES.map((site) => (
             <span
               key={site}
@@ -338,7 +374,7 @@ function HeroState() {
             </span>
           ))}
         </div>
-        <p class="mt-3 text-[11px] text-slate-600">
+        <p class="mf-source-note mt-3 text-[11px] text-slate-600">
           Works with any media link the engine supports — hundreds of sites beyond these examples.
         </p>
       </div>
@@ -930,9 +966,19 @@ export function App() {
     advancedReady &&
     !busy &&
     (!isPlaylist || playlistSelected > 0)
+  const isSearchDefault =
+    activeView.value === 'search' &&
+    lastSearchedQuery.value === null &&
+    searchResults.value.length === 0 &&
+    !searching.value &&
+    searchError.value === null
 
   return (
-    <div class="flex h-full flex-col">
+    <div
+      class={`flex h-full flex-col ${activeView.value === 'search' ? 'mf-search-active' : ''} ${
+        isSearchDefault ? 'mf-search-default' : ''
+      }`}
+    >
       <TitleBar />
 
       <div class="flex min-h-0 min-w-0 flex-1">
@@ -943,11 +989,15 @@ export function App() {
         />
 
         {activeView.value === 'settings' ? (
-          <main class="mf-rise min-h-0 min-w-0 flex-1 overflow-y-auto px-6 py-8">
+          <main class="mf-settings-workspace mf-rise min-h-0 min-w-0 flex-1 overflow-y-auto px-6 py-6 sm:px-8">
             <SettingsScreen />
           </main>
         ) : activeView.value === 'search' ? (
-          <main class="mf-rise flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pb-3 pt-3.5">
+          <main
+            class={`mf-search-workspace mf-rise flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pb-3 pt-3.5 ${
+              isSearchDefault ? 'mf-search-default-workspace' : ''
+            }`}
+          >
             <SearchScreen
               onOpenInDownloader={openSearchResultInDownloader}
               onAddToQueue={(items) => setQueueDraft(items)}
@@ -956,7 +1006,36 @@ export function App() {
             />
           </main>
         ) : activeView.value === 'queue' ? (
-          <main class="mf-rise min-h-0 min-w-0 flex-1 overflow-y-auto px-6 py-8">
+          <main
+            class={`mf-queue-workspace mf-rise flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pb-3 pt-3.5 ${
+              queueRows.value.length === 0 ? 'mf-queue-idle' : 'overflow-y-auto'
+            }`}
+          >
+            <div class="mf-digital-only mf-workspace-heading">
+              <div>
+                <p class="mf-workspace-kicker">BATCH ORCHESTRATION</p>
+                <h2>
+                  {queueRows.value.length === 0 ? (
+                    <>
+                      Download Queue<span>.</span>
+                    </>
+                  ) : (
+                    <>
+                      Active Pipeline<span>.</span>
+                    </>
+                  )}
+                </h2>
+              </div>
+              <span class="mf-workspace-hint">
+                {queueRows.value.length === 0
+                  ? 'Sequential · Parallel Concurrency · Auto-Resume'
+                  : queueRunning.value
+                    ? queueRunMode.value === 'parallel'
+                      ? 'Parallel Execution Active'
+                      : 'Sequential Download In Progress'
+                    : 'Queue Settled'}
+              </span>
+            </div>
             <QueueList
               onStopAfterCurrent={
                 queueRunMode.value === 'sequential' ? stopAfterCurrent : undefined
@@ -964,10 +1043,32 @@ export function App() {
               onCancelAll={cancelActive}
               onCancelRow={queueRunMode.value === 'parallel' ? cancelQueueRow : undefined}
               onRetryRow={retryQueueRow}
+              onJumpToDownloader={() => {
+                activeView.value = 'download'
+                window.dispatchEvent(new CustomEvent('mf:focus-url'))
+              }}
+              onJumpToSearch={() => {
+                activeView.value = 'search'
+                window.dispatchEvent(new CustomEvent('mf:focus-search'))
+              }}
             />
           </main>
         ) : (
-          <main ref={scrollRef} class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pb-3 pt-3.5">
+          <main
+            ref={scrollRef}
+            class={`mf-download-workspace flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pb-3 pt-3.5 ${!analyzing.value && !result ? 'mf-download-idle' : ''}`}
+          >
+            {!analyzing.value && !result && (
+              <div class="mf-digital-only mf-workspace-heading">
+                <div>
+                  <p class="mf-workspace-kicker">DOWNLOADER</p>
+                  <h2>
+                    Your media workspace<span>.</span>
+                  </h2>
+                </div>
+                <span class="mf-workspace-hint">Video · Audio · Playlists</span>
+              </div>
+            )}
             <UrlBar />
 
             {!analyzing.value && !result ? (
@@ -1013,7 +1114,7 @@ export function App() {
                             role="tab"
                             aria-selected={streamTab === id}
                             onClick={() => setStreamTab(id)}
-                            class={`mf-focus-ring flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${
+                            class={`mf-focus-ring flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-[background-color,color,box-shadow] duration-150 ${
                               streamTab === id
                                 ? 'bg-gradient-to-br from-sky-500 to-indigo-500 text-white shadow shadow-go-500/25'
                                 : 'text-slate-400 hover:bg-wash-2 hover:text-ink'
@@ -1134,7 +1235,7 @@ export function App() {
                           <button
                             onClick={() => void startDownload('parallel')}
                             disabled={!canStart}
-                            className={`mf-focus-ring w-full rounded-xl bg-gradient-to-r from-go-500 to-go-400 px-5 py-3 text-sm font-bold text-white shadow-xl shadow-go-500/30 transition-all duration-150 hover:brightness-110 hover:shadow-go-400/40 active:scale-[0.98] ${
+                            className={`mf-focus-ring w-full rounded-xl bg-gradient-to-r from-go-500 to-go-400 px-5 py-3 text-sm font-bold text-white shadow-xl shadow-go-500/30 transition-[background-color,box-shadow,filter,opacity,transform] duration-150 hover:brightness-110 hover:shadow-go-400/40 active:scale-[0.98] ${
                               canStart ? '' : 'cursor-not-allowed opacity-40 shadow-none'
                             }`}
                           >
@@ -1147,7 +1248,7 @@ export function App() {
                         <button
                           onClick={() => void startDownload()}
                           disabled={!canStart}
-                          className={`mf-focus-ring mt-2 w-full shrink-0 rounded-xl bg-gradient-to-r from-go-500 to-go-400 px-5 py-3 text-sm font-bold text-white shadow-xl shadow-go-500/30 transition-all duration-150 hover:brightness-110 hover:shadow-go-400/40 active:scale-[0.98] ${
+                          className={`mf-focus-ring mt-2 w-full shrink-0 rounded-xl bg-gradient-to-r from-go-500 to-go-400 px-5 py-3 text-sm font-bold text-white shadow-xl shadow-go-500/30 transition-[background-color,box-shadow,filter,opacity,transform] duration-150 hover:brightness-110 hover:shadow-go-400/40 active:scale-[0.98] ${
                             canStart ? '' : 'cursor-not-allowed opacity-40 shadow-none'
                           }`}
                         >

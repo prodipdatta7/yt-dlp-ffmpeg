@@ -25,6 +25,82 @@ function SearchEmptyState() {
     ? SEARCH_PLATFORMS.find((platform) => platform.id === lastSearchedQuery.value?.platform)
     : undefined
   const emptyFederatedSearch = lastPlatform?.discovery.kind === 'public-web'
+  const isInitialSearch = lastSearchedQuery.value === null && searchError.value === null
+
+  function focusSearch(query?: string, platformId?: string): void {
+    if (query !== undefined) searchQuery.value = query
+    if (platformId !== undefined) searchPlatform.value = platformId
+    window.dispatchEvent(new CustomEvent('mf:focus-search'))
+  }
+
+  if (isInitialSearch) {
+    const starterSearches = [
+      { label: 'Music mixes', query: 'late night jazz mix', accent: 'coral' },
+      { label: 'Creative tutorials', query: 'motion design tutorial', accent: 'blue' },
+      { label: 'Live sessions', query: 'live studio performance', accent: 'teal' },
+    ] as const
+
+    return (
+      <section class="mf-search-launchpad" aria-label="Start a search">
+        <div class="mf-search-launchpad-copy">
+          <p class="mf-search-launchpad-kicker">DISCOVERY ENGINE</p>
+          <h2>
+            Find the next thing
+            <span> worth keeping.</span>
+          </h2>
+          <p>
+            Search supported platforms, inspect the details, then send what matters straight to your
+            download queue.
+          </p>
+
+          <div class="mf-search-starters" aria-label="Starter searches">
+            <span>START WITH A SIGNAL</span>
+            <div>
+              {starterSearches.map(({ label, query, accent }) => (
+                <button
+                  key={query}
+                  type="button"
+                  onClick={() => focusSearch(query)}
+                  class={`mf-focus-ring mf-search-starter mf-search-starter-${accent}`}
+                >
+                  {label}
+                  <span aria-hidden="true">↗</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div class="mf-search-orbit" aria-hidden="true">
+          <span class="mf-search-orbit-ring mf-search-orbit-ring-one" />
+          <span class="mf-search-orbit-ring mf-search-orbit-ring-two" />
+          <span class="mf-search-orbit-ring mf-search-orbit-ring-three" />
+          <span class="mf-search-orbit-node mf-search-orbit-node-coral" />
+          <span class="mf-search-orbit-node mf-search-orbit-node-teal" />
+          <span class="mf-search-orbit-core">
+            <SearchIcon class="size-8" />
+          </span>
+          <span class="mf-search-orbit-caption">SCAN / DISCOVER</span>
+        </div>
+
+        <div class="mf-search-platform-rail">
+          <span>CHOOSE A SOURCE</span>
+          <div>
+            {SEARCH_PLATFORMS.map((platform) => (
+              <button
+                key={platform.id}
+                type="button"
+                onClick={() => focusSearch(undefined, platform.id)}
+                class="mf-focus-ring"
+              >
+                {platform.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+    )
+  }
 
   return (
     <div class="flex min-h-0 flex-1 items-center justify-center">
@@ -88,6 +164,8 @@ export function SearchScreen({
   onQuickDownload?: (item: SearchResultItem, preset: FormatPresetOption) => void
   busy: boolean
 }) {
+  const isInitialSearch = lastSearchedQuery.value === null && searchError.value === null
+
   async function runSearch() {
     const platform = searchPlatform.value
     const query = searchQuery.value.trim()
@@ -130,7 +208,18 @@ export function SearchScreen({
   }
 
   return (
-    <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+    <div class="mf-search-content flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+      {isInitialSearch && (
+        <div class="mf-digital-only mf-search-default-heading mf-workspace-heading">
+          <div>
+            <p class="mf-workspace-kicker">DISCOVER</p>
+            <h2>
+              Find your next favorite<span>.</span>
+            </h2>
+          </div>
+          <span class="mf-workspace-hint">Search · Preview · Queue</span>
+        </div>
+      )}
       <SearchBar onSubmit={() => void runSearch()} />
 
       {searchError.value && (

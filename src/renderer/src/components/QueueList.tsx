@@ -18,12 +18,14 @@ import {
   CheckIcon,
   ClockIcon,
   CloseIcon,
+  DownloadIcon,
   FolderIcon,
   GaugeIcon,
   HardDriveIcon,
   InfoIcon,
   PauseIcon,
   PlayIcon,
+  SearchIcon,
   Spinner,
 } from './icons'
 
@@ -47,16 +49,234 @@ function StatusGlyph({ status }: { status: string }) {
   return <ClockIcon class="size-3.5 shrink-0 text-slate-600" />
 }
 
+function QueuePipelineArt() {
+  return (
+    <svg viewBox="0 0 340 240" fill="none" aria-hidden="true" class="size-full text-emerald-600">
+      <defs>
+        <linearGradient id="queue-stream-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#245cda" stop-opacity="0.35" />
+          <stop offset="50%" stop-color="#10b981" stop-opacity="0.9" />
+          <stop offset="100%" stop-color="#087f78" stop-opacity="0.4" />
+        </linearGradient>
+        <linearGradient id="queue-core-glow" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#d1fae5" />
+          <stop offset="100%" stop-color="#e0f2fe" />
+        </linearGradient>
+      </defs>
+
+      {/* Grid Blueprint & Coordinate Crosses */}
+      <circle
+        cx="170"
+        cy="115"
+        r="90"
+        stroke="currentColor"
+        stroke-opacity="0.1"
+        stroke-dasharray="3 3"
+      />
+      <circle cx="170" cy="115" r="64" stroke="currentColor" stroke-opacity="0.15" />
+
+      {/* Stream Lanes */}
+      <path
+        d="M20 75 C 80 75, 100 115, 170 115"
+        stroke="url(#queue-stream-grad)"
+        stroke-width="2"
+        stroke-linecap="round"
+      />
+      <path
+        d="M20 115 L 170 115"
+        stroke="url(#queue-stream-grad)"
+        stroke-width="2"
+        stroke-linecap="round"
+      />
+      <path
+        d="M20 155 C 80 155, 100 115, 170 115"
+        stroke="url(#queue-stream-grad)"
+        stroke-width="2"
+        stroke-linecap="round"
+      />
+
+      {/* Outflow Parallel Worker Channels */}
+      <path
+        d="M170 115 C 220 115, 240 65, 310 65"
+        stroke="currentColor"
+        stroke-opacity="0.45"
+        stroke-width="2"
+        stroke-dasharray="4 3"
+      />
+      <path d="M170 115 L 310 115" stroke="currentColor" stroke-opacity="0.65" stroke-width="2" />
+      <path
+        d="M170 115 C 220 115, 240 165, 310 165"
+        stroke="currentColor"
+        stroke-opacity="0.45"
+        stroke-width="2"
+        stroke-dasharray="4 3"
+      />
+
+      {/* Input Ingestion Nodes */}
+      <circle cx="28" cy="75" r="6" fill="#edf3ff" stroke="#245cda" stroke-width="2" />
+      <circle cx="28" cy="115" r="6" fill="#edf3ff" stroke="#245cda" stroke-width="2" />
+      <circle cx="28" cy="155" r="6" fill="#edf3ff" stroke="#245cda" stroke-width="2" />
+
+      {/* Center Engine Hub */}
+      <circle
+        cx="170"
+        cy="115"
+        r="32"
+        fill="url(#queue-core-glow)"
+        stroke="#10b981"
+        stroke-width="1.5"
+      />
+      <circle cx="170" cy="115" r="24" fill="#ffffff" stroke="#10b981" stroke-opacity="0.3" />
+
+      {/* Icon in hub */}
+      <path
+        d="M162 107 H178 M162 115 H178 M162 123 H174"
+        stroke="#15803d"
+        stroke-width="2"
+        stroke-linecap="round"
+      />
+      <circle cx="175" cy="123" r="1.5" fill="#10b981" />
+
+      {/* Output Stream Badges */}
+      <circle cx="304" cy="65" r="5" fill="#10b981" />
+      <circle cx="304" cy="115" r="5" fill="#10b981" />
+      <circle cx="304" cy="165" r="5" fill="#10b981" />
+
+      {/* Telemetry Labels */}
+      <text
+        x="20"
+        y="52"
+        fill="#62738e"
+        font-size="8.5"
+        font-family="monospace"
+        font-weight="700"
+        letter-spacing="1"
+      >
+        QUEUE
+      </text>
+      <text
+        x="138"
+        y="166"
+        fill="#15803d"
+        font-size="8.5"
+        font-family="monospace"
+        font-weight="700"
+        letter-spacing="1.5"
+      >
+        PARALLEL (N=3)
+      </text>
+      <text
+        x="254"
+        y="52"
+        fill="#62738e"
+        font-size="8.5"
+        font-family="monospace"
+        font-weight="700"
+        letter-spacing="1"
+      >
+        VERIFIED
+      </text>
+    </svg>
+  )
+}
+
+function QueueEmptyState({
+  onJumpToDownloader,
+  onJumpToSearch,
+}: {
+  onJumpToDownloader?: () => void
+  onJumpToSearch?: () => void
+}) {
+  return (
+    <section class="mf-queue-launchpad" aria-label="Queue workspace launchpad">
+      <div class="mf-queue-launchpad-copy">
+        <p class="mf-queue-launchpad-kicker">BATCH ORCHESTRATION</p>
+        <h2>
+          Multi-stream power.
+          <span> Zero bottlenecks.</span>
+        </h2>
+        <p>
+          Queue entire playlists, audio albums, or multi-select search results. MediaForge
+          orchestrates stream downloads, FFmpeg muxing, and auto-resume without stalling your
+          workflow.
+        </p>
+
+        <div class="mf-queue-starters" aria-label="Quick launch actions">
+          <span>GET STARTED</span>
+          <div>
+            {onJumpToDownloader && (
+              <button
+                type="button"
+                onClick={onJumpToDownloader}
+                class="mf-focus-ring mf-queue-starter mf-queue-starter-blue"
+              >
+                <DownloadIcon class="size-3.5" />
+                Analyze in Downloader
+                <kbd class="mf-kbd ml-1">Ctrl+1</kbd>
+                <span aria-hidden="true">↗</span>
+              </button>
+            )}
+            {onJumpToSearch && (
+              <button
+                type="button"
+                onClick={onJumpToSearch}
+                class="mf-focus-ring mf-queue-starter mf-queue-starter-teal"
+              >
+                <SearchIcon class="size-3.5" />
+                Find in Search
+                <kbd class="mf-kbd ml-1">Ctrl+2</kbd>
+                <span aria-hidden="true">↗</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div class="mf-queue-pipeline" aria-hidden="true">
+        <QueuePipelineArt />
+      </div>
+
+      <div class="mf-queue-workflow-strip">
+        <div class="mf-queue-workflow-item">
+          <span class="mf-queue-step-num">01</span>
+          <p class="mf-queue-step-title">Batch Ingestion</p>
+          <p class="mf-queue-step-desc">
+            Pick playlist entries or select multiple search results at once
+          </p>
+        </div>
+        <div class="mf-queue-workflow-item">
+          <span class="mf-queue-step-num">02</span>
+          <p class="mf-queue-step-title">Adaptive Concurrency</p>
+          <p class="mf-queue-step-desc">
+            Sequential or 2–5 parallel streams with disk space preflight
+          </p>
+        </div>
+        <div class="mf-queue-workflow-item">
+          <span class="mf-queue-step-num">03</span>
+          <p class="mf-queue-step-title">Crash-Proof Resume</p>
+          <p class="mf-queue-step-desc">
+            Retains .part files on failure; resume anytime without restarting
+          </p>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 export function QueueList({
   onStopAfterCurrent,
   onCancelAll,
   onCancelRow,
   onRetryRow,
+  onJumpToDownloader,
+  onJumpToSearch,
 }: {
   onStopAfterCurrent?: () => void
   onCancelAll?: () => void
   onCancelRow?: (url: string) => void
   onRetryRow?: (url: string) => void
+  onJumpToDownloader?: () => void
+  onJumpToSearch?: () => void
 }) {
   const rows = queueRows.value
   const running = queueRunning.value
@@ -89,23 +309,25 @@ export function QueueList({
 
   const doneCount = rows.filter((r) => r.status === 'done').length
   const failedCount = rows.filter((r) => r.status === 'failed').length
+  const downloadingCount = rows.filter((r) => r.status === 'downloading').length
   const settledCount = rows.filter(
     (r) => r.status === 'done' || r.status === 'failed' || r.status === 'cancelled',
   ).length
   const allSettled = rows.length > 0 && !running
 
+  const aggregateSpeedBps = running
+    ? rows.reduce((acc, r) => {
+        if (r.status !== 'downloading') return acc
+        const ev =
+          (r.jobId ? events[r.jobId] : undefined) ??
+          (r.status === 'downloading' ? legacyEvent : null)
+        return acc + (ev?.speedBps ?? 0)
+      }, 0)
+    : 0
+
   if (rows.length === 0) {
     return (
-      <div class="rounded-2xl border border-dashed border-slate-700/50 px-6 py-16 text-center">
-        <span class="mx-auto mb-4 flex size-12 items-center justify-center rounded-2xl border border-line bg-wash-1 shadow-inner">
-          <ClockIcon class="size-5 text-slate-600" />
-        </span>
-        <p class="text-sm font-medium text-slate-300">Queue is empty</p>
-        <p class="mx-auto mt-1.5 max-w-sm text-xs leading-relaxed text-slate-600">
-          Analyze a playlist in the Downloader view and pick entries — run them sequentially or in
-          parallel from there.
-        </p>
-      </div>
+      <QueueEmptyState onJumpToDownloader={onJumpToDownloader} onJumpToSearch={onJumpToSearch} />
     )
   }
 
@@ -116,7 +338,7 @@ export function QueueList({
           <h3 class="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
             Download Queue
           </h3>
-          <span class="mf-num rounded-full border border-line-strong bg-wash-1 px-2 py-0.5 text-[11px] font-semibold text-slate-300">
+          <span class="mf-num rounded-full border border-line-strong bg-wash-1 px-2.5 py-0.5 text-[11px] font-semibold text-slate-300">
             {doneCount}/{rows.length} complete
           </span>
           {failedCount > 0 && (
@@ -125,9 +347,15 @@ export function QueueList({
             </span>
           )}
           {running && (
-            <span class="flex items-center gap-1.5 rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[11px] font-semibold text-sky-300">
-              <span class="mf-breathe size-1.5 rounded-full bg-sky-400" />
-              {parallel ? 'parallel' : 'running'}
+            <span class="flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-300">
+              <span class="mf-breathe size-1.5 rounded-full bg-emerald-400" />
+              {parallel ? `${downloadingCount || 1} parallel active` : 'running sequential'}
+            </span>
+          )}
+          {running && aggregateSpeedBps > 0 && (
+            <span class="mf-num hidden items-center gap-1 rounded-full border border-line bg-wash-1 px-2.5 py-0.5 text-[11px] font-medium text-slate-400 sm:inline-flex">
+              <GaugeIcon class="size-3 text-sky-400" />
+              {fmtSpeed(aggregateSpeedBps)}
             </span>
           )}
         </div>
