@@ -11,11 +11,11 @@ export function SectionLabel({
 }) {
   return (
     <div class="flex items-baseline justify-between gap-3">
-      <span class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+      <span class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
         {icon}
         {title}
       </span>
-      {hint && <span class="text-[11px] text-slate-600">{hint}</span>}
+      {hint && <span class="text-xs text-slate-600">{hint}</span>}
     </div>
   )
 }
@@ -88,9 +88,9 @@ export function Chip({
       disabled={disabled}
       title={title}
       aria-pressed={active}
-      class={`mf-focus-ring mf-num rounded-lg border px-3 py-1.5 text-xs font-semibold transition-[background-color,border-color,color,box-shadow] duration-150 ${
+      class={`mf-chip mf-focus-ring mf-num rounded-lg border px-3 py-1.5 text-xs font-semibold transition-[background-color,border-color,color,box-shadow] duration-150 ${
         active
-          ? 'border-sky-400/60 bg-sky-500/15 text-sky-200 shadow-[0_0_12px_-4px_var(--mf-glow)]'
+          ? 'border-[var(--mf-detail-border)] bg-[var(--mf-detail-active)] text-[var(--mf-detail-accent)] shadow-[0_0_12px_-4px_var(--mf-glow)]'
           : 'border-line bg-wash-1 text-slate-400 hover:border-line-strong hover:text-ink'
       } disabled:cursor-not-allowed disabled:opacity-50`}
     >
@@ -110,7 +110,7 @@ export function StatTile({
 }) {
   return (
     <div class="rounded-lg border border-line bg-wash-1 px-2.5 py-1.5">
-      <p class="flex items-center gap-1 text-[9px] uppercase tracking-wider text-slate-500">
+      <p class="flex items-center gap-1 text-[10px] uppercase tracking-wider text-slate-500">
         {icon}
         {label}
       </p>
@@ -130,7 +130,7 @@ export function Pill({
 }) {
   const tones: Record<string, string> = {
     neutral: 'border-line-strong bg-wash-1 text-slate-400',
-    sky: 'border-sky-500/25 bg-sky-500/10 text-sky-300',
+    sky: 'border-[var(--mf-detail-border)] bg-[var(--mf-detail-active)] text-[#1d4ed8] dark:text-[var(--mf-detail-bright)]',
     emerald: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300',
     rose: 'border-rose-500/25 bg-rose-500/10 text-rose-300',
     amber: 'border-amber-500/25 bg-amber-500/10 text-amber-300',
@@ -138,7 +138,7 @@ export function Pill({
   }
   return (
     <span
-      class={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${tones[tone]}`}
+      class={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${tones[tone]}`}
     >
       {children}
     </span>

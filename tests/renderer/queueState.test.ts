@@ -1,14 +1,20 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   earlyResultCount,
+  clearQueuePartial,
   queueRunning,
+  queueRows,
   resetQueueForNewAnalysis,
   resolveJob,
   waitForJob,
   type JobResult,
 } from '../../src/renderer/src/signals/queueState'
 
-const COMPLETED: JobResult = { status: 'completed', outputPath: 'C:/out/a.mp4' }
+const COMPLETED: JobResult = {
+  status: 'completed',
+  outputPath: 'C:/out/a.mp4',
+  outputBytes: 12_345_678,
+}
 
 describe('early job completions (T9 / P-08)', () => {
   beforeEach(() => {
@@ -83,5 +89,17 @@ describe('early job completions (T9 / P-08)', () => {
 
     expect(earlyResultCount()).toBe(1)
     queueRunning.value = false
+  })
+
+  it('clears only the queue row that owns a confirmed deleted partial folder', () => {
+    queueRows.value = [
+      { url: 'https://example.test/a', title: 'A', status: 'cancelled', partialDir: 'C:/tmp/a' },
+      { url: 'https://example.test/b', title: 'B', status: 'failed', partialDir: 'C:/tmp/b' },
+    ]
+
+    clearQueuePartial('C:/tmp/a')
+
+    expect(queueRows.value[0].partialDir).toBeUndefined()
+    expect(queueRows.value[1].partialDir).toBe('C:/tmp/b')
   })
 })

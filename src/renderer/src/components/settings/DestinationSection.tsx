@@ -59,7 +59,7 @@ export function DestinationSection({
             )}
           </div>
 
-          <div class="flex items-center gap-2 text-[11px] text-slate-500">
+          <div class="flex items-center gap-2 text-xs text-slate-500">
             <HardDriveIcon class="size-3.5 shrink-0 text-emerald-500" />
             <span>
               Pre-flight disk headroom: MediaForge validates free disk space before beginning any
@@ -76,21 +76,21 @@ export function DestinationSection({
       >
         <div class="flex flex-col gap-3.5">
           <div>
-            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">
               Active Output Template
             </span>
             <div class="mt-1.5 flex items-center justify-between rounded-xl border border-line bg-recess p-3">
               <code class="text-xs font-mono font-semibold text-sky-400">
                 %(title).200B [%(id)s].%(ext)s
               </code>
-              <span class="rounded-full border border-line bg-wash-1 px-2 py-0.5 text-[9px] font-mono text-slate-400">
+              <span class="rounded-full border border-line bg-wash-1 px-2 py-0.5 text-[10px] font-mono text-slate-400">
                 yt-dlp native
               </span>
             </div>
           </div>
 
           <div class="rounded-xl border border-line bg-wash-1 p-3">
-            <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               Live Preview
             </span>
             <p class="mt-1 text-xs font-medium text-ink">

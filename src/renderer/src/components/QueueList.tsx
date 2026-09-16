@@ -1,8 +1,8 @@
 import { useRef, useState } from 'preact/hooks'
 import {
   clearAllQueueLeftovers,
+  clearQueuePartial,
   clearSettledQueueRows,
-  patchQueueRow,
   queueLeftoverCount,
   queueRows,
   queueRunMode,
@@ -11,7 +11,7 @@ import {
   reorderQueueRows,
   stopRequested,
 } from '../signals/queueState'
-import { jobEventsById, lastJobEvent } from '../signals/jobState'
+import { clearJobDonePartial, jobEventsById, lastJobEvent } from '../signals/jobState'
 import { fmtEta, fmtSize, fmtSpeed } from '../utils/format'
 import {
   AlertIcon,
@@ -51,16 +51,16 @@ function StatusGlyph({ status }: { status: string }) {
 
 function QueuePipelineArt() {
   return (
-    <svg viewBox="0 0 340 240" fill="none" aria-hidden="true" class="size-full text-emerald-600">
+    <svg viewBox="0 0 340 240" fill="none" aria-hidden="true" class="size-full text-teal-400">
       <defs>
         <linearGradient id="queue-stream-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stop-color="#245cda" stop-opacity="0.35" />
-          <stop offset="50%" stop-color="#10b981" stop-opacity="0.9" />
-          <stop offset="100%" stop-color="#087f78" stop-opacity="0.4" />
+          <stop offset="0%" stop-color="var(--mf-accent)" stop-opacity="0.35" />
+          <stop offset="50%" stop-color="var(--mf-teal)" stop-opacity="0.9" />
+          <stop offset="100%" stop-color="var(--mf-teal-text)" stop-opacity="0.4" />
         </linearGradient>
         <linearGradient id="queue-core-glow" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#d1fae5" />
-          <stop offset="100%" stop-color="#e0f2fe" />
+          <stop offset="0%" stop-color="var(--mf-teal-wash)" />
+          <stop offset="100%" stop-color="var(--mf-active)" />
         </linearGradient>
       </defs>
 
@@ -113,9 +113,30 @@ function QueuePipelineArt() {
       />
 
       {/* Input Ingestion Nodes */}
-      <circle cx="28" cy="75" r="6" fill="#edf3ff" stroke="#245cda" stroke-width="2" />
-      <circle cx="28" cy="115" r="6" fill="#edf3ff" stroke="#245cda" stroke-width="2" />
-      <circle cx="28" cy="155" r="6" fill="#edf3ff" stroke="#245cda" stroke-width="2" />
+      <circle
+        cx="28"
+        cy="75"
+        r="6"
+        fill="var(--mf-surface)"
+        stroke="var(--mf-accent)"
+        stroke-width="2"
+      />
+      <circle
+        cx="28"
+        cy="115"
+        r="6"
+        fill="var(--mf-surface)"
+        stroke="var(--mf-accent)"
+        stroke-width="2"
+      />
+      <circle
+        cx="28"
+        cy="155"
+        r="6"
+        fill="var(--mf-surface)"
+        stroke="var(--mf-accent)"
+        stroke-width="2"
+      />
 
       {/* Center Engine Hub */}
       <circle
@@ -123,31 +144,38 @@ function QueuePipelineArt() {
         cy="115"
         r="32"
         fill="url(#queue-core-glow)"
-        stroke="#10b981"
+        stroke="var(--mf-teal)"
         stroke-width="1.5"
       />
-      <circle cx="170" cy="115" r="24" fill="#ffffff" stroke="#10b981" stroke-opacity="0.3" />
+      <circle
+        cx="170"
+        cy="115"
+        r="24"
+        fill="var(--mf-surface)"
+        stroke="var(--mf-teal)"
+        stroke-opacity="0.3"
+      />
 
       {/* Icon in hub */}
       <path
         d="M162 107 H178 M162 115 H178 M162 123 H174"
-        stroke="#15803d"
+        stroke="var(--mf-teal-text)"
         stroke-width="2"
         stroke-linecap="round"
       />
-      <circle cx="175" cy="123" r="1.5" fill="#10b981" />
+      <circle cx="175" cy="123" r="1.5" fill="var(--mf-teal)" />
 
       {/* Output Stream Badges */}
-      <circle cx="304" cy="65" r="5" fill="#10b981" />
-      <circle cx="304" cy="115" r="5" fill="#10b981" />
-      <circle cx="304" cy="165" r="5" fill="#10b981" />
+      <circle cx="304" cy="65" r="5" fill="var(--mf-teal)" />
+      <circle cx="304" cy="115" r="5" fill="var(--mf-teal)" />
+      <circle cx="304" cy="165" r="5" fill="var(--mf-teal)" />
 
       {/* Telemetry Labels */}
       <text
         x="20"
         y="52"
-        fill="#62738e"
-        font-size="8.5"
+        fill="var(--mf-text-muted)"
+        font-size="9.5"
         font-family="monospace"
         font-weight="700"
         letter-spacing="1"
@@ -157,8 +185,8 @@ function QueuePipelineArt() {
       <text
         x="138"
         y="166"
-        fill="#15803d"
-        font-size="8.5"
+        fill="var(--mf-teal-text)"
+        font-size="9.5"
         font-family="monospace"
         font-weight="700"
         letter-spacing="1.5"
@@ -168,8 +196,8 @@ function QueuePipelineArt() {
       <text
         x="254"
         y="52"
-        fill="#62738e"
-        font-size="8.5"
+        fill="var(--mf-text-muted)"
+        font-size="9.5"
         font-family="monospace"
         font-weight="700"
         letter-spacing="1"
@@ -292,7 +320,10 @@ export function QueueList({
     setClearingUrl(url)
     try {
       const res = await window.mf.clearPartials(partialDir)
-      if (res.ok) patchQueueRow(url, { partialDir: undefined })
+      if (res.ok) {
+        clearQueuePartial(partialDir)
+        clearJobDonePartial(partialDir)
+      }
     } finally {
       setClearingUrl((prev) => (prev === url ? null : prev))
     }
@@ -301,7 +332,11 @@ export function QueueList({
   async function clearAllLeftovers() {
     setClearingAll(true)
     try {
-      await clearAllQueueLeftovers()
+      const partialDirs = queueRows.value.flatMap((row) => (row.partialDir ? [row.partialDir] : []))
+      const res = await clearAllQueueLeftovers()
+      if (res.ok) {
+        partialDirs.forEach(clearJobDonePartial)
+      }
     } finally {
       setClearingAll(false)
     }

@@ -23,6 +23,7 @@ import {
   MF_PARTIALS_OPEN,
   MF_REVEAL_PATH,
   MF_OPEN_FILE,
+  MF_OUTPUT_FILE_SIZES,
   MF_SEARCH_CANCEL,
   MF_SEARCH_ENTRY,
   MF_SEARCH_START,
@@ -133,6 +134,8 @@ const api: MfApi = {
     ipcRenderer.invoke(MF_PARTIALS_CLEAR, path),
   revealPath: (path: string): Promise<{ ok: boolean }> => ipcRenderer.invoke(MF_REVEAL_PATH, path),
   openFile: (path: string): Promise<{ ok: boolean }> => ipcRenderer.invoke(MF_OPEN_FILE, path),
+  getOutputFileSizes: (paths: string[]): Promise<Record<string, number>> =>
+    ipcRenderer.invoke(MF_OUTPUT_FILE_SIZES, paths),
   updaterCheck: (kind: UpdaterDriverKind): Promise<UpdaterCheckResult> =>
     ipcRenderer.invoke(MF_UPDATER_CHECK, kind),
   updaterApply: (kind: UpdaterDriverKind): Promise<UpdaterApplyResult> =>

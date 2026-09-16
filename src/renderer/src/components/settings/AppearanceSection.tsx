@@ -27,7 +27,7 @@ async function chooseTheme(pref: ThemePref): Promise<void> {
 function ThemePreviewMini({ theme }: { theme: 'light' | 'dark' | 'system' }) {
   if (theme === 'light') {
     return (
-      <div class="h-20 w-full overflow-hidden rounded-xl border border-[#d5e0f2] bg-[#f5f8ff] p-2 shadow-inner">
+      <div class="h-20 w-full overflow-hidden rounded-xl border border-[#cbd9ec] bg-[#f2f6fd] p-2 shadow-inner">
         <div class="flex h-3 items-center gap-1 border-b border-[#d5e0f2] bg-white px-1">
           <span class="size-1.5 rounded-full bg-rose-400" />
           <span class="size-1.5 rounded-full bg-amber-400" />
@@ -83,7 +83,7 @@ function ThemePreviewMini({ theme }: { theme: 'light' | 'dark' | 'system' }) {
   return (
     <div class="relative h-20 w-full overflow-hidden rounded-xl border border-line shadow-inner">
       <div class="absolute inset-0 grid grid-cols-2">
-        <div class="border-r border-[#dce6f5] bg-[#f5f8ff] p-2">
+        <div class="border-r border-[#dce6f5] bg-[#f2f6fd] p-2">
           <div class="mb-1 h-2 w-full rounded bg-white" />
           <div class="mb-1 h-3 w-full rounded border border-[#245cda]/30 bg-white" />
           <div class="h-5 w-full rounded border border-[#dce6f5] bg-white" />
@@ -131,7 +131,7 @@ export function AppearanceSection() {
       id: 'light',
       title: 'Digital Daylight',
       subtitle: 'Airy white surfaces with cobalt, signal teal, and coral accents.',
-      badges: ['#F5F8FF', '#245CDA', '#25B7A7'],
+      badges: ['#F2F6FD', '#245CDA', '#25B7A7'],
     },
     {
       id: 'dark',
@@ -155,13 +155,14 @@ export function AppearanceSection() {
         title="Color Palette & Theme Studio"
         description="Select an active aesthetic or allow MediaForge to match your operating system."
       >
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3" role="group" aria-label="Theme">
           {themes.map((t) => {
             const isSelected = themePref.value === t.id
             return (
               <button
                 key={t.id}
                 type="button"
+                aria-pressed={isSelected}
                 onClick={() => void chooseTheme(t.id)}
                 class={`mf-focus-ring flex flex-col items-start rounded-2xl border p-3.5 text-left transition-[background-color,border-color,box-shadow,transform] duration-150 ${
                   isSelected
@@ -180,17 +181,17 @@ export function AppearanceSection() {
                 <div class="flex items-center gap-1.5">
                   <span class="text-[13px] font-bold tracking-tight text-ink">{t.title}</span>
                   {isSelected && (
-                    <span class="rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-sky-400">
+                    <span class="rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-sky-400">
                       Active
                     </span>
                   )}
                 </div>
-                <p class="mt-1 text-[11px] leading-relaxed text-slate-500">{t.subtitle}</p>
+                <p class="mt-1 text-xs leading-relaxed text-slate-500">{t.subtitle}</p>
                 <div class="mt-3 flex flex-wrap items-center gap-1">
                   {t.badges.map((b) => (
                     <span
                       key={b}
-                      class="rounded border border-line bg-wash-2 px-1.5 py-0.5 text-[9px] font-mono font-medium text-slate-400"
+                      class="rounded border border-line bg-wash-2 px-1.5 py-0.5 text-[10px] font-mono font-medium text-slate-400"
                     >
                       {b}
                     </span>
@@ -266,13 +267,13 @@ export function AppearanceSection() {
       >
         <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
           <div class="rounded-xl border border-line bg-wash-1 p-3">
-            <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               Viewport Resolution
             </span>
             <p class="mf-num mt-1 text-xs font-bold text-ink">{metrics.viewport}</p>
           </div>
           <div class="rounded-xl border border-line bg-wash-1 p-3">
-            <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               Pixel Ratio & DPI
             </span>
             <p class="mf-num mt-1 text-xs font-bold text-ink">
@@ -280,7 +281,7 @@ export function AppearanceSection() {
             </p>
           </div>
           <div class="rounded-xl border border-line bg-wash-1 p-3">
-            <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               Color Space & Depth
             </span>
             <p class="mf-num mt-1 text-xs font-bold text-ink">
@@ -288,19 +289,19 @@ export function AppearanceSection() {
             </p>
           </div>
           <div class="rounded-xl border border-line bg-wash-1 p-3">
-            <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               GPU Compositor
             </span>
             <p class="mt-1 text-xs font-bold text-emerald-500">Direct3D 11 Active</p>
           </div>
           <div class="rounded-xl border border-line bg-wash-1 p-3">
-            <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               UI Typography
             </span>
             <p class="mt-1 truncate text-xs font-bold text-ink">Segoe UI Variable Display</p>
           </div>
           <div class="rounded-xl border border-line bg-wash-1 p-3">
-            <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               Monospace Engine
             </span>
             <p class="mt-1 truncate text-xs font-mono font-bold text-ink">Cascadia Code</p>

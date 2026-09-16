@@ -7,7 +7,7 @@ export const THEME_CHROME = {
   light: {
     /** Must equal `--color-ink-950` in light theme (`global.css`). */
     ink950: '#f5f8ff',
-    symbolColor: '#202b3a',
+    symbolColor: '#48617f',
   },
   dark: {
     /** Must equal `--color-ink-950` in dark theme (`global.css`). */
@@ -17,3 +17,6 @@ export const THEME_CHROME = {
 } as const
 
 export type ChromeThemeId = keyof typeof THEME_CHROME
+
+/** Keep the Windows caption buttons vertically aligned with `.mf-titlebar`. */
+export const TITLEBAR_OVERLAY_HEIGHT = 58

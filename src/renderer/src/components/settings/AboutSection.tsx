@@ -56,7 +56,7 @@ export function AboutSection() {
     <div class="flex flex-col gap-3">
       <div class="flex items-center justify-between">
         <h3 class="text-sm font-semibold text-ink">About</h3>
-        <span class="text-[11px] text-slate-600">GitHub releases</span>
+        <span class="text-xs text-slate-600">GitHub releases</span>
       </div>
 
       <SettingsCard
@@ -64,7 +64,7 @@ export function AboutSection() {
         description="This is the app itself — its UI and features. Checks GitHub for a newer app release; Download & Install fetches the installer, verifies its SHA-256 checksum, then launches it and closes the app so it can proceed. The yt-dlp/FFmpeg engines bundled inside update separately and much more often — see Settings → Drivers."
         footer={
           <>
-            <span class="mf-num rounded-full border border-line bg-wash-1 px-2.5 py-0.5 text-[11px] font-medium text-slate-400">
+            <span class="mf-num rounded-full border border-line bg-wash-1 px-2.5 py-0.5 text-xs font-medium text-slate-400">
               {version ? `v${version}` : 'probing…'}
             </span>
             <span class="flex flex-wrap items-center gap-2">

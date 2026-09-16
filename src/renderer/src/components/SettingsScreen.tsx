@@ -7,7 +7,7 @@ import { DestinationSection } from './settings/DestinationSection'
 import { DiagnosticsSection } from './settings/DiagnosticsSection'
 import { DownloadsSection } from './settings/DownloadsSection'
 import { DriversSection } from './settings/DriversSection'
-import { SETTINGS_SECTIONS, SideNav } from './settings/SideNav'
+import { SETTINGS_SECTIONS, settingsPanelId, settingsTabId, SideNav } from './settings/SideNav'
 import { StorageSection } from './settings/StorageSection'
 
 interface SharedSettings {
@@ -104,7 +104,12 @@ export function SettingsScreen() {
           cookieConfigured={settings?.cookieFileSet ?? false}
         />
 
-        <div class="min-w-0 flex-1" role="tabpanel">
+        <div
+          id={settingsPanelId(activeSection)}
+          class="min-w-0 flex-1"
+          role="tabpanel"
+          aria-labelledby={settingsTabId(activeSection)}
+        >
           {activeSection === 'appearance' && <AppearanceSection />}
 
           {activeSection === 'destination' && (

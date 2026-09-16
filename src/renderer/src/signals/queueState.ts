@@ -10,6 +10,8 @@ export interface QueueRow {
   partialDir?: string
   /** Final output file path, set once this row's download completes. */
   outputPath?: string
+  /** Verified size of the final output file, set once this row's download completes. */
+  outputBytes?: number
   /** True when this row's download was skipped because it already exists at this quality. */
   skipped?: boolean
 }
@@ -24,6 +26,7 @@ export const queueRunMode = signal<QueueRunMode>('sequential')
 export interface JobResult {
   status: 'completed' | 'cancelled' | 'failed'
   outputPath?: string
+  outputBytes?: number
   skipped?: boolean
 }
 
@@ -123,9 +126,29 @@ export function reorderQueueRows(fromIndex: number, toIndex: number): void {
 
 export function patchQueueRow(
   url: string,
-  patch: Partial<Pick<QueueRow, 'status' | 'jobId' | 'partialDir' | 'outputPath' | 'skipped'>>,
+  patch: Partial<
+    Pick<QueueRow, 'status' | 'jobId' | 'partialDir' | 'outputPath' | 'outputBytes' | 'skipped'>
+  >,
 ): void {
   queueRows.value = queueRows.value.map((row) => (row.url === url ? { ...row, ...patch } : row))
+}
+
+/**
+ * Forget a partial folder only after the main process confirms it was deleted.  Rows and the
+ * single-download status panel deliberately share this reference, so callers should also clear
+ * the matching `jobDone` reference through `clearJobDonePartial`.
+ */
+export function clearQueuePartial(partialDir: string): void {
+  queueRows.value = queueRows.value.map((row) =>
+    row.partialDir === partialDir ? { ...row, partialDir: undefined } : row,
+  )
+}
+
+/** Clears every tracked on-disk leftover reference after an all-or-nothing successful sweep. */
+export function clearAllQueuePartialRefs(): void {
+  queueRows.value = queueRows.value.map((row) =>
+    row.partialDir ? { ...row, partialDir: undefined } : row,
+  )
 }
 
 /** Count of queue rows with a known leftover partial-download folder. */
@@ -147,10 +170,13 @@ export function resetQueueForNewAnalysis(): void {
 }
 
 /** Sweeps every leftover partial folder on disk (not just ones tracked in the queue). */
-export async function clearAllQueueLeftovers(): Promise<{ ok: boolean }> {
+export async function clearAllQueueLeftovers(): Promise<{
+  ok: boolean
+  cleared: number
+  failed?: number
+}> {
   const res = await window.mf.clearPartials()
-  queueRows.value = queueRows.value.map((row) =>
-    row.partialDir ? { ...row, partialDir: undefined } : row,
-  )
-  return { ok: res.ok }
+  // Do not lie about a partial that could not be deleted. It remains resumable and actionable.
+  if (res.ok) clearAllQueuePartialRefs()
+  return res
 }

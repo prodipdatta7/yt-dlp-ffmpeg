@@ -280,6 +280,8 @@ export interface JobDonePayload {
   status: 'completed' | 'cancelled' | 'failed'
   errorCode?: MfErrorCode
   outputPath?: string
+  /** Verified size of the completed output file on disk. */
+  outputBytes?: number
   /** Temp job folder retained on cancel/failure so the user can inspect or discard partials. */
   partialDir?: string
   /** True when no download ran because this exact URL + quality already exists at outputPath. */

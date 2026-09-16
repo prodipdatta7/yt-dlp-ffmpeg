@@ -21,14 +21,24 @@ import {
 
 const URL_PATTERN = /^https?:\/\/\S+$/i
 
+function clipboardHost(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./i, '')
+  } catch {
+    return 'web link'
+  }
+}
+
 export function UrlBar() {
   const value = urlInput.value
   const setValue = (v: string): void => {
     urlInput.value = v
   }
-  const [clipUrl, setClipUrl] = useState<string | null>(null)
+  const [clipboardUrl, setClipboardUrl] = useState<string | null>(null)
+  const [clipboardNotice, setClipboardNotice] = useState<string | null>(null)
   const [dropping, setDropping] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const clipboardNoticeTimer = useRef<number | null>(null)
   const invalid = value.length > 0 && !URL_PATTERN.test(value.trim())
 
   async function submit() {
@@ -46,6 +56,34 @@ export function UrlBar() {
     resetAnalysis()
   }
 
+  function showClipboardNotice(message: string): void {
+    if (clipboardNoticeTimer.current !== null) window.clearTimeout(clipboardNoticeTimer.current)
+    setClipboardNotice(message)
+    clipboardNoticeTimer.current = window.setTimeout(() => {
+      clipboardNoticeTimer.current = null
+      setClipboardNotice(null)
+    }, 3200)
+  }
+
+  async function pasteClipboardUrl(): Promise<void> {
+    if (analyzing.value) return
+    const url = await window.mf.getClipboardUrl().catch(() => null)
+    if (!url) {
+      setClipboardUrl(null)
+      showClipboardNotice('Clipboard needs a https:// link')
+      return
+    }
+    if (clipboardNoticeTimer.current !== null) {
+      window.clearTimeout(clipboardNoticeTimer.current)
+      clipboardNoticeTimer.current = null
+    }
+    setClipboardNotice(null)
+    setClipboardUrl(null)
+    setValue(url)
+    inputRef.current?.focus()
+    requestAnimationFrame(() => inputRef.current?.select())
+  }
+
   function acceptDrop(raw: string | undefined): void {
     if (analyzing.value) return
     const url = (raw ?? '').trim().split('\n')[0]?.trim() ?? ''
@@ -55,15 +93,6 @@ export function UrlBar() {
   }
 
   useEffect(() => {
-    const refreshClip = (): void => {
-      window.mf
-        .getClipboardUrl()
-        .then((url) => setClipUrl(url && url !== value.trim() ? url : null))
-        .catch(() => undefined)
-    }
-    refreshClip()
-    window.addEventListener('focus', refreshClip)
-
     const onDragOver = (e: DragEvent): void => {
       e.preventDefault()
       setDropping(true)
@@ -96,14 +125,32 @@ export function UrlBar() {
     window.addEventListener('mf:analyze-url', onAnalyzeUrlRequest)
 
     return () => {
-      window.removeEventListener('focus', refreshClip)
       window.removeEventListener('dragover', onDragOver)
       window.removeEventListener('dragleave', onDragLeave)
       window.removeEventListener('drop', onDrop)
       window.removeEventListener('mf:focus-url', onFocusRequest)
       window.removeEventListener('mf:analyze-url', onAnalyzeUrlRequest)
     }
-  }, [value])
+  }, [])
+
+  useEffect(() => {
+    const refreshClipboardOffer = (): void => {
+      window.mf
+        .getClipboardUrl()
+        .then((url) => setClipboardUrl(url && url !== urlInput.value.trim() ? url : null))
+        .catch(() => setClipboardUrl(null))
+    }
+    refreshClipboardOffer()
+    window.addEventListener('focus', refreshClipboardOffer)
+    return () => window.removeEventListener('focus', refreshClipboardOffer)
+  }, [])
+
+  useEffect(
+    () => () => {
+      if (clipboardNoticeTimer.current !== null) window.clearTimeout(clipboardNoticeTimer.current)
+    },
+    [],
+  )
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -117,80 +164,100 @@ export function UrlBar() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  const showClipChip = !analyzing.value && value.trim().length === 0 && clipUrl !== null
+  const clipboardReady = !analyzing.value && value.trim().length === 0 && clipboardUrl !== null
 
   return (
-    <div class="mf-url-bar flex flex-col gap-2">
-      <div class="relative">
-        <div
-          aria-hidden="true"
-          className={`pointer-events-none absolute -inset-0.5 rounded-[18px] bg-gradient-to-r from-sky-500/50 via-indigo-500/40 to-emerald-400/40 opacity-0 blur-md transition-opacity duration-500 ${
-            analyzing.value ? 'opacity-70' : 'group-focus-within:opacity-0'
-          }`}
-        />
+    <section
+      class={`mf-url-bar${analyzing.value ? ' is-analyzing' : ''}${dropping ? ' is-dropping' : ''}${invalid ? ' is-invalid' : ''}`}
+      aria-label="Add a media link"
+    >
+      <div class="mf-url-bar-shell">
+        <span class="mf-url-bar-rail" aria-hidden="true">
+          URL
+        </span>
         <form
           onSubmit={(e) => {
             e.preventDefault()
             void submit()
           }}
-          className={`app-no-drag group relative flex items-stretch overflow-hidden rounded-2xl border bg-[var(--surface-input)] transition-[background-color,border-color,box-shadow] duration-200 ${
-            dropping
-              ? 'border-sky-400/80 bg-sky-500/[0.07]'
-              : analyzing.value
-                ? 'border-sky-400/40'
-                : invalid
-                  ? 'border-rose-500/50'
-                  : 'border-line-strong focus-within:border-sky-400/60 focus-within:shadow-[0_0_0_3px_var(--mf-glow)]'
-          }`}
+          class="mf-url-form app-no-drag"
         >
-          <span class="flex w-11 shrink-0 items-center justify-center border-r border-line">
+          <span class="mf-url-icon" aria-hidden="true">
             {analyzing.value ? (
               <Spinner class="size-4 text-sky-400" />
             ) : (
-              <LinkIcon class={`size-4 ${dropping ? 'text-sky-300' : 'text-slate-500'}`} />
+              <LinkIcon class="size-4" />
             )}
           </span>
 
-          <input
-            ref={inputRef}
-            type="url"
-            name="media-url"
-            autocomplete="url"
-            inputMode="url"
-            spellcheck={false}
-            placeholder={
-              dropping ? 'Drop the link to analyze…' : 'Paste a video, audio or playlist link…'
-            }
-            value={value}
-            onInput={(e) => setValue((e.target as HTMLInputElement).value)}
-            disabled={analyzing.value}
-            aria-invalid={invalid}
-            aria-label="Media link"
-            title="Ctrl+K to focus"
-            className={`min-w-0 flex-1 bg-transparent px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 disabled:opacity-60 ${
-              invalid ? 'text-rose-300' : ''
-            }`}
-          />
+          <div class="mf-url-input-wrap">
+            <label class="mf-url-input-label" for="media-url">
+              Media URL
+            </label>
+            <input
+              ref={inputRef}
+              id="media-url"
+              type="url"
+              name="media-url"
+              autocomplete="url"
+              inputMode="url"
+              spellcheck={false}
+              placeholder={
+                dropping ? 'Drop the link to analyze…' : 'Paste a video, audio or playlist link…'
+              }
+              value={value}
+              onInput={(e) => {
+                if (clipboardNoticeTimer.current !== null) {
+                  window.clearTimeout(clipboardNoticeTimer.current)
+                  clipboardNoticeTimer.current = null
+                }
+                setClipboardNotice(null)
+                setValue((e.target as HTMLInputElement).value)
+              }}
+              disabled={analyzing.value}
+              aria-invalid={invalid}
+              title="Ctrl+K to focus"
+              class="mf-url-input"
+            />
+          </div>
 
           {invalid && !analyzing.value && (
-            <span class="pointer-events-none flex items-center pr-1 text-[11px] font-medium text-rose-400">
+            <span class="mf-url-invalid-note" aria-live="polite">
               must start with https://
             </span>
           )}
 
-          {showClipChip && (
+          {!analyzing.value && (
             <button
               type="button"
-              onClick={() => {
-                setValue(clipUrl)
-                inputRef.current?.focus()
-              }}
-              title={`From clipboard: ${clipUrl}`}
-              class="mf-focus-ring my-auto mr-1 inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/[0.08] px-2.5 py-1 text-[11px] font-medium text-emerald-300 transition hover:bg-emerald-500/[0.15]"
+              onClick={() => void pasteClipboardUrl()}
+              title={
+                clipboardReady
+                  ? `Use clipboard link from ${clipboardHost(clipboardUrl!)}`
+                  : 'Paste a web link from the clipboard into the URL bar'
+              }
+              aria-label="Paste URL from clipboard"
+              class={`mf-url-clipboard mf-focus-ring${clipboardReady ? ' is-ready' : ''}`}
             >
-              <ClipboardIcon class="size-3" />
-              from clipboard
+              <span class="mf-url-clipboard-glyph">
+                <ClipboardIcon class="size-3" />
+              </span>
+              {clipboardReady ? (
+                <span class="mf-url-clipboard-copy">
+                  <strong>Link ready</strong>
+                  <span>{clipboardHost(clipboardUrl!)}</span>
+                </span>
+              ) : (
+                <span class="mf-url-clipboard-copy">Paste</span>
+              )}
+              {clipboardReady && <span class="mf-url-clipboard-action">Use</span>}
             </button>
+          )}
+
+          {clipboardNotice && !analyzing.value && (
+            <span class="mf-url-clipboard-note" aria-live="polite">
+              {clipboardNotice}
+            </span>
           )}
 
           {value.length > 0 && !analyzing.value && (
@@ -199,18 +266,14 @@ export function UrlBar() {
               onClick={() => setValue('')}
               title="Clear"
               aria-label="Clear input"
-              class="mf-focus-ring my-auto flex size-7 shrink-0 items-center justify-center rounded-lg text-slate-600 transition hover:bg-wash-2 hover:text-slate-200"
+              class="mf-url-clear mf-focus-ring"
             >
               <CloseIcon class="size-3.5" />
             </button>
           )}
 
           {analyzing.value ? (
-            <button
-              type="button"
-              onClick={cancel}
-              class="mf-focus-ring m-1.5 inline-flex shrink-0 items-center gap-2 rounded-xl border border-line-strong px-4 text-xs font-semibold text-slate-200 transition hover:border-rose-500/60 hover:text-rose-300 active:scale-[0.98]"
-            >
+            <button type="button" onClick={cancel} class="mf-url-cancel mf-focus-ring">
               <Spinner class="size-3.5" />
               Cancel
             </button>
@@ -219,12 +282,10 @@ export function UrlBar() {
               <button
                 type="submit"
                 disabled={value.trim().length === 0}
-                className={`mf-focus-ring m-1.5 inline-flex shrink-0 items-center gap-2 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-500 px-5 text-sm font-bold text-white shadow-lg shadow-sky-500/25 transition-[background-color,box-shadow,filter,opacity,transform] duration-150 hover:brightness-110 active:scale-[0.98] ${
-                  value.trim().length === 0 ? 'cursor-not-allowed opacity-35 shadow-none' : ''
-                }`}
+                class="mf-url-submit mf-focus-ring"
                 title="Analyze (Enter)"
               >
-                Analyze
+                <span>Analyze</span>
                 <ArrowRightIcon class="size-4" />
               </button>
               {analysis.value && (
@@ -233,7 +294,7 @@ export function UrlBar() {
                   onClick={reset}
                   title="Reset and clear the current result"
                   aria-label="Reset for a new link"
-                  class="mf-focus-ring m-1.5 inline-flex shrink-0 items-center gap-2 rounded-xl border border-line-strong px-4 text-xs font-semibold text-slate-200 transition hover:border-rose-500/60 hover:text-rose-300 active:scale-[0.98]"
+                  class="mf-url-reset mf-focus-ring"
                 >
                   Reset
                 </button>
@@ -278,6 +339,6 @@ export function UrlBar() {
           </span>
         </div>
       )}
-    </div>
+    </section>
   )
 }

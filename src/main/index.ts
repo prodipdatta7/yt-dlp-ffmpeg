@@ -472,6 +472,21 @@ app.whenReady().then(() => {
         const result = await shell.openPath(targetPath)
         return { ok: result.length === 0 }
       },
+      getOutputFileSizes: async (paths: string[]) => {
+        const sizes = await Promise.all(
+          paths.map(async (path) => {
+            try {
+              const stat = await fsp.stat(path)
+              return stat.isFile() && stat.size > 0 ? ([path, stat.size] as const) : null
+            } catch {
+              return null
+            }
+          }),
+        )
+        return Object.fromEntries(
+          sizes.filter((entry): entry is readonly [string, number] => entry !== null),
+        )
+      },
       updaterCheck: (kind: UpdaterDriverKind) =>
         kind === 'ffmpeg' ? ffmpegUpdater.check() : updater.check(),
       updaterApply: async (kind: UpdaterDriverKind) => {

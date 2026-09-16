@@ -72,7 +72,11 @@ export interface EmbedInfo {
  * Resolves an embeddable preview player URL for supported media sources.
  * Supports YouTube (watch, shorts, embed, bare ID), SoundCloud, Bilibili, Vimeo, and direct video files.
  */
-export function getEmbedInfo(url: string | null | undefined, startSec?: number): EmbedInfo | null {
+export function getEmbedInfo(
+  url: string | null | undefined,
+  startSec?: number,
+  autoplay = true,
+): EmbedInfo | null {
   if (!url) return null
   const trimmed = url.trim()
   if (!trimmed) return null
@@ -83,7 +87,7 @@ export function getEmbedInfo(url: string | null | undefined, startSec?: number):
   if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
     return {
       type: 'iframe',
-      src: `https://www.youtube-nocookie.com/embed/${trimmed}?autoplay=1&rel=0&playsinline=1&modestbranding=1&enablejsapi=1${startParam}`,
+      src: `https://www.youtube-nocookie.com/embed/${trimmed}?autoplay=${autoplay ? '1' : '0'}&rel=0&playsinline=1&modestbranding=1&enablejsapi=1${startParam}`,
       platform: 'YouTube',
     }
   }
@@ -93,7 +97,7 @@ export function getEmbedInfo(url: string | null | undefined, startSec?: number):
     const path = trimmed.replace(/^sc:/, '')
     return {
       type: 'iframe',
-      src: `https://w.soundcloud.com/player/?url=${encodeURIComponent(`https://soundcloud.com/${path}`)}&auto_play=true&show_artwork=true&visual=true`,
+      src: `https://w.soundcloud.com/player/?url=${encodeURIComponent(`https://soundcloud.com/${path}`)}&auto_play=${autoplay}&show_artwork=true&visual=true`,
       platform: 'SoundCloud',
     }
   }
@@ -102,7 +106,7 @@ export function getEmbedInfo(url: string | null | undefined, startSec?: number):
     const trackId = trimmed.replace(/^soundcloud(?::|%3A)tracks(?::|%3A)/i, '')
     return {
       type: 'iframe',
-      src: `https://w.soundcloud.com/player/?url=${encodeURIComponent(`https://api.soundcloud.com/tracks/${trackId}`)}&auto_play=true&show_artwork=true&visual=true`,
+      src: `https://w.soundcloud.com/player/?url=${encodeURIComponent(`https://api.soundcloud.com/tracks/${trackId}`)}&auto_play=${autoplay}&show_artwork=true&visual=true`,
       platform: 'SoundCloud',
     }
   }
@@ -128,7 +132,7 @@ export function getEmbedInfo(url: string | null | undefined, startSec?: number):
       if (videoId && /^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
         return {
           type: 'iframe',
-          src: `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1&modestbranding=1&enablejsapi=1${startParam}`,
+          src: `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=${autoplay ? '1' : '0'}&rel=0&playsinline=1&modestbranding=1&enablejsapi=1${startParam}`,
           platform: 'YouTube',
         }
       }
@@ -147,7 +151,7 @@ export function getEmbedInfo(url: string | null | undefined, startSec?: number):
       }
       return {
         type: 'iframe',
-        src: `https://w.soundcloud.com/player/?url=${encodeURIComponent(scTarget)}&auto_play=true&show_artwork=true&visual=true`,
+        src: `https://w.soundcloud.com/player/?url=${encodeURIComponent(scTarget)}&auto_play=${autoplay}&show_artwork=true&visual=true`,
         platform: 'SoundCloud',
       }
     }
@@ -158,7 +162,7 @@ export function getEmbedInfo(url: string | null | undefined, startSec?: number):
       if (match) {
         return {
           type: 'iframe',
-          src: `https://player.bilibili.com/player.html?bvid=${match[1]}&autoplay=1`,
+          src: `https://player.bilibili.com/player.html?bvid=${match[1]}&autoplay=${autoplay ? '1' : '0'}`,
           platform: 'Bilibili',
         }
       }
@@ -170,7 +174,7 @@ export function getEmbedInfo(url: string | null | undefined, startSec?: number):
       if (match) {
         return {
           type: 'iframe',
-          src: `https://player.vimeo.com/video/${match[1]}?autoplay=1`,
+          src: `https://player.vimeo.com/video/${match[1]}?autoplay=${autoplay ? '1' : '0'}`,
           platform: 'Vimeo',
         }
       }

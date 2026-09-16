@@ -1,6 +1,13 @@
 import type { JobEvent, JobPhase } from '../../../shared/models'
 import { ERROR_MESSAGES } from '../../../shared/models'
-import { activeJob, jobDone, lastJobEvent, launchError } from '../signals/jobState'
+import {
+  activeJob,
+  clearJobDonePartial,
+  jobDone,
+  lastJobEvent,
+  launchError,
+} from '../signals/jobState'
+import { clearQueuePartial } from '../signals/queueState'
 import { fmtEta, fmtSize, fmtSpeed } from '../utils/format'
 import {
   AlertIcon,
@@ -33,18 +40,20 @@ function MetricChip({
   icon,
   label,
   value,
+  className = '',
 }: {
   icon: preact.JSX.Element
   label: string
   value: string
+  className?: string
 }) {
   return (
     <span
-      class="mf-num inline-flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-slate-400"
+      class={`mf-num inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px] font-medium text-slate-400 ${className}`}
       title={`${label}: ${value}`}
     >
       {icon}
-      {value}
+      <span class="truncate">{value}</span>
     </span>
   )
 }
@@ -102,10 +111,20 @@ export function PipelineStatus({
   }
 
   const barColor = failed
-    ? 'from-rose-600 to-rose-400'
+    ? 'mf-progress-failed'
     : done?.status === 'cancelled'
-      ? 'from-amber-500 to-amber-300'
-      : 'from-go-500 to-go-400'
+      ? 'mf-progress-cancelled'
+      : completedAll
+        ? 'mf-progress-complete'
+        : paused
+          ? 'mf-progress-paused'
+          : event?.phase === 'downloading-audio'
+            ? 'mf-progress-audio'
+            : event?.phase === 'merging'
+              ? 'mf-progress-merging'
+              : event?.phase === 'finalizing'
+                ? 'mf-progress-finalizing'
+                : 'mf-progress-video'
 
   const pctColor = paused
     ? 'text-amber-400'
@@ -122,120 +141,127 @@ export function PipelineStatus({
 
   return (
     <div class="mf-rise shrink-0 rounded-xl border border-[var(--mf-line)] bg-[var(--surface-card-hi)] shadow-sm">
-      <div class="flex items-center gap-3 px-3.5 py-2">
-        {job ? (
-          <Spinner class="size-3.5 shrink-0 text-sky-400" />
-        ) : (
+      <div class="mf-pipeline-topline grid items-center gap-3 px-3.5 py-2">
+        <div class="flex min-w-0 items-center gap-3">
+          {job ? (
+            <Spinner class="size-3.5 shrink-0 text-sky-400" />
+          ) : (
+            <span
+              className={`size-2 shrink-0 rounded-full ${
+                paused
+                  ? 'bg-amber-400'
+                  : failed
+                    ? 'bg-rose-500'
+                    : done?.status === 'cancelled'
+                      ? 'bg-amber-400'
+                      : idle
+                        ? 'bg-slate-600'
+                        : 'bg-emerald-400'
+              }`}
+            />
+          )}
           <span
-            className={`size-2 shrink-0 rounded-full ${
-              paused
-                ? 'bg-amber-400'
-                : failed
-                  ? 'bg-rose-500'
-                  : done?.status === 'cancelled'
-                    ? 'bg-amber-400'
-                    : idle
-                      ? 'bg-slate-600'
-                      : 'bg-emerald-400'
-            }`}
-          />
-        )}
-        <span
-          class="mf-select-text w-28 min-w-0 shrink-0 truncate text-xs font-semibold text-slate-200"
-          title={
-            done?.status === 'completed' && done.skipped
-              ? 'A file for this video already exists at this quality'
-              : event
-                ? PHASE_LABELS[event.phase]
-                : undefined
-          }
-          aria-live={failed ? 'assertive' : 'polite'}
-          aria-atomic="true"
-        >
-          {statusLabel()}
-        </span>
+            class="mf-select-text w-28 min-w-0 shrink-0 truncate text-xs font-semibold text-slate-200"
+            title={
+              done?.status === 'completed' && done.skipped
+                ? 'A file for this video already exists at this quality'
+                : event
+                  ? PHASE_LABELS[event.phase]
+                  : undefined
+            }
+            aria-live={failed ? 'assertive' : 'polite'}
+            aria-atomic="true"
+          >
+            {statusLabel()}
+          </span>
 
-        {showStepper && (
-          <div class="flex min-w-0 shrink-0 items-center gap-1" aria-hidden="true">
-            {PHASE_STEPS.map((step, i) => {
-              const stepDone = paused
-                ? activeIdx > 0 && i < activeIdx
-                : completedAll || (activeIdx >= 0 && i < activeIdx)
-              const stepActive = !completedAll && !paused && i === activeIdx
-              return (
-                <span key={step.id} class="flex items-center gap-1">
-                  {i > 0 && (
+          {showStepper && (
+            <div
+              class="mf-pipeline-stepper flex min-w-0 shrink-0 items-center gap-1"
+              aria-hidden="true"
+            >
+              {PHASE_STEPS.map((step, i) => {
+                const stepDone = paused
+                  ? activeIdx > 0 && i < activeIdx
+                  : completedAll || (activeIdx >= 0 && i < activeIdx)
+                const stepActive = !completedAll && !paused && i === activeIdx
+                return (
+                  <span key={step.id} class="flex items-center gap-1">
+                    {i > 0 && (
+                      <span
+                        className={`h-px w-3.5 ${stepDone || (paused && i <= activeIdx) ? 'bg-emerald-400/50' : 'bg-slate-600/50'}`}
+                      />
+                    )}
                     <span
-                      className={`h-px w-3.5 ${stepDone || (paused && i <= activeIdx) ? 'bg-emerald-400/50' : 'bg-slate-600/50'}`}
+                      className={`size-1.5 rounded-full transition-colors duration-300 ${
+                        stepDone ? 'bg-emerald-400' : stepActive ? 'bg-sky-400' : 'bg-slate-600'
+                      } ${stepActive ? 'mf-breathe' : ''}`}
                     />
-                  )}
-                  <span
-                    className={`size-1.5 rounded-full transition-colors duration-300 ${
-                      stepDone ? 'bg-emerald-400' : stepActive ? 'bg-sky-400' : 'bg-slate-600'
-                    } ${stepActive ? 'mf-breathe' : ''}`}
-                  />
-                  <span
-                    className={`text-[9px] font-semibold uppercase tracking-wider transition-colors duration-300 ${
-                      stepDone
-                        ? 'text-emerald-400/80'
-                        : stepActive
-                          ? 'text-sky-300'
-                          : 'text-slate-600'
-                    }`}
-                  >
-                    {step.label}
+                    <span
+                      className={`text-[9px] font-semibold uppercase tracking-wider transition-colors duration-300 ${
+                        stepDone
+                          ? 'text-emerald-400/80'
+                          : stepActive
+                            ? 'text-sky-300'
+                            : 'text-slate-600'
+                      }`}
+                    >
+                      {step.label}
+                    </span>
                   </span>
-                </span>
-              )
-            })}
-          </div>
-        )}
+                )
+              })}
+            </div>
+          )}
+        </div>
 
-        <div class="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-500/20">
+        <div class="h-1.5 min-w-[7rem] overflow-hidden rounded-full bg-slate-500/20">
           <div
             role="progressbar"
             aria-valuenow={percent !== null ? Math.round(percent) : undefined}
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-label="Download progress"
-            class={`relative h-full rounded-full bg-gradient-to-r ${barColor} transition-[width] duration-500 ease-out ${
+            aria-label={`${statusLabel()} progress`}
+            class={`relative h-full rounded-full ${barColor} transition-[width] duration-500 ease-out ${
               job && percent !== null && percent < 100 ? 'mf-progress-fill' : ''
             }`}
             style={`width: ${idle || (!paused && done && !completedAll) ? 0 : percent !== null ? Math.max(2, Math.min(100, percent)) : 8}%;`}
           />
         </div>
 
-        <span
-          className={`mf-num w-[52px] shrink-0 text-right text-sm font-bold leading-none ${pctColor}`}
-        >
-          {idle
-            ? '—'
-            : percent !== null
-              ? `${Math.max(0, Math.min(100, Math.round(percent)))}%`
-              : '···'}
-        </span>
-
-        {event?.downloadedBytes != null && event.downloadedBytes > 0 && (
+        <div class="mf-pipeline-metrics flex shrink-0 items-center gap-3">
+          <span
+            className={`mf-num w-[52px] shrink-0 text-right text-sm font-bold leading-none ${pctColor}`}
+          >
+            {idle
+              ? '—'
+              : percent !== null
+                ? `${Math.max(0, Math.min(100, Math.round(percent)))}%`
+                : '···'}
+          </span>
           <MetricChip
-            icon={<HardDriveIcon class="size-3" />}
-            label="Size"
+            icon={<HardDriveIcon class="size-3 shrink-0" />}
+            label="Transferred"
+            className="mf-pipeline-size-metric w-[9.5rem]"
             value={
-              event.totalBytes != null
-                ? `${fmtSize(event.downloadedBytes)} / ${fmtSize(event.totalBytes)}`
-                : fmtSize(event.downloadedBytes)
+              event?.totalBytes != null
+                ? `${fmtSize(event.downloadedBytes ?? null)} / ${fmtSize(event.totalBytes)}`
+                : fmtSize(event?.downloadedBytes ?? null)
             }
           />
-        )}
-        <MetricChip
-          icon={<GaugeIcon class="size-3" />}
-          label="Speed"
-          value={fmtSpeed(event?.speedBps ?? null)}
-        />
-        <MetricChip
-          icon={<ClockIcon class="size-3" />}
-          label="ETA"
-          value={fmtEta(event?.etaSec ?? null)}
-        />
+          <MetricChip
+            icon={<GaugeIcon class="size-3 shrink-0" />}
+            label="Speed"
+            className="w-[5.75rem]"
+            value={fmtSpeed(event?.speedBps ?? null)}
+          />
+          <MetricChip
+            icon={<ClockIcon class="size-3 shrink-0" />}
+            label="ETA"
+            className="w-[3.75rem]"
+            value={fmtEta(event?.etaSec ?? null)}
+          />
+        </div>
 
         {job ? (
           <span class="flex shrink-0 items-center gap-1.5">
@@ -383,13 +409,14 @@ export function PipelineStatus({
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={() =>
                     void window.mf.clearPartials(done.partialDir!).then((res) => {
-                      if (res.ok && jobDone.value?.jobId === done.jobId) {
-                        jobDone.value = { ...jobDone.value, partialDir: undefined }
+                      if (res.ok) {
+                        clearQueuePartial(done.partialDir!)
+                        clearJobDonePartial(done.partialDir!)
                       }
                     })
-                  }}
+                  }
                   class="mf-focus-ring rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-rose-300 transition hover:text-rose-200"
                 >
                   discard

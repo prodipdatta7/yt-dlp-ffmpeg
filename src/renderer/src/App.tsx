@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import { FormatMatrix } from './components/FormatMatrix'
 import { ModeSelector, type AdvancedPick, type JobSelection } from './components/ModeSelector'
 import { PipelineStatus } from './components/PipelineStatus'
+import { DownloadCompleteSummary } from './components/DownloadCompleteSummary'
+import { PlaylistDownloadSummary } from './components/PlaylistDownloadSummary'
 import { SettingsScreen } from './components/SettingsScreen'
 import {
   DetailsGrid,
@@ -37,6 +39,7 @@ import {
   playlistHydration,
   resetAnalysis,
   triggerAnalyze,
+  urlInput,
 } from './signals/appState'
 import {
   activeView,
@@ -54,6 +57,7 @@ import {
   beginJob,
   endJob,
   jobDone,
+  jobEventsById,
   lastFailedConfig,
   lastJobEvent,
   launchError,
@@ -81,6 +85,7 @@ import { fmtSize } from './utils/format'
 import { POPULAR_SOURCES } from './utils/source'
 
 type EngineInfo = { version: string | null; source: string | null }
+type QueueEntry = { url: string; title: string; isLive?: boolean }
 
 function isSearchItemReadyToDownload(item: SearchResultItem): boolean {
   return (
@@ -91,9 +96,73 @@ function isSearchItemReadyToDownload(item: SearchResultItem): boolean {
 
 function LogoMark() {
   return (
-    <span class="app-no-drag flex size-8 items-center justify-center rounded-[10px] border border-sky-400/30 bg-gradient-to-br from-sky-500/25 to-indigo-500/25 shadow-inner">
+    <span class="mf-logo-mark app-no-drag flex size-8 items-center justify-center rounded-[10px] border border-sky-400/30 bg-gradient-to-br from-sky-500/25 to-indigo-500/25 shadow-inner">
       <LogoBolt class="size-5" />
     </span>
+  )
+}
+
+function FloatingDownloadBadge() {
+  const activeDownloads = Object.values(activeJobsById.value)
+  const isDownloadWorkspace = activeView.value === 'download' || activeView.value === 'queue'
+
+  if (isDownloadWorkspace || activeDownloads.length === 0) return null
+
+  const progressSamples = activeDownloads
+    .map(({ jobId }) => jobEventsById.value[jobId]?.percent)
+    .filter((percent): percent is number => typeof percent === 'number')
+  const progress =
+    progressSamples.length > 0
+      ? Math.round(
+          progressSamples.reduce((total, percent) => total + percent, 0) / progressSamples.length,
+        )
+      : null
+  const latest = activeDownloads
+    .map(({ jobId }) => jobEventsById.value[jobId])
+    .find((event) => event !== undefined)
+  const phaseLabel =
+    latest?.phase === 'merging'
+      ? 'Merging media'
+      : latest?.phase === 'finalizing'
+        ? 'Finalizing file'
+        : latest?.phase === 'downloading-audio'
+          ? 'Downloading audio'
+          : latest?.phase === 'downloading-video'
+            ? 'Downloading video'
+            : 'Preparing download'
+  const countLabel =
+    activeDownloads.length === 1 ? '1 download' : `${activeDownloads.length} downloads`
+
+  return (
+    <button
+      type="button"
+      class="mf-download-float mf-focus-ring"
+      aria-label={`Open queue: ${countLabel}, ${progress === null ? phaseLabel : `${progress}% complete`}`}
+      onClick={() => {
+        activeView.value = 'queue'
+      }}
+    >
+      <span class="mf-download-float-icon" aria-hidden="true">
+        <QueueIcon class="size-4" />
+      </span>
+      <span class="min-w-0 text-left">
+        <span class="mf-download-float-title">
+          {progress === null ? phaseLabel : `${progress}% complete`}
+        </span>
+        <span class="mf-download-float-detail">{countLabel} · Open queue</span>
+      </span>
+      <span class="mf-download-float-arrow" aria-hidden="true">
+        →
+      </span>
+      <span class="mf-download-float-track" aria-hidden="true">
+        <span
+          class={`mf-download-float-fill ${progress === null ? 'mf-download-float-fill-pending' : ''}`}
+          style={
+            progress === null ? undefined : { width: `${Math.min(100, Math.max(0, progress))}%` }
+          }
+        />
+      </span>
+    </button>
   )
 }
 
@@ -153,25 +222,29 @@ const NAV_ITEMS: Array<{ id: ViewId; label: string; Icon: typeof DownloadIcon }>
 ]
 
 function NavRail({
-  working,
   onShowNotice,
   onShowShortcuts,
 }: {
-  working: boolean
   onShowNotice: () => void
   onShowShortcuts: () => void
 }) {
   const view = activeView.value
+  const queueCount = queueRows.value.length
+  const queueCountLabel = queueCount > 99 ? '99+' : String(queueCount)
   return (
     <nav class="mf-nav-rail flex w-14 shrink-0 flex-col items-center gap-1.5 border-r border-line bg-recess py-3 sm:w-16">
       {NAV_ITEMS.map(({ id, label, Icon }) => {
         const isActive = view === id
+        const queueAriaLabel =
+          id === 'queue' && queueCount > 0
+            ? `${label}, ${queueCount} ${queueCount === 1 ? 'video' : 'videos'} in queue`
+            : label
         return (
           <button
             key={id}
             onClick={() => (activeView.value = id)}
             title={label}
-            aria-label={label}
+            aria-label={queueAriaLabel}
             aria-current={isActive ? 'page' : undefined}
             class={`mf-focus-ring group relative flex size-10 items-center justify-center rounded-xl transition-[background-color,color,box-shadow,transform] duration-150 sm:size-11 ${
               isActive
@@ -182,8 +255,10 @@ function NavRail({
             {isActive && (
               <span class="absolute -left-2.5 h-5 w-[3px] rounded-full bg-gradient-to-b from-sky-400 to-indigo-400" />
             )}
-            {id === 'queue' && working && !isActive && (
-              <span class="mf-breathe absolute right-2 top-2 size-1.5 rounded-full bg-emerald-400" />
+            {id === 'queue' && queueCount > 0 && (
+              <span class={`mf-nav-queue-count ${isActive ? 'is-active' : ''}`}>
+                {queueCountLabel}
+              </span>
             )}
             <Icon class="size-5" />
             <span class="mf-digital-only mf-nav-label">{label}</span>
@@ -221,16 +296,19 @@ function TitleBar() {
   }, [])
 
   return (
-    <header class="app-drag relative z-20 flex h-[46px] shrink-0 items-center gap-3 border-b border-line bg-ink-950 pl-4 pr-40">
-      <LogoMark />
-      <div class="flex items-baseline gap-2">
-        <h1 class="text-[15px] font-bold leading-none tracking-tight text-ink">MediaForge</h1>
-        <span class="text-[9px] font-semibold uppercase tracking-[0.22em] text-slate-600">
-          Desktop
+    <header class="app-drag mf-titlebar relative z-20 flex shrink-0 items-center">
+      <div class="mf-titlebar-brand">
+        <LogoMark />
+        <div class="mf-titlebar-wordmark">
+          <h1>MediaForge</h1>
+          <span>Desktop media workspace</span>
+        </div>
+        <span class="mf-titlebar-version mf-num app-no-drag" title="MediaForge version">
+          {version ? `v${version}` : '…'}
         </span>
       </div>
-      <span class="mf-num app-no-drag rounded-full border border-sky-400/20 bg-sky-400/5 px-2 py-0.5 text-[10px] font-semibold text-sky-300/90">
-        {version ? `v${version}` : '…'}
+      <span class="mf-titlebar-status" aria-hidden="true">
+        Local-first
       </span>
     </header>
   )
@@ -359,7 +437,7 @@ function HeroState() {
                 <Icon class="size-4" />
               </span>
               <p class="mt-2.5 text-xs font-semibold text-slate-200">{title}</p>
-              <p class="mt-1 text-[11px] leading-relaxed text-slate-600">{text}</p>
+              <p class="mt-1 text-xs leading-relaxed text-slate-600">{text}</p>
             </div>
           ))}
         </div>
@@ -368,13 +446,13 @@ function HeroState() {
           {POPULAR_SOURCES.map((site) => (
             <span
               key={site}
-              class="rounded-full border border-line bg-wash-1 px-2.5 py-0.5 text-[11px] font-medium text-slate-500"
+              class="rounded-full border border-line bg-wash-1 px-2.5 py-0.5 text-xs font-medium text-slate-500"
             >
               {site}
             </span>
           ))}
         </div>
-        <p class="mf-source-note mt-3 text-[11px] text-slate-600">
+        <p class="mf-source-note mt-3 text-xs text-slate-600">
           Works with any media link the engine supports — hundreds of sites beyond these examples.
         </p>
       </div>
@@ -444,7 +522,7 @@ export function App() {
   const [queueDraft, setQueueDraft] = useState<SearchResultItem[] | null>(null)
   const pausedRef = useRef(paused)
   const runCtxRef = useRef<{
-    entries: Array<{ url: string; title: string }>
+    entries: QueueEntry[]
     selection: JobSelection
     playlistTitle?: string
     runMode: QueueRunMode
@@ -505,6 +583,7 @@ export function App() {
       resolveJob(done.jobId, {
         status: done.status,
         outputPath: done.outputPath,
+        outputBytes: done.outputBytes,
         skipped: done.skipped,
       })
     })
@@ -640,13 +719,18 @@ export function App() {
       return { status: 'failed' }
     }
     beginJob(config, response.jobId)
+    // Every foreground download now has a queue row. Bind it as soon as the job exists so
+    // Queue can use its exact event stream, cancellation target, and completion payload.
+    if (queueRows.value.some((row) => row.url === config.url && row.status === 'downloading')) {
+      patchQueueRow(config.url, { jobId: response.jobId })
+    }
     const result = await waitForJob(response.jobId)
     if (result.status === 'failed') lastFailedConfig.value = config
     return result
   }
 
   async function runQueue(
-    entries: Array<{ url: string; title: string }>,
+    entries: QueueEntry[],
     sel: JobSelection,
     playlistTitle: string | undefined,
     fromIndex: number,
@@ -660,7 +744,7 @@ export function App() {
     try {
       for (let i = fromIndex; i < entries.length; i += 1) {
         if (stopRequested.value) break
-        const config = configFor(entries[i].url, sel, false, playlistTitle)
+        const config = configFor(entries[i].url, sel, entries[i].isLive ?? false, playlistTitle)
         lastJobEvent.value = null
         patchQueueRow(entries[i].url, { status: 'downloading' })
         let result: JobResult
@@ -679,6 +763,7 @@ export function App() {
           status: status === 'completed' ? 'done' : status,
           jobId: undefined,
           outputPath: result.outputPath,
+          outputBytes: result.outputBytes,
           skipped: result.skipped,
         })
       }
@@ -693,7 +778,7 @@ export function App() {
   }
 
   async function runParallelQueue(
-    entries: Array<{ url: string; title: string }>,
+    entries: QueueEntry[],
     sel: JobSelection,
     playlistTitle: string | undefined,
   ): Promise<void> {
@@ -711,7 +796,7 @@ export function App() {
         const i = nextIndex
         nextIndex += 1
         const entry = entries[i]
-        const config = configFor(entry.url, sel, false, playlistTitle)
+        const config = configFor(entry.url, sel, entry.isLive ?? false, playlistTitle)
         inFlight += 1
         patchQueueRow(entry.url, { status: 'downloading' })
 
@@ -736,6 +821,7 @@ export function App() {
                 status: result.status === 'completed' ? 'done' : result.status,
                 jobId: undefined,
                 outputPath: result.outputPath,
+                outputBytes: result.outputBytes,
                 skipped: result.skipped,
               })
             }
@@ -823,12 +909,22 @@ export function App() {
       } else {
         await runQueue(entries, selection, r.metadata.title, 0)
       }
+      if (analysis.value === r && !queueRunning.value) activeView.value = 'download'
       return
     }
 
     setPaused(null)
-    runCtxRef.current = null
-    await runSingleJob(configFor(r.metadata.webpageUrl ?? '', selection, r.metadata.isLive))
+    const entry: QueueEntry = {
+      url: r.metadata.webpageUrl ?? '',
+      title: r.metadata.title,
+      isLive: r.metadata.isLive,
+    }
+    runCtxRef.current = {
+      entries: [entry],
+      selection,
+      runMode: 'sequential',
+    }
+    await runQueue([entry], selection, undefined, 0)
   }
 
   async function retryLastFailed() {
@@ -851,6 +947,7 @@ export function App() {
         status: result.status === 'completed' ? 'done' : result.status,
         jobId: undefined,
         outputPath: result.outputPath,
+        outputBytes: result.outputBytes,
         skipped: result.skipped,
       })
     } finally {
@@ -912,7 +1009,29 @@ export function App() {
     }
   }
 
+  function downloadAnother() {
+    urlInput.value = ''
+    resetAnalysis()
+    window.requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('mf:focus-url')))
+  }
+
   const isPlaylist = result?.kind === 'playlist'
+  const completedSingleDownload =
+    !!result &&
+    !isPlaylist &&
+    jobDone.value?.status === 'completed' &&
+    !queueRunning.value &&
+    runCtxRef.current?.entries.length === 1
+  const completedPlaylistDownload =
+    !!result &&
+    isPlaylist &&
+    !queueRunning.value &&
+    runCtxRef.current?.playlistTitle === result.metadata.title &&
+    queueRows.value.length > 0 &&
+    queueRows.value.every(
+      (row) => row.status === 'done' || row.status === 'failed' || row.status === 'cancelled',
+    )
+  const completedDownload = completedSingleDownload || completedPlaylistDownload
   const playlistTotal = isPlaylist ? (result?.playlistEntries ?? []).length : 0
   const playlistSelected = isPlaylist
     ? (result?.playlistEntries ?? []).filter((e) => selectedEntries.has(e.url)).length
@@ -983,7 +1102,6 @@ export function App() {
 
       <div class="flex min-h-0 min-w-0 flex-1">
         <NavRail
-          working={busy}
           onShowNotice={() => setShowNotice(true)}
           onShowShortcuts={() => setShowShortcuts(true)}
         />
@@ -1058,7 +1176,7 @@ export function App() {
             ref={scrollRef}
             class={`mf-download-workspace flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pb-3 pt-3.5 ${!analyzing.value && !result ? 'mf-download-idle' : ''}`}
           >
-            {!analyzing.value && !result && (
+            {!completedDownload && !analyzing.value && !result && (
               <div class="mf-digital-only mf-workspace-heading">
                 <div>
                   <p class="mf-workspace-kicker">DOWNLOADER</p>
@@ -1069,9 +1187,26 @@ export function App() {
                 <span class="mf-workspace-hint">Video · Audio · Playlists</span>
               </div>
             )}
-            <UrlBar />
+            {!completedDownload && <UrlBar />}
 
-            {!analyzing.value && !result ? (
+            {completedPlaylistDownload ? (
+              <PlaylistDownloadSummary
+                result={result!}
+                rows={queueRows.value}
+                modeLabel={playlistSummary?.modeLabel ?? 'Selected format'}
+                onDownloadAnother={downloadAnother}
+                onReviewQueue={() => {
+                  activeView.value = 'queue'
+                }}
+              />
+            ) : completedSingleDownload ? (
+              <DownloadCompleteSummary
+                result={result!}
+                done={jobDone.value!}
+                selection={selection}
+                onDownloadAnother={downloadAnother}
+              />
+            ) : !analyzing.value && !result ? (
               <HeroState />
             ) : analyzing.value && !result ? (
               <div class="min-h-0 flex-1">
@@ -1261,13 +1396,15 @@ export function App() {
               </div>
             )}
 
-            <PipelineStatus
-              onRetry={() => void retryLastFailed()}
-              onCancel={cancelActive}
-              onPause={pauseActive}
-              paused={paused !== null}
-              onResume={resumePaused}
-            />
+            {!completedDownload && !isPlaylist && (
+              <PipelineStatus
+                onRetry={() => void retryLastFailed()}
+                onCancel={cancelActive}
+                onPause={pauseActive}
+                paused={paused !== null}
+                onResume={resumePaused}
+              />
+            )}
           </main>
         )}
       </div>
@@ -1295,9 +1432,15 @@ export function App() {
         />
       )}
 
-      <footer class="flex shrink-0 items-center justify-between gap-4 border-t border-line bg-ink-950 px-3 py-1.5 text-[11px] text-slate-500 sm:px-4">
+      <FloatingDownloadBadge />
+
+      <footer class="flex shrink-0 items-center justify-between gap-4 border-t border-line bg-ink-950 px-3 py-1.5 text-xs text-slate-500 sm:px-4">
         <EnginesStatus />
-        <span class="flex items-center gap-1">
+        <span class="flex items-center gap-2">
+          <span class="hidden text-slate-600 md:inline">Local-only processing</span>
+          <span aria-hidden="true" class="hidden text-slate-700 md:inline">
+            •
+          </span>
           <button
             onClick={toggleLogDock}
             title="Toggle live console (Ctrl+`)"
@@ -1309,42 +1452,15 @@ export function App() {
             }`}
           >
             <TerminalIcon class="size-3.5" />
-            console
+            Console
           </button>
-          {[
-            {
-              label: 'import cookies',
-              title:
-                'Load a cookies.txt file (Netscape format) to unlock age-gated, region-locked or bot-checked content. Optional for public videos.',
-              fn: () => void window.mf.importCookies(),
-            },
-            {
-              label: 'clear cookies',
-              title: 'Remove the stored cookies.txt. Safe — it only affects restricted links.',
-              fn: () => void window.mf.clearCookies(),
-            },
-            {
-              label: 'logs folder',
-              title: 'Open the folder where MediaForge keeps its diagnostic logs.',
-              fn: () => void window.mf.openLogsFolder(),
-            },
-            {
-              label: 'clear result',
-              title: 'Dismiss the current analysis and start over.',
-              fn: () => resetAnalysis(),
-            },
-          ].map((action) => (
-            <button
-              key={action.label}
-              onClick={action.fn}
-              title={action.title}
-              class="rounded-md px-2 py-1 transition hover:bg-wash-2 hover:text-slate-200"
-            >
-              {action.label}
-            </button>
-          ))}
+          <span
+            class="mf-num rounded-full border border-line bg-wash-1 px-2 py-0.5 text-[11px] text-slate-500"
+            aria-label={bridgeNote}
+          >
+            {bridgeNote === 'ipc ready' ? 'System ready' : bridgeNote}
+          </span>
         </span>
-        <span class="mf-num">{bridgeNote}</span>
       </footer>
     </div>
   )

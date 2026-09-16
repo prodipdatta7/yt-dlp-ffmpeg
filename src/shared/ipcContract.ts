@@ -52,6 +52,7 @@ export const MF_PARTIALS_OPEN = 'mf:partials:open' as const
 export const MF_PARTIALS_CLEAR = 'mf:partials:clear' as const
 export const MF_REVEAL_PATH = 'mf:reveal-path' as const
 export const MF_OPEN_FILE = 'mf:open-file' as const
+export const MF_OUTPUT_FILE_SIZES = 'mf:output-file-sizes' as const
 export const MF_SEARCH_START = 'mf:search:start' as const
 export const MF_SEARCH_CANCEL = 'mf:search:cancel' as const
 export const MF_SEARCH_ENTRY = 'mf:search:entry' as const
@@ -277,6 +278,8 @@ export interface MfApi {
   revealPath(path: string): Promise<{ ok: boolean }>
   /** Open a file with the OS-registered default application (e.g. play a video). */
   openFile(path: string): Promise<{ ok: boolean }>
+  /** Reads verified on-disk byte sizes for completed output files. */
+  getOutputFileSizes(paths: string[]): Promise<Record<string, number>>
   updaterCheck(kind: UpdaterDriverKind): Promise<UpdaterCheckResult>
   updaterApply(kind: UpdaterDriverKind): Promise<UpdaterApplyResult>
   onUpdaterPhase(listener: (event: UpdaterPhaseEvent) => void): () => void

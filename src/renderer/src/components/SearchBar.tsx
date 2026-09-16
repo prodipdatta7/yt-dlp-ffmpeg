@@ -150,10 +150,10 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
           e.preventDefault()
           submit()
         }}
-        class="mf-search-form app-no-drag flex items-stretch overflow-visible border border-line-strong bg-[var(--surface-input)] transition-[background-color,border-color,box-shadow] duration-200 focus-within:border-sky-400/60 focus-within:shadow-[0_0_0_3px_var(--mf-glow)]"
+        class="mf-search-form app-no-drag flex items-stretch overflow-visible border border-line-strong bg-[var(--surface-input)]"
       >
         {/* left: platform picker (dropdown) */}
-        <div ref={platformRef} class="relative flex shrink-0 items-center border-r border-line">
+        <div ref={platformRef} class="mf-search-platform relative flex shrink-0 items-center">
           <button
             type="button"
             disabled={busy}
@@ -164,7 +164,7 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
               setFiltersOpen(false)
               setPlatformOpen((v) => !v)
             }}
-            class="mf-focus-ring flex cursor-pointer items-center gap-2 rounded-l-md bg-transparent py-2 pl-3 pr-2.5 text-[11px] font-semibold text-slate-200 outline-none transition hover:bg-wash-2 disabled:cursor-not-allowed disabled:opacity-50"
+            class="mf-search-control mf-search-platform-button mf-focus-ring flex cursor-pointer items-center gap-2 bg-transparent px-3 text-xs font-semibold text-slate-200 outline-none transition hover:bg-wash-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <span
               class={`size-1.5 shrink-0 rounded-full ${PLATFORM_ACCENTS[platform.id] ?? 'bg-slate-500'}`}
@@ -225,48 +225,50 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
           )}
         </div>
 
-        {/* middle: query input */}
-        <input
-          ref={inputRef}
-          type="text"
-          name="search-query"
-          autocomplete="off"
-          spellcheck={false}
-          placeholder={`Search ${platform.label}…`}
-          value={query}
-          onInput={(e) => (searchQuery.value = (e.target as HTMLInputElement).value)}
-          disabled={busy}
-          aria-label="Search query"
-          class="min-w-0 flex-1 bg-transparent px-3 py-2 text-[11px] text-slate-100 outline-none transition placeholder:text-slate-600 disabled:opacity-60"
-        />
+        {/* middle: query field and its local clear action */}
+        <div class="mf-search-query-group flex min-w-0 flex-1 items-center">
+          <input
+            ref={inputRef}
+            type="text"
+            name="search-query"
+            autocomplete="off"
+            spellcheck={false}
+            placeholder={`Search ${platform.label}…`}
+            value={query}
+            onInput={(e) => (searchQuery.value = (e.target as HTMLInputElement).value)}
+            disabled={busy}
+            aria-label="Search query"
+            class="mf-search-query min-w-0 flex-1 bg-transparent px-3 text-xs text-slate-100 outline-none placeholder:text-slate-600 disabled:opacity-60"
+          />
 
-        {query.length > 0 && !busy && (
-          <button
-            type="button"
-            onClick={() => {
-              searchQuery.value = ''
-              inputRef.current?.focus()
-            }}
-            title="Clear"
-            aria-label="Clear query"
-            class="mf-focus-ring my-auto flex size-6 shrink-0 items-center justify-center rounded-md text-slate-600 transition hover:bg-wash-2 hover:text-slate-200"
-          >
-            <CloseIcon class="size-3.5" />
-          </button>
-        )}
+          {query.length > 0 && !busy && (
+            <button
+              type="button"
+              onClick={() => {
+                searchQuery.value = ''
+                inputRef.current?.focus()
+              }}
+              title="Clear query"
+              aria-label="Clear query"
+              class="mf-search-clear mf-focus-ring flex shrink-0 items-center justify-center text-slate-600 transition hover:bg-wash-2 hover:text-slate-200"
+            >
+              <CloseIcon class="size-3.5" />
+            </button>
+          )}
+        </div>
 
         {/* right: run search and reset */}
         {busy ? (
           <button
             type="button"
             onClick={() => void window.mf.searchCancel()}
-            class="mf-focus-ring m-1 inline-flex shrink-0 items-center gap-1.5 rounded-md border border-line-strong px-3 text-[11px] font-semibold text-slate-200 transition hover:border-rose-500/60 hover:text-rose-300 active:scale-[0.98]"
+            class="mf-search-control mf-search-cancel mf-focus-ring inline-flex shrink-0 items-center gap-1.5 px-3 text-xs font-semibold text-slate-200 transition hover:text-rose-500 active:scale-[0.98]"
           >
             <Spinner class="size-3.5" />
             Cancel
           </button>
         ) : (
-          <div class="flex shrink-0 items-center gap-2 p-1">
+          <div class="mf-search-actions flex shrink-0 items-center">
             {hasStateToReset && (
               <button
                 type="button"
@@ -276,7 +278,7 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
                 }}
                 title="Reset search, filters and clear results"
                 aria-label="Reset search"
-                class="mf-focus-ring inline-flex shrink-0 items-center gap-1 rounded-md border border-line-strong px-2.5 py-1.5 text-[11px] font-semibold text-neutral-600 transition hover:border-neutral-400 hover:text-ink active:scale-[0.98] dark:text-slate-300 dark:hover:border-slate-500"
+                class="mf-search-control mf-search-reset mf-focus-ring inline-flex shrink-0 items-center gap-1 px-2.5 text-xs font-semibold text-neutral-600 transition hover:bg-wash-2 hover:text-ink active:scale-[0.98] dark:text-slate-300"
               >
                 <RotateCcwIcon class="size-3.5" />
                 <span>Reset</span>
@@ -285,7 +287,7 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
             <button
               type="submit"
               disabled={query.trim().length === 0}
-              className={`mf-focus-ring inline-flex shrink-0 items-center gap-1.5 rounded-md bg-sky-500 px-4 py-1.5 text-[11px] font-bold text-white shadow-sm shadow-sky-500/30 transition-[background-color,box-shadow,opacity,transform] duration-150 hover:bg-sky-600 active:scale-[0.98] ${
+              className={`mf-search-control mf-search-submit mf-focus-ring inline-flex shrink-0 items-center gap-1.5 px-4 text-xs font-bold text-white transition-[background-color,box-shadow,opacity,transform] duration-150 active:scale-[0.98] ${
                 query.trim().length === 0 ? 'cursor-not-allowed opacity-35 shadow-none' : ''
               }`}
               title="Search (Enter)"
@@ -297,7 +299,7 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
         )}
 
         {/* far right: advanced filters popover */}
-        <div ref={filtersRef} class="relative my-1 mr-0.5 ml-0 flex shrink-0 items-center">
+        <div ref={filtersRef} class="mf-search-filter-control relative flex shrink-0 items-center">
           <button
             type="button"
             onClick={() => {
@@ -308,10 +310,10 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
             aria-expanded={filtersOpen}
             aria-haspopup="true"
             title={federated ? 'Public-web search options' : 'Advanced filters & criteria'}
-            className={`mf-focus-ring inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] font-semibold transition ${
+            className={`mf-search-control mf-search-filter-button mf-focus-ring inline-flex shrink-0 items-center gap-1.5 px-2.5 text-xs font-semibold transition ${
               filtersOpen || totalActiveFilters > 0
-                ? 'border-orange-500/60 bg-orange-500/10 text-orange-500 dark:text-[var(--mf-detail-bright)]'
-                : 'border-line-strong text-slate-300 hover:border-orange-500/40 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40'
+                ? 'bg-orange-500/10 text-orange-500 dark:text-[var(--mf-detail-bright)]'
+                : 'text-slate-300 hover:bg-wash-2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40'
             }`}
           >
             <SlidersIcon class="size-3.5" />
@@ -349,7 +351,7 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
         </div>
 
         {/* info popover right after Filters */}
-        <div ref={infoRef} class="relative my-1 mr-1 ml-0.5 flex shrink-0 items-center">
+        <div ref={infoRef} class="mf-search-info-control relative flex shrink-0 items-center">
           <button
             type="button"
             onClick={() => {
@@ -361,10 +363,10 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
             aria-haspopup="dialog"
             title="Platform search info"
             aria-label="Platform search info"
-            className={`mf-focus-ring inline-flex size-7 shrink-0 items-center justify-center rounded-md border transition ${
+            className={`mf-search-control mf-search-info-button mf-focus-ring inline-flex shrink-0 items-center justify-center transition ${
               infoOpen
-                ? 'border-sky-500/60 bg-sky-500/10 text-sky-400'
-                : 'border-line-strong text-slate-400 hover:border-line hover:text-ink dark:hover:border-slate-500 dark:hover:text-slate-200'
+                ? 'bg-sky-500/10 text-sky-400'
+                : 'text-slate-400 hover:bg-wash-2 hover:text-ink dark:hover:text-slate-200'
             }`}
           >
             <InfoIcon class="size-3.5" />

@@ -77,6 +77,7 @@ opacity washes of `white`/`black`:
 | `--color-recess` | `bg-recess` | Recessed wells (inputs, segmented controls, nav) |
 | `--color-line` / `--color-line-strong` | `border-line`, `border-line-strong` | Hairline / stronger borders |
 | `--color-ink-950` | `bg-ink-950` | Title bar + footer chrome |
+| `--mf-action-start/end` | Primary button gradients | AA-safe action surfaces; bright brand accents remain decorative |
 
 `white`/`black` stay **literal** (CTA on-accent text, badge dots). Accent ramps keep their
 Tailwind names (`sky-*` = vermillion, `indigo-*` = gold) for historical continuity — treat them

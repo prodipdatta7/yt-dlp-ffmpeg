@@ -80,19 +80,19 @@ export function DiagnosticsSection() {
       >
         <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
           <div class="rounded-xl border border-line bg-wash-1 p-3">
-            <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               Telemetry Policy
             </span>
             <p class="mt-1 text-xs font-bold text-emerald-500">Zero Network Egress</p>
           </div>
           <div class="rounded-xl border border-line bg-wash-1 p-3">
-            <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               Sensitive Data Sanitizer
             </span>
             <p class="mt-1 text-xs font-bold text-ink">Query & Cookie Redacted</p>
           </div>
           <div class="rounded-xl border border-line bg-wash-1 p-3">
-            <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               Execution Architecture
             </span>
             <p class="mt-1 text-xs font-mono font-bold text-ink">Isolated 3-Process Model</p>

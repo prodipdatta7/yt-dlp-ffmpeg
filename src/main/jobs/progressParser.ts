@@ -49,6 +49,25 @@ export function computeSegmentPercent(progress: ParsedDownloadProgress): number 
   return progress.status === 'finished' ? 100 : null
 }
 
+/**
+ * Maps one sequential stream into one monotonic transfer bar. A video+audio job reserves a
+ * half for each stream, while audio-only jobs consume the full bar. Exact aggregate bytes are
+ * not available until yt-dlp starts the later stream, so equal stream ranges avoid the visual
+ * regression of a bar reaching 100% and then restarting at zero.
+ */
+export function computeAggregateDownloadPercent(
+  progress: ParsedDownloadProgress,
+  streamIndex: number,
+  streamCount: number,
+): number | null {
+  const segmentPercent = computeSegmentPercent(progress)
+  if (segmentPercent === null) return null
+
+  const count = Math.max(1, Math.floor(streamCount))
+  const index = Math.max(0, Math.min(count - 1, Math.floor(streamIndex)))
+  return ((index + segmentPercent / 100) / count) * 100
+}
+
 /** True when a stdout line is the `--print after_move:filepath` payload (AM-01). */
 export function isFinalPathLine(
   line: string,

@@ -76,7 +76,7 @@ export function StorageSection({
       footer={
         partials && partials.length > 0 ? (
           <>
-            <span class="text-[11px] text-slate-500">
+            <span class="text-xs text-slate-500">
               {partials.length} left-over {partials.length === 1 ? 'folder' : 'folders'} ·{' '}
               {fmtSize(leftoverBytes)}
             </span>
@@ -123,7 +123,7 @@ export function StorageSection({
                 <p class="mf-select-text mf-num truncate text-xs text-slate-300" title={item.path}>
                   {item.path}
                 </p>
-                <p class="mt-0.5 text-[11px] text-slate-500">
+                <p class="mt-0.5 text-xs text-slate-500">
                   {fmtSize(item.bytes)} · {item.fileCount} {item.fileCount === 1 ? 'file' : 'files'}{' '}
                   ·{' '}
                   <span title={new Date(item.mtimeMs).toLocaleString()}>

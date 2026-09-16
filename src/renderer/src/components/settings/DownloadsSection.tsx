@@ -54,7 +54,7 @@ export function DownloadsSection({
 
           {/* Visual Thread Lane Visualizer */}
           <div class="rounded-xl border border-line bg-wash-1 p-3.5">
-            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">
               Active Stream Lanes ({playlistConcurrency} of 5 Enabled)
             </span>
             <div class="mt-2.5 grid grid-cols-5 gap-2">
@@ -69,15 +69,15 @@ export function DownloadsSection({
                         : 'border-dashed border-line bg-wash-1 text-slate-600 opacity-50'
                     }`}
                   >
-                    <span class="text-[10px] font-mono font-bold">LANE 0{lane}</span>
-                    <span class="mt-0.5 text-[9px] uppercase font-semibold">
+                    <span class="text-[11px] font-mono font-bold">LANE 0{lane}</span>
+                    <span class="mt-0.5 text-[10px] font-semibold uppercase">
                       {isActive ? 'Ready' : 'Reserved'}
                     </span>
                   </div>
                 )
               })}
             </div>
-            <p class="mt-2.5 text-[11px] leading-relaxed text-slate-500">
+            <p class="mt-2.5 text-xs leading-relaxed text-slate-500">
               Each active lane spawns an independent child process with pre-flight disk reservation
               to prevent network saturation and storage starvation.
             </p>
@@ -115,19 +115,19 @@ export function DownloadsSection({
             Transient network disconnections trigger automated retry intervals before prompting:
           </p>
           <div class="mt-2.5 flex flex-wrap items-center gap-2">
-            <span class="rounded-lg border border-line bg-recess px-2.5 py-1 text-[10px] font-mono font-semibold text-slate-300">
+            <span class="rounded-lg border border-line bg-recess px-2.5 py-1 text-[11px] font-mono font-semibold text-slate-300">
               1st: 5s Backoff
             </span>
             <span class="text-slate-600">→</span>
-            <span class="rounded-lg border border-line bg-recess px-2.5 py-1 text-[10px] font-mono font-semibold text-slate-300">
+            <span class="rounded-lg border border-line bg-recess px-2.5 py-1 text-[11px] font-mono font-semibold text-slate-300">
               2nd: 15s Backoff
             </span>
             <span class="text-slate-600">→</span>
-            <span class="rounded-lg border border-line bg-recess px-2.5 py-1 text-[10px] font-mono font-semibold text-slate-300">
+            <span class="rounded-lg border border-line bg-recess px-2.5 py-1 text-[11px] font-mono font-semibold text-slate-300">
               3rd: 30s Backoff
             </span>
             <span class="text-slate-600">→</span>
-            <span class="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-mono font-semibold text-emerald-400">
+            <span class="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-mono font-semibold text-emerald-400">
               Manual Resume UI
             </span>
           </div>

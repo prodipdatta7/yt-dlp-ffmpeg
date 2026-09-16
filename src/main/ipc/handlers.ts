@@ -27,6 +27,7 @@ import {
   MF_PARTIALS_CLEAR,
   MF_REVEAL_PATH,
   MF_OPEN_FILE,
+  MF_OUTPUT_FILE_SIZES,
   MF_SEARCH_CANCEL,
   MF_SEARCH_START,
   MF_FETCH_CHAPTERS,
@@ -85,6 +86,8 @@ import { MfError } from '../media/metadata'
 import type { Logger } from '../store/logger'
 
 const MAX_URL_LENGTH = 2048
+const MAX_OUTPUT_SIZE_PATHS = 500
+const MAX_FILE_PATH_LENGTH = 32_767
 
 export interface IpcDeps {
   getBinariesInfo: () => Promise<BinariesInfoResult>
@@ -128,6 +131,7 @@ export interface IpcDeps {
   clearPartials: (path?: string) => Promise<PartialsClearResult>
   revealPath: (path: string) => Promise<{ ok: boolean }>
   openFile: (path: string) => Promise<{ ok: boolean }>
+  getOutputFileSizes: (paths: string[]) => Promise<Record<string, number>>
   updaterCheck: (kind: UpdaterDriverKind) => Promise<{
     current: string | null
     latest: string | null
@@ -161,6 +165,23 @@ export interface IpcDeps {
 
 function invalidUrl(): AnalyzeResponse {
   return { kind: 'error', code: 'MF_INVALID_URL', message: ERROR_MESSAGES.MF_INVALID_URL }
+}
+
+function readOutputPaths(payload: unknown): string[] | null {
+  if (!Array.isArray(payload) || payload.length > MAX_OUTPUT_SIZE_PATHS) return null
+  const paths = new Set<string>()
+  for (const value of payload) {
+    if (
+      typeof value !== 'string' ||
+      value.length === 0 ||
+      value.length > MAX_FILE_PATH_LENGTH ||
+      value.includes('\0')
+    ) {
+      return null
+    }
+    paths.add(value)
+  }
+  return [...paths]
 }
 
 export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
@@ -305,6 +326,10 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
     const path = typeof payload === 'string' ? payload : null
     if (!path) return { ok: false }
     return deps.openFile(path)
+  })
+  ipcMain.handle(MF_OUTPUT_FILE_SIZES, async (_event, payload: unknown) => {
+    const paths = readOutputPaths(payload)
+    return paths ? deps.getOutputFileSizes(paths) : {}
   })
 
   ipcMain.handle(MF_UPDATER_CHECK, (_event, payload: unknown) =>

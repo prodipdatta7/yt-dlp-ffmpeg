@@ -1,6 +1,7 @@
 const SHORTCUTS: Array<{ keys: string[]; action: string }> = [
   { keys: ['Ctrl', 'K'], action: 'Focus the link bar' },
-  { keys: ['Ctrl', 'L'], action: 'Paste clipboard URL and analyze' },
+  { keys: ['Ctrl', 'L'], action: 'Focus the link bar' },
+  { keys: ['Ctrl', 'V'], action: 'Paste into the focused link bar' },
   { keys: ['Ctrl', '`'], action: 'Toggle the live console dock' },
   { keys: ['?'], action: 'Show or hide this shortcuts list' },
   { keys: ['Esc'], action: 'Close overlays / clear focus' },

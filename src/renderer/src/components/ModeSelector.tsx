@@ -11,6 +11,7 @@ import {
   type FormatRow,
 } from '../../../shared/models'
 import { estimateJobBytes } from '../utils/estimate'
+import { fmtSize } from '../utils/format'
 import {
   FilmIcon,
   FolderIcon,
@@ -234,7 +235,7 @@ export function ModeSelector({
                 streamlessAdvanced ? 'Per-stream picking needs a single video analysis' : label
               }
               aria-pressed={active}
-              class={`mf-focus-ring flex flex-col items-center gap-1 rounded-lg px-1 py-1.5 text-[10px] font-semibold leading-none transition-[background-color,border-color,color,box-shadow,transform] duration-150 ${
+              class={`mf-focus-ring flex flex-col items-center gap-1 rounded-lg px-1 py-1.5 text-[11px] font-semibold leading-none transition-[background-color,border-color,color,box-shadow,transform] duration-150 ${
                 active
                   ? 'bg-gradient-to-br from-sky-500 to-indigo-500 text-white shadow shadow-sky-500/25'
                   : 'text-slate-400 hover:bg-wash-2 hover:text-ink'
@@ -431,7 +432,7 @@ export function ModeSelector({
         </div>
 
         {audioBoost !== 'none' && (
-          <p class="text-[11px] leading-tight text-slate-400">
+          <p class="text-xs leading-tight text-slate-400">
             <span class="font-medium text-slate-300">
               {AUDIO_BOOST_SETTINGS.find((o) => o.id === audioBoost)?.label}:
             </span>{' '}
@@ -468,11 +469,14 @@ export function ModeSelector({
       </label>
 
       {estimatedBytes !== null && (
-        <p class="flex items-center gap-1.5 text-[11px] text-slate-600">
+        <p
+          class="flex items-center gap-1.5 text-xs text-slate-600"
+          title="Estimated from the available source streams. The final size is verified after processing."
+        >
           <span class="inline-flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/[0.07] px-2 py-0.5 font-semibold text-emerald-300/90">
-            <HardDriveIcon class="size-3" />≈ {(estimatedBytes / 1024 / 1024).toFixed(0)} MB
+            <HardDriveIcon class="size-3" /> Estimated download size
           </span>
-          estimated size
+          <span class="mf-num">≈ {fmtSize(estimatedBytes)}</span>
         </p>
       )}
     </div>

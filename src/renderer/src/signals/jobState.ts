@@ -54,6 +54,14 @@ export function endJob(done: JobDonePayload): void {
   }
 }
 
+/** Removes the Downloader-panel reference once that exact partial folder was deleted on disk. */
+export function clearJobDonePartial(partialDir: string): void {
+  const done = jobDone.value
+  if (done?.partialDir === partialDir) {
+    jobDone.value = { ...done, partialDir: undefined }
+  }
+}
+
 export const lastFailedConfig = signal<JobConfig | null>(null)
 export const launchError = signal<string | null>(null)
 

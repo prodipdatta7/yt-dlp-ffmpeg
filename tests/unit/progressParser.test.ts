@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  computeAggregateDownloadPercent,
   computeSegmentPercent,
   extractFinalPathLine,
   isFinalPathLine,
@@ -84,6 +85,33 @@ describe('computeSegmentPercent', () => {
         status: 'finished',
       }),
     ).toBe(100)
+  })
+})
+
+describe('computeAggregateDownloadPercent', () => {
+  const base: ParsedDownloadProgress = {
+    status: 'downloading',
+    downloadedBytes: 50,
+    totalBytes: 100,
+    speedBps: null,
+    etaSec: null,
+  }
+
+  it('maps video and audio into consecutive halves of one transfer bar', () => {
+    expect(computeAggregateDownloadPercent(base, 0, 2)).toBe(25)
+    expect(computeAggregateDownloadPercent(base, 1, 2)).toBe(75)
+    const finished = {
+      ...base,
+      status: 'finished' as const,
+      downloadedBytes: null,
+      totalBytes: null,
+    }
+    expect(computeAggregateDownloadPercent(finished, 0, 2)).toBe(50)
+    expect(computeAggregateDownloadPercent(finished, 1, 2)).toBe(100)
+  })
+
+  it('uses the full range for a one-stream audio job', () => {
+    expect(computeAggregateDownloadPercent(base, 0, 1)).toBe(50)
   })
 })
 

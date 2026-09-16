@@ -2,11 +2,11 @@ import { useState } from 'preact/hooks'
 import type { AnalyzeResult } from '../../../shared/models'
 import { fmtCount, fmtDuration, fmtEta, fmtSize, fmtSpeed } from '../utils/format'
 import { sourceLabel } from '../utils/source'
-import { jobEventsById, lastJobEvent } from '../signals/jobState'
+import { clearJobDonePartial, jobEventsById, lastJobEvent } from '../signals/jobState'
 import { hydratedEntries, requestMorePlaylistHydration } from '../signals/appState'
 import {
   clearAllQueueLeftovers,
-  patchQueueRow,
+  clearQueuePartial,
   queueLeftoverCount,
   queueRows,
   queueRunMode,
@@ -117,10 +117,13 @@ export function VideoBanner({
   result,
   onOpenPreviewTab,
   isPreviewActive = false,
+  readOnly = false,
 }: {
   result: AnalyzeResult
   onOpenPreviewTab?: () => void
   isPreviewActive?: boolean
+  /** Keeps the analyzed-media card visible after download without reopening source preview tools. */
+  readOnly?: boolean
 }) {
   const { metadata } = result
   const [previewActive, setPreviewActive] = useState(false)
@@ -128,6 +131,7 @@ export function VideoBanner({
   const [previewVolumeBoost, setPreviewVolumeBoost] = useState<number>(1)
 
   const handlePreviewClick = () => {
+    if (readOnly) return
     if (onOpenPreviewTab) {
       onOpenPreviewTab()
     } else {
@@ -145,7 +149,9 @@ export function VideoBanner({
   chips.push({ Icon: LayersIcon, text: `${result.formats.length} streams` })
 
   return (
-    <div class="mf-card mf-card-hover flex shrink-0 items-stretch gap-4 p-3.5">
+    <div
+      class={`mf-card flex shrink-0 items-stretch gap-4 p-3.5 ${readOnly ? '' : 'mf-card-hover'}`}
+    >
       {previewActive && !onOpenPreviewTab ? (
         <ThumbFrame className="w-52 sm:w-60 aspect-video">
           <InlineVideoPreview
@@ -158,42 +164,50 @@ export function VideoBanner({
           />
         </ThumbFrame>
       ) : metadata.thumbnailUrl ? (
-        <ThumbFrame className="group relative w-44 sm:w-52 aspect-video cursor-pointer">
+        <ThumbFrame
+          className={`group relative w-44 sm:w-52 aspect-video ${readOnly ? '' : 'cursor-pointer'}`}
+        >
           <img
             src={metadata.thumbnailUrl}
             alt=""
-            class="aspect-video size-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
+            class={`aspect-video size-full object-cover transition-transform duration-300 ${readOnly ? '' : 'group-hover:scale-[1.04]'}`}
           />
           <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-scrim/45 via-transparent to-transparent" />
-          <button
-            type="button"
-            onClick={handlePreviewClick}
-            title={onOpenPreviewTab ? 'Open video preview player' : 'Play inline video preview'}
-            class="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity duration-200 group-hover:opacity-100 hover:bg-black/45"
-          >
-            <span class="flex items-center gap-1.5 rounded-full bg-sky-600 px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-md transition-transform duration-150 hover:scale-105 active:scale-95">
-              <PlayIcon class="size-3.5 fill-white" />
-              <span>{onOpenPreviewTab && isPreviewActive ? 'Viewing Preview' : 'Preview'}</span>
-            </span>
-          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={handlePreviewClick}
+              title={onOpenPreviewTab ? 'Open video preview player' : 'Play inline video preview'}
+              class="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity duration-200 group-hover:opacity-100 hover:bg-black/45"
+            >
+              <span class="flex items-center gap-1.5 rounded-full bg-sky-600 px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-md transition-transform duration-150 hover:scale-105 active:scale-95">
+                <PlayIcon class="size-3.5 fill-white" />
+                <span>{onOpenPreviewTab && isPreviewActive ? 'Viewing Preview' : 'Preview'}</span>
+              </span>
+            </button>
+          )}
           {metadata.isLive ? <LiveBadge /> : <DurationBadge seconds={metadata.durationSec} />}
         </ThumbFrame>
       ) : (
-        <ThumbFrame className="group relative flex w-44 items-center justify-center sm:w-52 aspect-video cursor-pointer">
+        <ThumbFrame
+          className={`group relative flex w-44 items-center justify-center sm:w-52 aspect-video ${readOnly ? '' : 'cursor-pointer'}`}
+        >
           <span class="flex aspect-video size-full items-center justify-center bg-gradient-to-br from-sky-500/20 to-indigo-500/15">
             <PlayIcon class="size-6 text-slate-400" />
           </span>
-          <button
-            type="button"
-            onClick={handlePreviewClick}
-            title={onOpenPreviewTab ? 'Open video preview player' : 'Play inline video preview'}
-            class="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity duration-200 group-hover:opacity-100 hover:bg-black/45"
-          >
-            <span class="flex items-center gap-1.5 rounded-full bg-sky-600 px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-md transition-transform duration-150 hover:scale-105 active:scale-95">
-              <PlayIcon class="size-3.5 fill-white" />
-              <span>{onOpenPreviewTab && isPreviewActive ? 'Viewing Preview' : 'Preview'}</span>
-            </span>
-          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={handlePreviewClick}
+              title={onOpenPreviewTab ? 'Open video preview player' : 'Play inline video preview'}
+              class="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity duration-200 group-hover:opacity-100 hover:bg-black/45"
+            >
+              <span class="flex items-center gap-1.5 rounded-full bg-sky-600 px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-md transition-transform duration-150 hover:scale-105 active:scale-95">
+                <PlayIcon class="size-3.5 fill-white" />
+                <span>{onOpenPreviewTab && isPreviewActive ? 'Viewing Preview' : 'Preview'}</span>
+              </span>
+            </button>
+          )}
           {metadata.isLive ? <LiveBadge /> : <DurationBadge seconds={metadata.durationSec} />}
         </ThumbFrame>
       )}
@@ -205,7 +219,7 @@ export function VideoBanner({
         >
           {metadata.title}
         </h2>
-        <p class="truncate text-[13px] font-medium text-sky-300/90">
+        <p class="truncate text-[13px] font-semibold text-[#1d4ed8] dark:text-[var(--mf-detail-bright)]">
           {metadata.uploader ?? 'Unknown channel'}
         </p>
         <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-medium text-slate-500">
@@ -221,36 +235,38 @@ export function VideoBanner({
               <span class="mf-num">{text}</span>
             </span>
           ))}
-          <button
-            type="button"
-            onClick={handlePreviewClick}
-            title={
-              onOpenPreviewTab
-                ? isPreviewActive
-                  ? 'Preview tab is currently active'
-                  : 'Open preview player tab'
-                : previewActive
-                  ? 'Close inline preview'
-                  : 'Preview video'
-            }
-            class={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-semibold transition ${
-              (onOpenPreviewTab ? isPreviewActive : previewActive)
-                ? 'border-sky-500 bg-sky-500/15 text-sky-400'
-                : 'border-line-strong bg-recess/60 text-ink hover:bg-wash-1 hover:text-sky-400'
-            }`}
-          >
-            <EyeIcon class="size-3" />
-            <span>
-              {onOpenPreviewTab
-                ? isPreviewActive
-                  ? 'Preview Active'
-                  : 'Preview Video'
-                : previewActive
-                  ? 'Close Preview'
-                  : 'Preview Video'}
-            </span>
-          </button>
-          {!onOpenPreviewTab && previewActive && (
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={handlePreviewClick}
+              title={
+                onOpenPreviewTab
+                  ? isPreviewActive
+                    ? 'Preview tab is currently active'
+                    : 'Open preview player tab'
+                  : previewActive
+                    ? 'Close inline preview'
+                    : 'Preview video'
+              }
+              class={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-bold transition ${
+                (onOpenPreviewTab ? isPreviewActive : previewActive)
+                  ? 'border-[var(--mf-accent)] bg-[var(--mf-detail-active)] text-[#1d4ed8] dark:text-[var(--mf-detail-bright)]'
+                  : 'border-line-strong bg-recess/60 text-ink hover:bg-wash-1 hover:text-[#1d4ed8] dark:hover:text-[var(--mf-detail-bright)]'
+              }`}
+            >
+              <EyeIcon class="size-3" />
+              <span>
+                {onOpenPreviewTab
+                  ? isPreviewActive
+                    ? 'Preview Active'
+                    : 'Preview Video'
+                  : previewActive
+                    ? 'Close Preview'
+                    : 'Preview Video'}
+              </span>
+            </button>
+          )}
+          {!readOnly && !onOpenPreviewTab && previewActive && (
             <VolumeBoosterControl
               volumeBoost={previewVolumeBoost}
               onChange={setPreviewVolumeBoost}
@@ -306,6 +322,7 @@ export function VideoPreviewTab({ result }: { result: AnalyzeResult }) {
             url={metadata.webpageUrl}
             title={metadata.title}
             startSec={targetSec}
+            autoplay={false}
             volumeBoost={previewVolumeBoost}
             onExpand={() => setModalOpen(true)}
             onTimeUpdate={setCurrentTime}
@@ -516,7 +533,10 @@ export function PlaylistEntries({
     setClearingUrl(url)
     try {
       const res = await window.mf.clearPartials(partialDir)
-      if (res.ok) patchQueueRow(url, { partialDir: undefined })
+      if (res.ok) {
+        clearQueuePartial(partialDir)
+        clearJobDonePartial(partialDir)
+      }
     } finally {
       setClearingUrl((prev) => (prev === url ? null : prev))
     }
@@ -525,7 +545,9 @@ export function PlaylistEntries({
   async function clearAllLeftovers() {
     setClearingAll(true)
     try {
-      await clearAllQueueLeftovers()
+      const partialDirs = queueRows.value.flatMap((row) => (row.partialDir ? [row.partialDir] : []))
+      const res = await clearAllQueueLeftovers()
+      if (res.ok) partialDirs.forEach(clearJobDonePartial)
     } finally {
       setClearingAll(false)
     }

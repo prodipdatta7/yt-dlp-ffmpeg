@@ -20,7 +20,7 @@ import type { Logger } from '../store/logger'
 import { buildDownloadArgs, outputTemplateFor } from './argBuilders'
 import { JobEventCoalescer } from './eventCoalescer'
 import {
-  computeSegmentPercent,
+  computeAggregateDownloadPercent,
   isFinalPathLine,
   isPostprocessorLine,
   parseDownloadLine,
@@ -224,6 +224,7 @@ export class DownloadOrchestrator {
       const existingPath = await findExistingDownload(effectiveDestDir, config)
       if (existingPath) {
         const jobId = randomUUID()
+        const existingStat = await this.fs.stat(existingPath).catch(() => null)
         this.deps.logger?.info('download skipped — already exists at this quality', {
           jobId,
           url: config.url,
@@ -231,7 +232,13 @@ export class DownloadOrchestrator {
         // Deferred so the MF_JOB_DONE event reaches the renderer only after it has
         // received this jobId back from the downloadStart IPC call that's still in flight.
         setTimeout(() => {
-          sendDone({ jobId, status: 'completed', outputPath: existingPath, skipped: true })
+          sendDone({
+            jobId,
+            status: 'completed',
+            outputPath: existingPath,
+            ...(existingStat && existingStat.size > 0 ? { outputBytes: existingStat.size } : {}),
+            skipped: true,
+          })
         }, 0)
         return jobId
       }
@@ -300,6 +307,7 @@ export class DownloadOrchestrator {
     let lastPercent: number | null = null
     let segmentsStarted = 0
     let segmentsFinished = 0
+    const transferStreamCount = job.config.mode === 'audio-only' ? 1 : 2
 
     const emit = (
       next: JobPhase,
@@ -347,11 +355,13 @@ export class DownloadOrchestrator {
 
             const post = parsePostprocessLine(line)
             if (post !== null) {
-              emit('merging', Math.min(100, post), null, null)
+              // Post-processing starts only once yt-dlp has completed its download inputs.
+              // Keep the aggregate transfer bar full instead of refilling it for mux progress.
+              emit('merging', 100, null, null)
               return
             }
             if (isPostprocessorLine(line)) {
-              emit('merging', lastPercent, null, null)
+              emit('merging', 100, null, null)
               return
             }
 
@@ -369,7 +379,7 @@ export class DownloadOrchestrator {
                   : 'downloading-video'
               emit(
                 nextPhase,
-                computeSegmentPercent(progress),
+                computeAggregateDownloadPercent(progress, segmentsStarted - 1, transferStreamCount),
                 progress.speedBps,
                 progress.etaSec,
                 progress.downloadedBytes,
@@ -426,8 +436,13 @@ export class DownloadOrchestrator {
         if (job.config.isLive) {
           const saved = await this.finalizeLiveRecording(job)
           if (saved) {
+            const savedStat = await this.fs.stat(saved).catch(() => null)
             this.deps.logger?.info('live recording saved on stop', { jobId, target: saved })
-            await this.finish(job, sendDone, { status: 'completed', outputPath: saved })
+            await this.finish(job, sendDone, {
+              status: 'completed',
+              outputPath: saved,
+              ...(savedStat && savedStat.size > 0 ? { outputBytes: savedStat.size } : {}),
+            })
           } else {
             await this.finish(job, sendDone, { status: 'cancelled' })
           }
@@ -462,7 +477,12 @@ export class DownloadOrchestrator {
       await this.removeStagingRootIfEmpty(job)
       this.deps.logger?.info('download completed', { jobId, target })
       await recordDownload(job.destDir, job.config, target)
-      await this.finish(job, sendDone, { status: 'completed', outputPath: target })
+      const targetStat = await this.fs.stat(target).catch(() => null)
+      await this.finish(job, sendDone, {
+        status: 'completed',
+        outputPath: target,
+        ...(targetStat && targetStat.size > 0 ? { outputBytes: targetStat.size } : {}),
+      })
     } catch (error) {
       this.deps.logger?.error('orchestrator error', { jobId, error: String(error) })
       await this.finish(job, sendDone, { status: 'failed', errorCode: 'MF_UNKNOWN' })

@@ -427,6 +427,9 @@ describe('Search Card helpers and intelligence (Rich Video Search Cards)', () =>
     expect(yt1?.platform).toBe('YouTube')
     expect(yt1?.src).toContain('youtube-nocookie.com/embed/dQw4w9WgXcQ')
 
+    const pausedYt = getEmbedInfo('https://www.youtube.com/watch?v=dQw4w9WgXcQ', undefined, false)
+    expect(pausedYt?.src).toContain('autoplay=0')
+
     // YouTube shorts URL
     const yt2 = getEmbedInfo('https://www.youtube.com/shorts/dQw4w9WgXcQ')
     expect(yt2?.platform).toBe('YouTube')

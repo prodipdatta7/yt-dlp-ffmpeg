@@ -5,11 +5,9 @@ export function DriversSection() {
     <div class="flex flex-col gap-3">
       <div class="flex items-center justify-between">
         <h3 class="text-sm font-semibold text-ink">Core drivers</h3>
-        <span class="text-[11px] text-slate-600">
-          checksum-verified · atomic swap · auto rollback
-        </span>
+        <span class="text-xs text-slate-600">checksum-verified · atomic swap · auto rollback</span>
       </div>
-      <p class="-mt-1 text-[12px] leading-relaxed text-slate-500">
+      <p class="-mt-1 text-[13px] leading-relaxed text-slate-500">
         yt-dlp and FFmpeg are the engines bundled inside MediaForge — they update on their own
         schedule, independent of the app. Sites change their pages constantly, so yt-dlp in
         particular can go stale between app releases; updating it here fixes "unsupported source"

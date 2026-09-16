@@ -1,5 +1,5 @@
 import type { BrowserWindowConstructorOptions } from 'electron'
-import { THEME_CHROME } from '../shared/themeChrome'
+import { THEME_CHROME, TITLEBAR_OVERLAY_HEIGHT } from '../shared/themeChrome'
 
 export interface WindowSecurityFlags {
   contextIsolation: boolean
@@ -56,7 +56,7 @@ export function createWindowOptions(
     titleBarOverlay: {
       color: chrome.color,
       symbolColor: chrome.symbolColor,
-      height: 46,
+      height: TITLEBAR_OVERLAY_HEIGHT,
     },
     webPreferences: { ...SECURITY_FLAGS },
   }

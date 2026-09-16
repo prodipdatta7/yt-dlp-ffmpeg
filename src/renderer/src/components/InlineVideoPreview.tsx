@@ -6,6 +6,7 @@ export interface InlineVideoPreviewProps {
   url?: string | null
   title?: string
   startSec?: number
+  autoplay?: boolean
   volumeBoost?: number
   onClose?: () => void
   onExpand?: () => void
@@ -19,6 +20,7 @@ export function InlineVideoPreview({
   url,
   title,
   startSec,
+  autoplay = true,
   volumeBoost = 1,
   onClose,
   onExpand,
@@ -27,7 +29,7 @@ export function InlineVideoPreview({
   onTimeUpdate,
   onPlayingChange,
 }: InlineVideoPreviewProps) {
-  const embed = getEmbedInfo(url, startSec)
+  const embed = getEmbedInfo(url, startSec, autoplay)
   const [loading, setLoading] = useState(true)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -296,7 +298,7 @@ export function InlineVideoPreview({
         <video
           ref={videoRef}
           controls
-          autoPlay
+          autoPlay={autoplay}
           src={embed.src}
           class="size-full object-contain"
           onTimeUpdate={(e) => onTimeUpdate?.(e.currentTarget.currentTime)}

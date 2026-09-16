@@ -110,15 +110,27 @@
   background-color: var(--mf-hover);
 }
 
+/* Selected format chips need to read as chosen, never as disabled. */
+:root .mf-chip[aria-pressed='true']:not(:disabled) {
+  border-color: var(--mf-accent);
+  color: var(--mf-action-hover-start);
+  background: var(--mf-detail-active);
+}
+
+:root[data-theme='dark'] .mf-chip[aria-pressed='true']:not(:disabled) {
+  color: var(--mf-detail-bright);
+}
+
 :root
   :is(
     button.from-go-500,
     button.from-sky-500,
+    button.bg-sky-500,
     button.bg-sky-600,
     .mf-search-form button[type='submit'],
     .mf-search-filter-chip.is-active
   ) {
-  background: linear-gradient(115deg, var(--mf-accent), var(--mf-teal));
+  background: linear-gradient(115deg, var(--mf-action-start), var(--mf-action-end));
   color: #ffffff;
   border-color: transparent;
   box-shadow: 0 4px 12px rgb(var(--mf-primary-rgb) / 0.22);
@@ -128,11 +140,12 @@
   :is(
     button.from-go-500,
     button.from-sky-500,
+    button.bg-sky-500,
     button.bg-sky-600,
     .mf-search-form button[type='submit'],
     .mf-search-filter-chip.is-active
   ):hover:not(:disabled) {
-  background: linear-gradient(115deg, var(--mf-accent-deep), var(--mf-teal-text));
+  background: linear-gradient(115deg, var(--mf-action-hover-start), var(--mf-action-hover-end));
   filter: none;
 }
 
@@ -140,10 +153,11 @@
   :is(
     button.from-go-500,
     button.from-sky-500,
+    button.bg-sky-500,
     button.bg-sky-600,
     .mf-search-form button[type='submit']
   ):active:not(:disabled) {
-  background: var(--mf-accent-deep);
+  background: var(--mf-action-hover-start);
 }
 
 :root
@@ -151,6 +165,7 @@
     button,
     button.from-go-500,
     button.from-sky-500,
+    button.bg-sky-500,
     button.bg-sky-600,
     .mf-search-form button[type='submit']
   ):disabled {

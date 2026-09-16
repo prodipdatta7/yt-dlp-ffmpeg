@@ -84,6 +84,8 @@ describe('DownloadOrchestrator', () => {
     expect(finished.status).toBe('completed')
     expect(finished.outputPath).toBeDefined()
     expect(finished.outputPath?.startsWith(destOf(root))).toBe(true)
+    expect(finished.outputBytes).toBeGreaterThan(0)
+    expect(finished.outputBytes).toBe(readFileSync(finished.outputPath!).byteLength)
 
     const phases = events.map((e) => e.phase)
     for (const expected of [
@@ -98,6 +100,12 @@ describe('DownloadOrchestrator', () => {
 
     const audioEvents = events.filter((e) => e.phase === 'downloading-audio')
     expect(audioEvents.some((e) => e.speedBps === 524288)).toBe(true)
+
+    expect(events.filter((e) => e.phase === 'downloading-video').map((e) => e.percent)).toEqual([
+      0, 25, 50,
+    ])
+    expect(audioEvents.map((e) => e.percent)).toEqual([62.5, 100])
+    expect(events.filter((e) => e.phase === 'merging').every((e) => e.percent === 100)).toBe(true)
 
     expect(readFileSync(finished.outputPath!, 'utf8')).toContain('FAKE-MP4-CONTENT')
     expect(existsSync(join(root, `job-${jobId}`))).toBe(false)

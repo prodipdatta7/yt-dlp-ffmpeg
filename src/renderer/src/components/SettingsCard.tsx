@@ -28,7 +28,7 @@ export function SettingsCard({
         <div class="min-w-0 flex-1">
           <h3 class="text-[13.5px] font-semibold text-ink">{title}</h3>
           {description && (
-            <p class="mt-1 text-[12.5px] leading-relaxed text-slate-500">{description}</p>
+            <p class="mt-1 text-[13px] leading-relaxed text-slate-500">{description}</p>
           )}
         </div>
       </div>
@@ -56,9 +56,7 @@ export function SettingsRow({
     <div class="flex items-center justify-between gap-4 py-3.5 first:pt-0 last:pb-0">
       <div class="min-w-0">
         <p class="text-[13px] font-medium text-slate-200">{label}</p>
-        {description && (
-          <p class="mt-0.5 text-[11.5px] leading-relaxed text-slate-500">{description}</p>
-        )}
+        {description && <p class="mt-0.5 text-xs leading-relaxed text-slate-500">{description}</p>}
       </div>
       <div class="shrink-0">{control}</div>
     </div>
