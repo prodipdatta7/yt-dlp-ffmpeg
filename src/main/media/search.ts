@@ -1023,6 +1023,11 @@ export class SearchService {
     )
     try {
       await fs.promises.mkdir(tmpDir, { recursive: true })
+      // Directory creation is asynchronous. A global search cancel or preview close can land
+      // during it; do not spawn a new yt-dlp child after that cancellation has completed.
+      if (generation !== this.searchGeneration || this.previewCancelled(requestId)) {
+        return { cues: [] }
+      }
       const primaryArgs = [
         '--skip-download',
         '--ignore-errors',

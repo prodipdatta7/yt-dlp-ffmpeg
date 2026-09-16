@@ -1048,8 +1048,16 @@ describe('SearchService.cancel handle bookkeeping (T8)', () => {
   }
 
   /** Spawns that never exit on their own — only killTree settles them. */
-  function serviceWithHangingSpawns(): { service: SearchService; handles: FakeHandle[] } {
+  function serviceWithHangingSpawns(): {
+    service: SearchService
+    handles: FakeHandle[]
+    firstSpawn: Promise<void>
+  } {
     const handles: FakeHandle[] = []
+    let signalFirstSpawn!: () => void
+    const firstSpawn = new Promise<void>((resolve) => {
+      signalFirstSpawn = resolve
+    })
 
     const spawn = (): SpawnHandle => {
       let settle!: () => void
@@ -1058,6 +1066,7 @@ describe('SearchService.cancel handle bookkeeping (T8)', () => {
       })
       const record: FakeHandle = { killed: false, release: () => settle() }
       handles.push(record)
+      signalFirstSpawn()
 
       return {
         pid: handles.length,
@@ -1081,13 +1090,13 @@ describe('SearchService.cancel handle bookkeeping (T8)', () => {
       resolveYtDlp: async () => ({ kind: 'yt-dlp', path: 'fake', source: 'bundled' }),
       spawn: spawn as unknown as SearchServiceOptions['spawn'],
     })
-    return { service, handles }
+    return { service, handles, firstSpawn }
   }
 
   it('kills the handle a chapters request registered in activeHandles', async () => {
-    const { service, handles } = serviceWithHangingSpawns()
+    const { service, handles, firstSpawn } = serviceWithHangingSpawns()
     const pending = service.fetchChapters('fake', 'https://x.test/v')
-    await new Promise((r) => setTimeout(r, 10))
+    await firstSpawn
 
     expect(handles).toHaveLength(1)
     expect(handles[0].killed).toBe(false)
@@ -1098,9 +1107,9 @@ describe('SearchService.cancel handle bookkeeping (T8)', () => {
   }, 10_000)
 
   it('kills the handle a transcript request registered in activeHandles', async () => {
-    const { service, handles } = serviceWithHangingSpawns()
+    const { service, handles, firstSpawn } = serviceWithHangingSpawns()
     const pending = service.fetchTranscript('fake', 'https://x.test/v')
-    await new Promise((r) => setTimeout(r, 10))
+    await firstSpawn
 
     expect(handles.length).toBeGreaterThan(0)
     await service.cancel()
