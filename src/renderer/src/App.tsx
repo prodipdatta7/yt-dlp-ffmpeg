@@ -20,7 +20,10 @@ import { FirstRunModal } from './components/FirstRunModal'
 import { ShortcutsOverlay } from './components/ShortcutsOverlay'
 import { SearchScreen } from './components/SearchScreen'
 import { LocalShareScreen } from './components/LocalShareScreen'
+import { HelpScreen } from './components/HelpScreen'
+import { PageHelpNote } from './components/PageHelpNote'
 import {
+  BookOpenIcon,
   DownloadIcon,
   FolderIcon,
   GearIcon,
@@ -221,6 +224,7 @@ const NAV_ITEMS: Array<{ id: ViewId; label: string; Icon: typeof DownloadIcon }>
   { id: 'search', label: 'Search', Icon: SearchIcon },
   { id: 'queue', label: 'Queue', Icon: QueueIcon },
   { id: 'share', label: 'Local Share', Icon: ShareIcon },
+  { id: 'help', label: 'Help', Icon: BookOpenIcon },
   { id: 'settings', label: 'Settings', Icon: GearIcon },
 ]
 
@@ -314,6 +318,20 @@ function TitleBar() {
         Local-first
       </span>
     </header>
+  )
+}
+
+function DownloaderHelp() {
+  return (
+    <PageHelpNote
+      title="How to use the Downloader"
+      summary="Paste a direct media link, inspect it, then choose what MediaForge saves."
+      steps={[
+        'Paste a full http:// or https:// link and choose Analyze.',
+        'Choose video, audio, or exact streams and confirm the destination folder.',
+        'Start the download and keep MediaForge open until the job is done.',
+      ]}
+    />
   )
 }
 
@@ -1110,9 +1128,11 @@ export function App() {
         />
 
         {activeView.value === 'settings' ? (
-          <main class="mf-settings-workspace mf-rise min-h-0 min-w-0 flex-1 overflow-y-auto px-6 py-6 sm:px-8">
+          <main class="mf-settings-workspace mf-rise min-h-0 min-w-0 flex-1 overflow-y-auto px-4 pb-3 pt-3.5">
             <SettingsScreen />
           </main>
+        ) : activeView.value === 'help' ? (
+          <HelpScreen onShowShortcuts={() => setShowShortcuts(true)} />
         ) : activeView.value === 'search' ? (
           <main
             class={`mf-search-workspace mf-rise flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pb-3 pt-3.5 ${
@@ -1149,15 +1169,26 @@ export function App() {
                   )}
                 </h2>
               </div>
-              <span class="mf-workspace-hint">
-                {queueRows.value.length === 0
-                  ? 'Sequential · Parallel Concurrency · Auto-Resume'
-                  : queueRunning.value
-                    ? queueRunMode.value === 'parallel'
-                      ? 'Parallel Execution Active'
-                      : 'Sequential Download In Progress'
-                    : 'Queue Settled'}
-              </span>
+              <div class="flex items-center gap-2">
+                <span class="mf-workspace-hint">
+                  {queueRows.value.length === 0
+                    ? 'Sequential · Parallel Concurrency · Auto-Resume'
+                    : queueRunning.value
+                      ? queueRunMode.value === 'parallel'
+                        ? 'Parallel Execution Active'
+                        : 'Sequential Download In Progress'
+                      : 'Queue Settled'}
+                </span>
+                <PageHelpNote
+                  title="How to use the Queue"
+                  summary="Build a batch in Downloader or Search, then track every item here."
+                  steps={[
+                    'Add a playlist from Downloader or select multiple Search results.',
+                    'Choose sequential for one-at-a-time work or parallel for faster batches.',
+                    'Use each row to follow progress or retry a failed item.',
+                  ]}
+                />
+              </div>
             </div>
             <QueueList
               onStopAfterCurrent={
@@ -1189,7 +1220,10 @@ export function App() {
                     Your media workspace<span>.</span>
                   </h2>
                 </div>
-                <span class="mf-workspace-hint">Video · Audio · Playlists</span>
+                <div class="flex items-center gap-2">
+                  <span class="mf-workspace-hint">Video · Audio · Playlists</span>
+                  <DownloaderHelp />
+                </div>
               </div>
             )}
             {!completedDownload && <UrlBar />}

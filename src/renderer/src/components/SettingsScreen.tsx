@@ -9,6 +9,7 @@ import { DownloadsSection } from './settings/DownloadsSection'
 import { DriversSection } from './settings/DriversSection'
 import { SETTINGS_SECTIONS, settingsPanelId, settingsTabId, SideNav } from './settings/SideNav'
 import { StorageSection } from './settings/StorageSection'
+import { PageHelpNote } from './PageHelpNote'
 
 interface SharedSettings {
   lastOutputDir: string
@@ -82,7 +83,7 @@ export function SettingsScreen() {
   }
 
   return (
-    <div class="mx-auto flex w-full max-w-4xl flex-col gap-5">
+    <div class="flex w-full flex-col gap-5">
       <div class="mf-digital-only mf-workspace-heading">
         <div>
           <p class="mf-workspace-kicker">SYSTEM & ENGINES</p>
@@ -93,6 +94,15 @@ export function SettingsScreen() {
         <div class="flex items-center gap-3">
           <span class="mf-workspace-hint hidden sm:inline">Engine Config & Diagnostics</span>
           <Pill tone="sky">MediaForge{appVersion ? ` v${appVersion}` : ''}</Pill>
+          <PageHelpNote
+            title="How to use Settings"
+            summary="Set your defaults here; use Drivers, Cookies, Storage, or Diagnostics when needed."
+            steps={[
+              'Choose a section on the left, then change only the option you need.',
+              'Update Drivers when a media site suddenly stops working.',
+              'Use Cookies for permitted signed-in access and Diagnostics when troubleshooting.',
+            ]}
+          />
         </div>
       </div>
 

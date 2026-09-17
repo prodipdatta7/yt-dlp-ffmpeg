@@ -222,6 +222,15 @@ export function DocIcon({ class: cls }: IconProps) {
   )
 }
 
+export function BookOpenIcon({ class: cls }: IconProps) {
+  return (
+    <Svg class={cls}>
+      <path d="M3.5 5.5A2.5 2.5 0 0 1 6 3h4a2 2 0 0 1 2 2v16a2.5 2.5 0 0 0-2.5-2.5h-6Z" />
+      <path d="M20.5 5.5A2.5 2.5 0 0 0 18 3h-4a2 2 0 0 0-2 2v16a2.5 2.5 0 0 1 2.5-2.5h6Z" />
+    </Svg>
+  )
+}
+
 export function RefreshIcon({ class: cls }: IconProps) {
   return (
     <Svg class={cls}>

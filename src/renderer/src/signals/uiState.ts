@@ -1,6 +1,6 @@
 import { signal } from '@preact/signals'
 
-export type ViewId = 'download' | 'search' | 'queue' | 'share' | 'settings'
+export type ViewId = 'download' | 'search' | 'queue' | 'share' | 'help' | 'settings'
 export type ThemePref = 'system' | 'light' | 'dark'
 
 export const activeView = signal<ViewId>('download')
@@ -34,6 +34,10 @@ export function toggleLogDock(): void {
 
 export function openSettings(): void {
   activeView.value = 'settings'
+}
+
+export function openHelp(): void {
+  activeView.value = 'help'
 }
 
 export type UiDensity = 'comfortable' | 'compact'

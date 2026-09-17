@@ -4,7 +4,7 @@ export function FirstRunModal({ open, onDismiss }: { open: boolean; onDismiss: (
   if (!open) return null
   return (
     <div
-      class="fixed inset-0 z-50 flex items-center justify-center bg-[var(--color-scrim)]/60 p-6"
+      class="fixed inset-x-0 bottom-0 top-[58px] z-50 flex items-center justify-center bg-[var(--color-scrim)]/60 p-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="mf-first-run-title"

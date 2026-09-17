@@ -15,6 +15,7 @@ import {
   ShieldIcon,
   Spinner,
 } from './icons'
+import { PageHelpNote } from './PageHelpNote'
 
 function formatCountdown(seconds: number): string {
   const safeSeconds = Math.max(0, seconds)
@@ -198,10 +199,23 @@ export function LocalShareScreen() {
                 : 'Full-quality handoffs over your private Wi-Fi or LAN.'}
             </span>
           </div>
-          <span class={`mf-local-share-status ${share ? 'is-live' : ''}`}>
-            <i />
-            {restoring ? 'Checking' : share ? 'Handoff live' : 'Ready'}
-          </span>
+          <div class="flex items-center gap-2">
+            {(restoring || share) && (
+              <span class={`mf-local-share-status ${share ? 'is-live' : ''}`}>
+                <i />
+                {restoring ? 'Checking' : 'Handoff live'}
+              </span>
+            )}
+            <PageHelpNote
+              title="How to use Local Share"
+              summary="Send a finished file directly to another device on the same private network."
+              steps={[
+                'Connect both devices to the same trusted Wi-Fi or local network.',
+                'Choose a file, then let the receiver scan the QR code or open the copied link.',
+                'Keep this screen open until the transfer finishes, then stop sharing.',
+              ]}
+            />
+          </div>
         </header>
 
         {error && (

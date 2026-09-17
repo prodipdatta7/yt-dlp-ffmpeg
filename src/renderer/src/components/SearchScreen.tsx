@@ -19,6 +19,7 @@ import {
   selectedResultUrls,
 } from '../signals/searchState'
 import { openSettings } from '../signals/uiState'
+import { PageHelpNote } from './PageHelpNote'
 
 function SearchEmptyState() {
   const lastPlatform = lastSearchedQuery.value
@@ -217,7 +218,18 @@ export function SearchScreen({
               Find your next favorite<span>.</span>
             </h2>
           </div>
-          <span class="mf-workspace-hint">Search · Preview · Queue</span>
+          <div class="flex items-center gap-2">
+            <span class="mf-workspace-hint">Search · Preview · Queue</span>
+            <PageHelpNote
+              title="How to use Search"
+              summary="Find public media, preview the details, then open one item or queue several."
+              steps={[
+                'Choose a source, enter keywords, and press Search.',
+                'Open a result to preview it; use filters when the selected source supports them.',
+                'Send one result to Downloader or select several and add them to Queue.',
+              ]}
+            />
+          </div>
         </div>
       )}
       <SearchBar onSubmit={() => void runSearch()} />

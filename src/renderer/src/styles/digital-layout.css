@@ -3317,7 +3317,7 @@
 
 /* Settings workspace & card alignment */
 :root .mf-settings-workspace {
-  padding: 24px 32px 16px;
+  padding: 14px 16px 12px;
 }
 
 :root .mf-settings-workspace .mf-card {
@@ -3334,12 +3334,543 @@
   box-shadow: 0 2px 8px rgb(var(--mf-primary-rgb) / 0.08);
 }
 
+/* Each feature keeps its instructions behind a single info icon. The dialog uses the app's
+   pipeline language and numbered reading path without taking permanent workspace room. */
+:root .mf-page-help-launcher {
+  display: flex;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  align-items: center;
+  justify-content: center;
+}
+
+:root .mf-page-help-icon {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgb(var(--mf-primary-rgb) / 0.24);
+  border-radius: 9px;
+  color: var(--mf-accent);
+  background: rgb(var(--mf-surface-rgb) / 0.78);
+  box-shadow: 0 4px 14px rgb(var(--mf-shadow-rgb) / 0.06);
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    transform 150ms ease;
+}
+
+:root .mf-page-help-icon:hover {
+  border-color: var(--mf-accent);
+  background: rgb(var(--mf-primary-rgb) / 0.1);
+  transform: translateY(-1px);
+}
+
+:root .mf-page-help-popover-root {
+  position: fixed;
+  z-index: 60;
+  width: min(calc(100vw - 24px), 460px);
+}
+
+:root .mf-page-help-popover-root::before {
+  position: absolute;
+  z-index: 1;
+  top: -5px;
+  right: 11px;
+  width: 11px;
+  height: 11px;
+  content: '';
+  border-top: 1px solid rgb(var(--mf-primary-rgb) / 0.28);
+  border-left: 1px solid rgb(var(--mf-primary-rgb) / 0.28);
+  background: var(--mf-surface);
+  transform: rotate(45deg);
+}
+
+:root .mf-page-help-popover-root.is-above::before {
+  top: auto;
+  bottom: -5px;
+  border: 0;
+  border-right: 1px solid rgb(var(--mf-primary-rgb) / 0.28);
+  border-bottom: 1px solid rgb(var(--mf-primary-rgb) / 0.28);
+}
+
+:root .mf-page-help-dialog {
+  width: 100%;
+  max-height: calc(100vh - 24px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid rgb(var(--mf-primary-rgb) / 0.28);
+  border-radius: 16px;
+  background:
+    linear-gradient(145deg, rgb(var(--mf-primary-rgb) / 0.055), transparent 45%), var(--mf-surface);
+  box-shadow: 0 18px 48px rgb(var(--mf-shadow-rgb) / 0.24);
+}
+
+:root .mf-page-help-dialog > header {
+  display: grid;
+  grid-template-columns: 42px 1fr 32px;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 22px 17px;
+  border-bottom: 1px solid var(--mf-border);
+}
+
+:root .mf-page-help-dialog > header > span {
+  display: inline-flex;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px 12px 12px 4px;
+  color: var(--mf-accent);
+  background: rgb(var(--mf-primary-rgb) / 0.1);
+}
+
+:root .mf-page-help-dialog header p {
+  color: var(--mf-accent-warm);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+:root .mf-page-help-dialog h2 {
+  margin-top: 3px;
+  color: var(--mf-text);
+  font-size: 20px;
+  font-weight: 780;
+  letter-spacing: -0.025em;
+}
+
+:root .mf-page-help-close {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  color: var(--mf-text-muted);
+}
+
+:root .mf-page-help-close:hover {
+  color: var(--mf-text);
+  background: var(--mf-hover);
+}
+
+:root .mf-page-help-summary {
+  padding: 18px 22px 4px;
+  color: var(--mf-text-secondary);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+:root .mf-page-help-dialog > ol {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 14px 22px 20px;
+}
+
+:root .mf-page-help-dialog > ol li {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  align-items: start;
+  gap: 11px;
+  padding: 11px 12px;
+  border: 1px solid var(--mf-border);
+  border-radius: 11px;
+  color: var(--mf-text-secondary);
+  background: rgb(var(--mf-surface-rgb) / 0.55);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+:root .mf-page-help-dialog > ol li > span {
+  color: var(--mf-accent-warm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+:root .mf-page-help-dialog > footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--mf-border);
+  background: rgb(var(--mf-primary-rgb) / 0.035);
+}
+
+:root .mf-page-help-dialog > footer button {
+  border: 1px solid var(--mf-border);
+  border-radius: 9px;
+  padding: 8px 12px;
+  color: var(--mf-text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+:root .mf-page-help-dialog > footer button:hover {
+  border-color: rgb(var(--mf-primary-rgb) / 0.32);
+  color: var(--mf-text);
+  background: var(--mf-hover);
+}
+
+:root .mf-page-help-dialog > footer button.is-primary {
+  border-color: transparent;
+  color: #ffffff;
+  background: linear-gradient(90deg, var(--mf-accent-deep), var(--mf-accent));
+  box-shadow: 0 5px 14px rgb(var(--mf-primary-rgb) / 0.22);
+}
+
+/* Help is a workshop manual, not a documentation dump: the quick path reads left to right,
+   then feature cards expand into independent, task-shaped routes. */
+:root .mf-help-workspace {
+  background:
+    radial-gradient(circle at 92% 4%, rgb(var(--mf-primary-rgb) / 0.12), transparent 28%),
+    radial-gradient(circle at 4% 48%, rgb(var(--mf-teal-rgb) / 0.08), transparent 22%);
+}
+
+:root .mf-help-hero {
+  position: relative;
+  display: flex;
+  min-height: 190px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  overflow: hidden;
+  padding: 30px 34px;
+  border: 1px solid rgb(var(--mf-primary-rgb) / 0.22);
+  border-radius: 24px;
+  background:
+    linear-gradient(rgb(var(--mf-primary-rgb) / 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--mf-primary-rgb) / 0.055) 1px, transparent 1px),
+    linear-gradient(120deg, rgb(var(--mf-surface-rgb) / 0.94), rgb(var(--mf-surface-rgb) / 0.7));
+  background-size:
+    28px 28px,
+    28px 28px,
+    auto;
+  box-shadow: 0 16px 38px rgb(var(--mf-shadow-rgb) / 0.08);
+}
+
+:root .mf-help-hero::after {
+  position: absolute;
+  right: -70px;
+  bottom: -100px;
+  width: 270px;
+  height: 270px;
+  content: '';
+  border: 1px solid rgb(var(--mf-primary-rgb) / 0.2);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 38px rgb(var(--mf-primary-rgb) / 0.035),
+    0 0 0 76px rgb(var(--mf-primary-rgb) / 0.02);
+}
+
+:root .mf-help-hero > div {
+  position: relative;
+  z-index: 1;
+  max-width: 660px;
+}
+
+:root .mf-help-hero h1 {
+  margin-top: 5px;
+  color: var(--mf-text);
+  font-size: clamp(32px, 4.4vw, 52px);
+  font-weight: 820;
+  letter-spacing: -0.045em;
+  line-height: 1;
+}
+
+:root .mf-help-hero h1 span {
+  color: var(--mf-accent-warm);
+}
+
+:root .mf-help-hero > div > p:last-child {
+  max-width: 620px;
+  margin-top: 14px;
+  color: var(--mf-text-secondary);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+:root .mf-help-hero-mark {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  width: 86px;
+  height: 86px;
+  flex: 0 0 86px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgb(var(--mf-primary-rgb) / 0.24);
+  border-radius: 25px 25px 25px 8px;
+  color: var(--mf-accent);
+  background: rgb(var(--mf-surface-rgb) / 0.78);
+  box-shadow: 0 18px 36px rgb(var(--mf-primary-rgb) / 0.14);
+  transform: rotate(-3deg);
+}
+
+:root .mf-help-quick,
+:root .mf-help-recovery {
+  padding: 22px;
+  border: 1px solid var(--mf-border);
+  border-radius: 18px;
+  background: rgb(var(--mf-surface-rgb) / 0.76);
+}
+
+:root .mf-help-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 15px;
+}
+
+:root .mf-help-section-head p {
+  color: var(--mf-accent-warm);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+:root .mf-help-section-head h2 {
+  margin-top: 3px;
+  color: var(--mf-text);
+  font-size: 20px;
+  font-weight: 760;
+  letter-spacing: -0.025em;
+}
+
+:root .mf-help-section-head > button {
+  border: 1px solid rgb(var(--mf-primary-rgb) / 0.25);
+  border-radius: 9px;
+  padding: 7px 10px;
+  color: var(--mf-accent);
+  background: rgb(var(--mf-primary-rgb) / 0.07);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+:root .mf-help-section-head > button:hover {
+  border-color: var(--mf-accent);
+  background: rgb(var(--mf-primary-rgb) / 0.11);
+}
+
+:root .mf-help-quick > ol {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+:root .mf-help-quick > ol > li {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  min-width: 0;
+  padding: 14px 16px;
+  border-left: 1px solid var(--mf-border);
+}
+
+:root .mf-help-quick > ol > li:first-child {
+  border-left: 0;
+}
+
+:root .mf-help-step-number {
+  position: absolute;
+  top: 0;
+  right: 10px;
+  color: rgb(var(--mf-primary-rgb) / 0.27);
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+:root .mf-help-quick li > svg {
+  grid-row: 1 / span 2;
+  color: var(--mf-accent);
+}
+
+:root .mf-help-quick h3,
+:root .mf-help-guide-card h3,
+:root .mf-help-recovery h3 {
+  color: var(--mf-text);
+  font-size: 13px;
+  font-weight: 740;
+}
+
+:root .mf-help-quick li p,
+:root .mf-help-guide-card header p,
+:root .mf-help-recovery article p {
+  margin-top: 3px;
+  color: var(--mf-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+:root .mf-help-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+:root .mf-help-guide-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 18px;
+  border: 1px solid var(--mf-border);
+  border-radius: 16px;
+  background: rgb(var(--mf-surface-rgb) / 0.76);
+  box-shadow: 0 5px 16px rgb(var(--mf-shadow-rgb) / 0.035);
+}
+
+:root .mf-help-guide-card:first-child {
+  border-color: rgb(var(--mf-primary-rgb) / 0.3);
+  background:
+    linear-gradient(135deg, rgb(var(--mf-primary-rgb) / 0.08), transparent 52%),
+    rgb(var(--mf-surface-rgb) / 0.78);
+}
+
+:root .mf-help-guide-card header {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+}
+
+:root .mf-help-guide-card header > span {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: var(--mf-accent);
+  background: rgb(var(--mf-primary-rgb) / 0.09);
+}
+
+:root .mf-help-guide-card > ol {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 7px;
+  margin: 14px 0;
+}
+
+:root .mf-help-guide-card > ol li {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 8px;
+  color: var(--mf-text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+:root .mf-help-guide-card > ol b {
+  color: var(--mf-accent-warm);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+:root .mf-help-guide-card > button {
+  align-self: flex-start;
+  border-radius: 8px;
+  padding: 6px 8px;
+  color: var(--mf-accent);
+  font-size: 10.5px;
+  font-weight: 750;
+}
+
+:root .mf-help-guide-card > button:hover {
+  background: rgb(var(--mf-primary-rgb) / 0.09);
+}
+
+:root .mf-help-recovery > div:last-child {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+:root .mf-help-recovery article {
+  padding: 14px;
+  border: 1px solid var(--mf-border);
+  border-radius: 12px;
+  background: rgb(var(--mf-surface-rgb) / 0.52);
+}
+
+:root .mf-help-recovery article > svg {
+  margin-bottom: 10px;
+  color: var(--mf-accent-warm);
+}
+
+:root .mf-help-responsible-note {
+  padding-bottom: 4px;
+  text-align: center;
+  color: var(--mf-text-muted);
+  font-size: 10.5px;
+}
+
+@media (max-width: 800px) {
+  :root .mf-help-quick > ol,
+  :root .mf-help-recovery > div:last-child {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  :root .mf-help-quick > ol > li:nth-child(3) {
+    border-left: 0;
+    border-top: 1px solid var(--mf-border);
+  }
+
+  :root .mf-help-quick > ol > li:nth-child(4) {
+    border-top: 1px solid var(--mf-border);
+  }
+}
+
+@media (max-width: 620px) {
+  :root .mf-help-guide-grid,
+  :root .mf-help-recovery > div:last-child {
+    grid-template-columns: 1fr;
+  }
+
+  :root .mf-page-help-dialog {
+    max-height: calc(100vh - 24px);
+    border-radius: 14px;
+  }
+
+  :root .mf-page-help-dialog > header,
+  :root .mf-page-help-dialog > ol,
+  :root .mf-page-help-dialog > footer {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  :root .mf-page-help-summary {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  :root .mf-help-hero {
+    min-height: 0;
+    padding: 24px;
+  }
+
+  :root .mf-help-hero-mark {
+    display: none;
+  }
+}
+
 @media (max-width: 1050px), (max-height: 800px) {
   :root .mf-download-idle,
   :root .mf-search-workspace.mf-search-default-workspace,
   :root .mf-queue-workspace.mf-queue-idle,
   :root .mf-settings-workspace {
-    padding: 16px 20px 12px;
+    padding: 14px 16px 12px;
     gap: 12px;
   }
 
