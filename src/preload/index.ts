@@ -24,6 +24,12 @@ import {
   MF_REVEAL_PATH,
   MF_OPEN_FILE,
   MF_OUTPUT_FILE_SIZES,
+  MF_LOCAL_SHARE_START,
+  MF_LOCAL_SHARE_PICK,
+  MF_LOCAL_SHARE_STATUS,
+  MF_LOCAL_SHARE_RENEW,
+  MF_LOCAL_SHARE_STOP,
+  MF_LOCAL_SHARE_ACTIVITY,
   MF_SEARCH_CANCEL,
   MF_SEARCH_ENTRY,
   MF_SEARCH_START,
@@ -57,6 +63,9 @@ import {
   type JobDonePayload,
   type JobEvent,
   type LogEntryPayload,
+  type LocalShareStartResult,
+  type LocalShareActivity,
+  type LocalShareSnapshot,
   type MfApi,
   type MfSettingsView,
   type PartialsClearResult,
@@ -136,6 +145,18 @@ const api: MfApi = {
   openFile: (path: string): Promise<{ ok: boolean }> => ipcRenderer.invoke(MF_OPEN_FILE, path),
   getOutputFileSizes: (paths: string[]): Promise<Record<string, number>> =>
     ipcRenderer.invoke(MF_OUTPUT_FILE_SIZES, paths),
+  startLocalShare: (outputPath: string): Promise<LocalShareStartResult> =>
+    ipcRenderer.invoke(MF_LOCAL_SHARE_START, outputPath),
+  pickLocalShareFile: (): Promise<LocalShareStartResult> => ipcRenderer.invoke(MF_LOCAL_SHARE_PICK),
+  getLocalShareStatus: (): Promise<LocalShareSnapshot> => ipcRenderer.invoke(MF_LOCAL_SHARE_STATUS),
+  renewLocalShare: (): Promise<LocalShareStartResult> => ipcRenderer.invoke(MF_LOCAL_SHARE_RENEW),
+  stopLocalShare: (): Promise<{ ok: boolean }> => ipcRenderer.invoke(MF_LOCAL_SHARE_STOP),
+  onLocalShareActivity: (listener: (activity: LocalShareActivity) => void): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: LocalShareActivity): void =>
+      listener(payload)
+    ipcRenderer.on(MF_LOCAL_SHARE_ACTIVITY, wrapped)
+    return () => ipcRenderer.removeListener(MF_LOCAL_SHARE_ACTIVITY, wrapped)
+  },
   updaterCheck: (kind: UpdaterDriverKind): Promise<UpdaterCheckResult> =>
     ipcRenderer.invoke(MF_UPDATER_CHECK, kind),
   updaterApply: (kind: UpdaterDriverKind): Promise<UpdaterApplyResult> =>

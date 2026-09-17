@@ -27,6 +27,7 @@ import type {
   JobConfig,
   JobDonePayload,
   JobEvent,
+  LocalShareActivity,
   MfSettingsView,
   SearchResponse,
 } from '../shared/ipcContract'
@@ -36,6 +37,7 @@ import {
   MF_UPDATER_PHASE,
   MF_APP_UPDATE_PHASE,
   MF_SEARCH_ENTRY,
+  MF_LOCAL_SHARE_ACTIVITY,
   type SearchHydratePayload,
 } from '../shared/ipcContract'
 import { LogBus } from './logs/logBus'
@@ -60,6 +62,7 @@ import { sanitizeFileName } from './fsops/sanitizer'
 import { dirname } from 'node:path'
 import { chromeThemeColors, createWindowOptions, getWindowSecurityFlags } from './windowOptions'
 import { EMBED_REQUEST_FILTER, patchEmbedHeaders } from './embedHeaders'
+import { LocalShareServer } from './sharing/localShareServer'
 
 function toSettingsView(s: ReturnType<SettingsStore['load']>): MfSettingsView {
   return {
@@ -117,6 +120,7 @@ let mainWindow: BrowserWindow | null = null
 let memoryProbe: MemoryProbe | null = null
 let tray: Tray | null = null
 let forceClose = false
+let localShareServer: LocalShareServer | null = null
 
 async function ensureTray(win: BrowserWindow): Promise<void> {
   if (tray) return
@@ -171,6 +175,14 @@ app.whenReady().then(() => {
   logger.info(`app starting v${app.getVersion()}`, { packaged: app.isPackaged })
 
   const settings = new SettingsStore(join(userDataDir, 'settings.json'))
+  const completedOutputPaths = new Set<string>()
+  localShareServer = new LocalShareServer({
+    onActivity: (activity: LocalShareActivity) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) win.webContents.send(MF_LOCAL_SHARE_ACTIVITY, activity)
+      }
+    },
+  })
 
   /**
    * Every root a partial job dir can live under: the userData staging area, plus the
@@ -306,6 +318,9 @@ app.whenReady().then(() => {
         try {
           const notifyDone = (done: JobDonePayload): void => {
             sendDone(done)
+            if (done.status === 'completed' && done.outputPath) {
+              completedOutputPaths.add(done.outputPath)
+            }
             const s = settings.load()
             if (s.notifyOnComplete === false) return
             const focused = BrowserWindow.getAllWindows().some(
@@ -487,6 +502,62 @@ app.whenReady().then(() => {
           sizes.filter((entry): entry is readonly [string, number] => entry !== null),
         )
       },
+      startLocalShare: async (targetPath: string) => {
+        if (!completedOutputPaths.has(targetPath)) {
+          return {
+            kind: 'error' as const,
+            message: 'Only files completed during this MediaForge session can be shared.',
+          }
+        }
+        const result = await localShareServer!.start(targetPath)
+        logger.info(
+          result.kind === 'ok' ? 'local file share started' : 'local file share could not start',
+          { ok: result.kind === 'ok' },
+        )
+        return result
+      },
+      pickLocalShareFile: async () => {
+        const result = mainWindow
+          ? await dialog.showOpenDialog(mainWindow, {
+              title: 'Choose a file to share locally',
+              filters: [
+                {
+                  name: 'Media files',
+                  extensions: ['mp4', 'mkv', 'webm', 'mp3', 'm4a', 'ogg', 'flac', 'wav'],
+                },
+                { name: 'All files', extensions: ['*'] },
+              ],
+              properties: ['openFile'],
+            })
+          : await dialog.showOpenDialog({
+              title: 'Choose a file to share locally',
+              filters: [
+                {
+                  name: 'Media files',
+                  extensions: ['mp4', 'mkv', 'webm', 'mp3', 'm4a', 'ogg', 'flac', 'wav'],
+                },
+                { name: 'All files', extensions: ['*'] },
+              ],
+              properties: ['openFile'],
+            })
+        if (result.canceled || result.filePaths.length === 0) {
+          return { kind: 'error' as const, message: 'No file was selected.' }
+        }
+        const share = await localShareServer!.start(result.filePaths[0])
+        logger.info(
+          share.kind === 'ok'
+            ? 'local file share started from picker'
+            : 'local file share could not start',
+          { ok: share.kind === 'ok' },
+        )
+        return share
+      },
+      getLocalShareStatus: () => localShareServer!.getSnapshot(),
+      renewLocalShare: () => localShareServer!.renew(),
+      stopLocalShare: async () => {
+        await localShareServer?.stop()
+        logger.info('local file share stopped')
+      },
       updaterCheck: (kind: UpdaterDriverKind) =>
         kind === 'ffmpeg' ? ffmpegUpdater.check() : updater.check(),
       updaterApply: async (kind: UpdaterDriverKind) => {
@@ -642,6 +713,7 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   void memoryProbe?.stop()
+  void localShareServer?.stop()
 })
 
 app.on('window-all-closed', () => {

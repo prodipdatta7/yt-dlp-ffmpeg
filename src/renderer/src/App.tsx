@@ -19,6 +19,7 @@ import { LogConsole } from './components/LogConsole'
 import { FirstRunModal } from './components/FirstRunModal'
 import { ShortcutsOverlay } from './components/ShortcutsOverlay'
 import { SearchScreen } from './components/SearchScreen'
+import { LocalShareScreen } from './components/LocalShareScreen'
 import {
   DownloadIcon,
   FolderIcon,
@@ -27,6 +28,7 @@ import {
   LogoBolt,
   QueueIcon,
   SearchIcon,
+  ShareIcon,
   ShieldIcon,
   SlidersIcon,
   TerminalIcon,
@@ -218,6 +220,7 @@ const NAV_ITEMS: Array<{ id: ViewId; label: string; Icon: typeof DownloadIcon }>
   { id: 'download', label: 'Downloader', Icon: DownloadIcon },
   { id: 'search', label: 'Search', Icon: SearchIcon },
   { id: 'queue', label: 'Queue', Icon: QueueIcon },
+  { id: 'share', label: 'Local Share', Icon: ShareIcon },
   { id: 'settings', label: 'Settings', Icon: GearIcon },
 ]
 
@@ -1123,6 +1126,8 @@ export function App() {
               busy={busy}
             />
           </main>
+        ) : activeView.value === 'share' ? (
+          <LocalShareScreen />
         ) : activeView.value === 'queue' ? (
           <main
             class={`mf-queue-workspace mf-rise flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pb-3 pt-3.5 ${

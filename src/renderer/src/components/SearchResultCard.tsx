@@ -1,3 +1,5 @@
+import type { ComponentChildren, RefObject } from 'preact'
+import { createPortal } from 'preact/compat'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { ERROR_MESSAGES, getSearchPlatform, type SearchResultItem } from '../../../shared/models'
 import { activePreviewUrl, closePreview } from '../signals/searchState'
@@ -48,6 +50,72 @@ export interface SearchResultCardProps {
   onAddToQueue: (item: SearchResultItem, preset: FormatPresetOption) => void
   disabled?: boolean
   downloadDisabled?: boolean
+}
+
+/**
+ * A result card lives inside a scroll container (and an element with paint
+ * containment), so an absolutely positioned menu would be clipped by its
+ * ancestors. Render the menu at the document root and pin it to its trigger
+ * instead. It prefers opening upward, but has a safe downward fallback near
+ * the top of the viewport.
+ */
+function ResultActionsPopover({
+  open,
+  anchorRef,
+  popoverRef,
+  children,
+}: {
+  open: boolean
+  anchorRef: RefObject<HTMLDivElement>
+  popoverRef: RefObject<HTMLDivElement>
+  children: ComponentChildren
+}) {
+  const [position, setPosition] = useState({ top: 0, right: 8, maxHeight: 0, opensUp: true })
+
+  useEffect(() => {
+    if (!open) return
+
+    const updatePosition = () => {
+      const rect = anchorRef.current?.getBoundingClientRect()
+      if (!rect) return
+
+      const opensUp = rect.top >= 216
+      setPosition({
+        top: opensUp ? rect.top - 4 : rect.bottom + 4,
+        right: Math.max(8, window.innerWidth - rect.right),
+        maxHeight: Math.max(0, opensUp ? rect.top - 8 : window.innerHeight - rect.bottom - 8),
+        opensUp,
+      })
+    }
+
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [open, anchorRef])
+
+  if (!open) return null
+
+  return createPortal(
+    <div
+      ref={popoverRef}
+      role="menu"
+      style={{
+        top: `${position.top}px`,
+        right: `${position.right}px`,
+        maxHeight: `${position.maxHeight}px`,
+      }}
+      class={`fixed z-50 w-56 overflow-y-auto rounded-xl border border-neutral-200 bg-white p-1.5 text-xs text-neutral-800 shadow-xl backdrop-blur-md animate-in fade-in zoom-in-95 dark:border-neutral-700/90 dark:bg-[var(--mf-surface-subtle)] dark:text-neutral-200 ${
+        position.opensUp ? '-translate-y-full' : ''
+      }`}
+    >
+      {children}
+    </div>,
+    document.body,
+  )
 }
 
 export function SearchResultCard({
@@ -151,6 +219,7 @@ export function SearchResultCard({
   const [copied, setCopied] = useState(false)
   const [imgError, setImgError] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
 
   // Lock body scroll and listen for Escape key while preview is active
   useEffect(() => {
@@ -299,7 +368,11 @@ export function SearchResultCard({
   useEffect(() => {
     if (!menuOpen) return
     const onDocClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(e.target as Node) &&
+        !popoverRef.current?.contains(e.target as Node)
+      ) {
         setMenuOpen(false)
       }
     }
@@ -673,7 +746,11 @@ export function SearchResultCard({
                       </button>
 
                       {menuOpen && (
-                        <div class="absolute right-0 bottom-full mb-1 z-30 w-56 rounded-xl border border-neutral-200 bg-white p-1.5 text-xs text-neutral-800 shadow-xl backdrop-blur-md animate-in fade-in zoom-in-95 dark:border-neutral-700/90 dark:bg-[var(--mf-surface-subtle)] dark:text-neutral-200">
+                        <ResultActionsPopover
+                          open={menuOpen}
+                          anchorRef={menuRef}
+                          popoverRef={popoverRef}
+                        >
                           <button
                             type="button"
                             onClick={() => {
@@ -744,7 +821,7 @@ export function SearchResultCard({
                             <LinkIcon class="size-3.5 text-neutral-400" />
                             <span>Open in Browser</span>
                           </button>
-                        </div>
+                        </ResultActionsPopover>
                       )}
                     </div>
                   </div>
@@ -1011,7 +1088,11 @@ export function SearchResultCard({
                       </button>
 
                       {menuOpen && (
-                        <div class="absolute bottom-full right-0 z-30 mb-1 w-56 rounded-xl border border-neutral-200 bg-white p-1.5 text-xs text-neutral-800 shadow-xl backdrop-blur-md animate-in fade-in zoom-in-95 dark:border-neutral-700/90 dark:bg-[var(--mf-surface-subtle)] dark:text-neutral-200">
+                        <ResultActionsPopover
+                          open={menuOpen}
+                          anchorRef={menuRef}
+                          popoverRef={popoverRef}
+                        >
                           <button
                             type="button"
                             onClick={() => {
@@ -1067,7 +1148,7 @@ export function SearchResultCard({
                             <LinkIcon class="size-3.5 text-neutral-400" />
                             <span>Open in Browser</span>
                           </button>
-                        </div>
+                        </ResultActionsPopover>
                       )}
                     </div>
                   </div>
@@ -1403,7 +1484,11 @@ export function SearchResultCard({
                       </button>
 
                       {menuOpen && (
-                        <div class="absolute right-0 bottom-full mb-1 z-30 w-56 rounded-xl border border-neutral-200 bg-white p-1.5 text-xs text-neutral-800 shadow-xl backdrop-blur-md animate-in fade-in zoom-in-95 dark:border-neutral-700/90 dark:bg-[var(--mf-surface-subtle)] dark:text-neutral-200">
+                        <ResultActionsPopover
+                          open={menuOpen}
+                          anchorRef={menuRef}
+                          popoverRef={popoverRef}
+                        >
                           <button
                             type="button"
                             onClick={() => {
@@ -1480,7 +1565,7 @@ export function SearchResultCard({
                             <LinkIcon class="size-3.5 text-neutral-400" />
                             <span>Open in Browser</span>
                           </button>
-                        </div>
+                        </ResultActionsPopover>
                       )}
                     </div>
                   </div>

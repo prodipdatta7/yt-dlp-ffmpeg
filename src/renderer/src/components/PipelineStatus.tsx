@@ -1,4 +1,6 @@
+import { useState } from 'preact/hooks'
 import type { JobEvent, JobPhase } from '../../../shared/models'
+import type { LocalShareInfo } from '../../../shared/ipcContract'
 import { ERROR_MESSAGES } from '../../../shared/models'
 import {
   activeJob,
@@ -17,6 +19,7 @@ import {
   HardDriveIcon,
   PauseIcon,
   PlayIcon,
+  ShareIcon,
   Spinner,
 } from './icons'
 
@@ -73,6 +76,10 @@ export function PipelineStatus({
 }) {
   const job = activeJob.value
   const done = jobDone.value
+  const [share, setShare] = useState<LocalShareInfo | null>(null)
+  const [sharedOutputPath, setSharedOutputPath] = useState<string | null>(null)
+  const [shareError, setShareError] = useState<string | null>(null)
+  const isSharingCurrentOutput = share !== null && sharedOutputPath === done?.outputPath
   const idle = !job && !done
 
   const event: JobEvent | null = lastJobEvent.value
@@ -87,6 +94,26 @@ export function PipelineStatus({
       return
     }
     if (job) void window.mf.downloadCancel(job.jobId)
+  }
+
+  async function startLocalShare() {
+    if (!done?.outputPath) return
+    setShareError(null)
+    const result = await window.mf.startLocalShare(done.outputPath)
+    if (result.kind === 'ok') {
+      setShare(result.share)
+      setSharedOutputPath(done.outputPath)
+    } else {
+      setShare(null)
+      setShareError(result.message)
+    }
+  }
+
+  async function stopLocalShare() {
+    await window.mf.stopLocalShare()
+    setShare(null)
+    setSharedOutputPath(null)
+    setShareError(null)
   }
 
   function statusLabel(): string {
@@ -384,9 +411,60 @@ export function PipelineStatus({
                 >
                   open folder
                 </button>
+                <button
+                  onClick={() =>
+                    void (isSharingCurrentOutput ? stopLocalShare() : startLocalShare())
+                  }
+                  title={
+                    isSharingCurrentOutput
+                      ? 'Stop the temporary local-network download link'
+                      : 'Share this file with a nearby device over your Wi-Fi or LAN'
+                  }
+                  class={`mf-focus-ring inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition ${
+                    isSharingCurrentOutput
+                      ? 'text-amber-300 hover:text-amber-200'
+                      : 'text-sky-300 hover:text-sky-200'
+                  }`}
+                >
+                  <ShareIcon class="size-3" />
+                  {isSharingCurrentOutput ? 'stop share' : 'share'}
+                </button>
               </span>
             )}
           </div>
+          {done.status === 'completed' && done.outputPath && isSharingCurrentOutput && share && (
+            <div class="flex flex-wrap items-center gap-2 rounded-lg border border-sky-400/25 bg-sky-500/10 px-2.5 py-1.5 text-[11px] text-sky-100">
+              <ShareIcon class="size-3.5 shrink-0 text-sky-300" />
+              <span class="min-w-0 flex-1">
+                Nearby device link — expires at{' '}
+                {new Date(share.expiresAt).toLocaleTimeString([], {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
+              </span>
+              <button
+                type="button"
+                onClick={() => void navigator.clipboard.writeText(share.url)}
+                title="Copy the temporary link for another device"
+                class="mf-focus-ring inline-flex shrink-0 items-center gap-1 rounded-md border border-sky-300/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sky-100 transition hover:bg-sky-400/10"
+              >
+                <ClipboardIcon class="size-3" />
+                copy link
+              </button>
+              <code
+                class="mf-select-text w-full truncate font-mono text-[10px] text-sky-200"
+                title={share.url}
+              >
+                {share.url}
+              </code>
+            </div>
+          )}
+          {shareError && (
+            <p class="flex items-center gap-1.5 text-[11px] text-amber-300" role="alert">
+              <AlertIcon class="size-3.5 shrink-0" />
+              {shareError}
+            </p>
+          )}
           {done.partialDir && (done.status === 'cancelled' || done.status === 'failed') && (
             <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-2.5 py-1.5 text-[11px] text-amber-200/90">
               <span class="mf-select-text mf-num min-w-0 flex-1 truncate" title={done.partialDir}>

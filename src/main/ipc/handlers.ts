@@ -28,6 +28,11 @@ import {
   MF_REVEAL_PATH,
   MF_OPEN_FILE,
   MF_OUTPUT_FILE_SIZES,
+  MF_LOCAL_SHARE_START,
+  MF_LOCAL_SHARE_PICK,
+  MF_LOCAL_SHARE_STATUS,
+  MF_LOCAL_SHARE_RENEW,
+  MF_LOCAL_SHARE_STOP,
   MF_SEARCH_CANCEL,
   MF_SEARCH_START,
   MF_FETCH_CHAPTERS,
@@ -53,6 +58,8 @@ import {
   type JobDonePayload,
   type JobEvent,
   type LogEntryPayload,
+  type LocalShareStartResult,
+  type LocalShareSnapshot,
   type MfSettingsView,
   type PartialsClearResult,
   type PartialsListResult,
@@ -132,6 +139,11 @@ export interface IpcDeps {
   revealPath: (path: string) => Promise<{ ok: boolean }>
   openFile: (path: string) => Promise<{ ok: boolean }>
   getOutputFileSizes: (paths: string[]) => Promise<Record<string, number>>
+  startLocalShare: (path: string) => Promise<LocalShareStartResult>
+  pickLocalShareFile: () => Promise<LocalShareStartResult>
+  getLocalShareStatus: () => LocalShareSnapshot
+  renewLocalShare: () => LocalShareStartResult
+  stopLocalShare: () => Promise<void>
   updaterCheck: (kind: UpdaterDriverKind) => Promise<{
     current: string | null
     latest: string | null
@@ -182,6 +194,18 @@ function readOutputPaths(payload: unknown): string[] | null {
     paths.add(value)
   }
   return [...paths]
+}
+
+function readLocalSharePath(payload: unknown): string | null {
+  if (
+    typeof payload !== 'string' ||
+    payload.length === 0 ||
+    payload.length > MAX_FILE_PATH_LENGTH ||
+    payload.includes('\0')
+  ) {
+    return null
+  }
+  return payload
 }
 
 export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
@@ -330,6 +354,21 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
   ipcMain.handle(MF_OUTPUT_FILE_SIZES, async (_event, payload: unknown) => {
     const paths = readOutputPaths(payload)
     return paths ? deps.getOutputFileSizes(paths) : {}
+  })
+  ipcMain.handle(
+    MF_LOCAL_SHARE_START,
+    async (_event, payload: unknown): Promise<LocalShareStartResult> => {
+      const path = readLocalSharePath(payload)
+      if (!path) return { kind: 'error', message: 'Choose a completed MediaForge file to share.' }
+      return deps.startLocalShare(path)
+    },
+  )
+  ipcMain.handle(MF_LOCAL_SHARE_PICK, () => deps.pickLocalShareFile())
+  ipcMain.handle(MF_LOCAL_SHARE_STATUS, () => deps.getLocalShareStatus())
+  ipcMain.handle(MF_LOCAL_SHARE_RENEW, () => deps.renewLocalShare())
+  ipcMain.handle(MF_LOCAL_SHARE_STOP, async () => {
+    await deps.stopLocalShare()
+    return { ok: true }
   })
 
   ipcMain.handle(MF_UPDATER_CHECK, (_event, payload: unknown) =>

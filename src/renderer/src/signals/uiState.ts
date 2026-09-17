@@ -1,6 +1,6 @@
 import { signal } from '@preact/signals'
 
-export type ViewId = 'download' | 'search' | 'queue' | 'settings'
+export type ViewId = 'download' | 'search' | 'queue' | 'share' | 'settings'
 export type ThemePref = 'system' | 'light' | 'dark'
 
 export const activeView = signal<ViewId>('download')

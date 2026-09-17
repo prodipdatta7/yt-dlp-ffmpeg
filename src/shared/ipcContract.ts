@@ -53,6 +53,12 @@ export const MF_PARTIALS_CLEAR = 'mf:partials:clear' as const
 export const MF_REVEAL_PATH = 'mf:reveal-path' as const
 export const MF_OPEN_FILE = 'mf:open-file' as const
 export const MF_OUTPUT_FILE_SIZES = 'mf:output-file-sizes' as const
+export const MF_LOCAL_SHARE_START = 'mf:local-share:start' as const
+export const MF_LOCAL_SHARE_PICK = 'mf:local-share:pick' as const
+export const MF_LOCAL_SHARE_STATUS = 'mf:local-share:status' as const
+export const MF_LOCAL_SHARE_RENEW = 'mf:local-share:renew' as const
+export const MF_LOCAL_SHARE_STOP = 'mf:local-share:stop' as const
+export const MF_LOCAL_SHARE_ACTIVITY = 'mf:local-share:activity' as const
 export const MF_SEARCH_START = 'mf:search:start' as const
 export const MF_SEARCH_CANCEL = 'mf:search:cancel' as const
 export const MF_SEARCH_ENTRY = 'mf:search:entry' as const
@@ -67,6 +73,45 @@ export interface SaveTextFileResult {
   ok: boolean
   filePath?: string
   canceled?: boolean
+}
+
+/** A short-lived, local-network download capability. Never contains a filesystem path. */
+export interface LocalShareInfo {
+  url: string
+  fileName: string
+  fileSize: number
+  expiresAt: number
+}
+
+export type LocalShareStartResult =
+  { kind: 'ok'; share: LocalShareInfo } | { kind: 'error'; message: string }
+
+/** Anonymous, in-memory telemetry for each HTTP download in the current local share. */
+export type LocalShareTransferStatus = 'downloading' | 'completed' | 'interrupted'
+
+export interface LocalShareTransfer {
+  /** Session-scoped only; never contains a device name or IP address. */
+  id: string
+  receiverLabel: string
+  status: LocalShareTransferStatus
+  bytesSent: number
+  totalBytes: number
+  speedBps: number
+  etaSec: number | null
+}
+
+export interface LocalShareActivity {
+  /** QR scans are not observable directly; this counts nearby browsers that opened the link. */
+  linksOpened: number
+  activeConnections: number
+  downloadsStarted: number
+  completedDownloads: number
+  transfers: LocalShareTransfer[]
+}
+
+export interface LocalShareSnapshot {
+  share: LocalShareInfo | null
+  activity: LocalShareActivity
 }
 
 export interface VideoChaptersResult {
@@ -280,6 +325,16 @@ export interface MfApi {
   openFile(path: string): Promise<{ ok: boolean }>
   /** Reads verified on-disk byte sizes for completed output files. */
   getOutputFileSizes(paths: string[]): Promise<Record<string, number>>
+  /** Share a completed file from this session with a nearby device over the private LAN. */
+  startLocalShare(outputPath: string): Promise<LocalShareStartResult>
+  /** Opens a native picker and shares the exact local file the person selects. */
+  pickLocalShareFile(): Promise<LocalShareStartResult>
+  /** Restores an active share after navigating away from the Share screen. */
+  getLocalShareStatus(): Promise<LocalShareSnapshot>
+  /** Adds a fresh private sharing window without asking for the file again. */
+  renewLocalShare(): Promise<LocalShareStartResult>
+  stopLocalShare(): Promise<{ ok: boolean }>
+  onLocalShareActivity(listener: (activity: LocalShareActivity) => void): () => void
   updaterCheck(kind: UpdaterDriverKind): Promise<UpdaterCheckResult>
   updaterApply(kind: UpdaterDriverKind): Promise<UpdaterApplyResult>
   onUpdaterPhase(listener: (event: UpdaterPhaseEvent) => void): () => void
