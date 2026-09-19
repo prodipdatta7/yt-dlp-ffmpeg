@@ -451,6 +451,15 @@ export class SearchService {
   private readonly searchHandles = new Set<SpawnHandle>()
   private searchGeneration = 0
   private searchAbortController: AbortController | null = null
+  /**
+   * Generation-scoped cache of the full `-J` documents this service already paid the
+   * network cost for (P3). Discovery and federated hydration parse the complete
+   * metadata and used to discard everything but a few list-row fields — then
+   * chapter/transcript previews spawned yt-dlp *again* for the same URL. Keyed by
+   * canonical URL; cleared on every `cancel()` so a new search (or a cookie change,
+   * which callers route through a fresh search) never serves stale payloads.
+   */
+  private readonly retainedInfo = new Map<string, RawInfo>()
 
   constructor(private readonly opts: SearchServiceOptions) {}
 
@@ -466,6 +475,8 @@ export class SearchService {
     this.searchGeneration++
     this.searchAbortController?.abort()
     this.searchAbortController = null
+    // A new generation must not serve payloads retained under the old one (P3).
+    this.retainedInfo.clear()
 
     const handles = [...this.searchHandles, ...this.activeHandles]
     this.searchHandles.clear()
@@ -528,6 +539,28 @@ export class SearchService {
 
   private previewCancelled(requestId: string | undefined): boolean {
     return requestId !== undefined && this.cancelledRequests.has(requestId)
+  }
+
+  /**
+   * Retains full infodicts from a chunk-hydration stdout that interleaves
+   * `%(original_url)s|...` machine lines with one `%()j` JSON document per URL (P3).
+   * Each JSON doc is keyed by its canonical `webpage_url`/`original_url`.
+   */
+  private retainInfoDocuments(stdout: string): void {
+    for (const line of stdout.split('\n')) {
+      const trimmed = line.trim()
+      if (!trimmed.startsWith('{')) continue
+      try {
+        const doc = JSON.parse(trimmed) as RawInfo
+        const key =
+          (typeof doc.webpage_url === 'string' && doc.webpage_url) ||
+          (typeof doc.original_url === 'string' && doc.original_url) ||
+          null
+        if (key) this.retainedInfo.set(key, doc)
+      } catch {
+        /* a non-JSON line is just the machine record — already handled live */
+      }
+    }
   }
 
   /** Forgets a settled request id so `cancelledRequests` cannot grow with the session. */
@@ -879,14 +912,18 @@ export class SearchService {
           '--no-warnings',
           '--print',
           '%(original_url)s|%(upload_date)s|%(timestamp)s|%(like_count)s',
+          // Full infodict per URL, parsed and retained (P3) so later chapter /
+          // transcript previews of the same entry do not respawn yt-dlp.
+          '--print',
+          '%()j',
         ]
         const cookies = this.opts.getCookiesPath?.()
         if (cookies) args.push('--cookies', cookies)
         args.push(...urls)
 
         const handle = (this.opts.spawn ?? spawnProcess)(binaryPath, args, {
-          // Lines are parsed live; nothing needs retaining (P-01).
-          capture: { stdout: 'none', stderr: 'tail', tailLines: 20 },
+          // stdout now carries the full infodict and must be complete (P-01/P-03).
+          capture: { stdout: 'full', stderr: 'tail', tailLines: 20 },
           onStdoutLine: (line) => {
             const parsed = parseHydrateLine(line)
             if (parsed && generation === this.searchGeneration) {
@@ -897,7 +934,10 @@ export class SearchService {
         })
         this.searchHandles.add(handle)
         try {
-          await handle.result
+          const result = await handle.result
+          if (generation === this.searchGeneration && result.code === 0) {
+            this.retainInfoDocuments(result.stdoutLines.join('\n'))
+          }
         } catch {
           /* best effort */
         } finally {
@@ -935,11 +975,17 @@ export class SearchService {
         try {
           const result = await handle.result
           if (result.code === 0 && !result.stdoutTruncated && result.stdoutLines.length > 0) {
-            update = parseFederatedHydration(
-              entry.url,
-              entry.platform,
-              result.stdoutLines.join('\n').trim(),
-            )
+            const jsonText = result.stdoutLines.join('\n').trim()
+            update = parseFederatedHydration(entry.url, entry.platform, jsonText)
+            // Retain the document this spawn paid for so a later chapter/transcript
+            // preview of the same entry does not respawn yt-dlp (P3).
+            if (generation === this.searchGeneration) {
+              try {
+                this.retainedInfo.set(entry.url, JSON.parse(jsonText) as RawInfo)
+              } catch {
+                /* parse failure already surfaced via parseFederatedHydration */
+              }
+            }
           } else if (result.code !== 0) {
             const errorCode = classifyStderr(result.stderrLines)
             update = { ...update, errorCode }
@@ -971,6 +1017,19 @@ export class SearchService {
   ): Promise<VideoChaptersResult> {
     const generation = this.searchGeneration
     if (this.previewCancelled(requestId)) return { chapters: [] }
+
+    // P3: if a discovery/hydration spawn in this generation already fetched the full
+    // infodict for this URL, build the chapters answer from it instead of spawning
+    // yt-dlp again. The retained document carries `chapters` and `description` — the
+    // exact two fields the spawn below would `--print`.
+    const retained = this.retainedInfo.get(url)
+    if (retained) {
+      const description = typeof retained.description === 'string' ? retained.description : null
+      return parseChaptersOutput(
+        `${JSON.stringify(retained.chapters ?? null)}\n===MF_DESC_SPLIT===\n${description ?? ''}`,
+      )
+    }
+
     const args = [
       '--no-warnings',
       '--print',

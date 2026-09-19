@@ -1,4 +1,5 @@
 import { computed, signal } from '@preact/signals'
+import type { SearchHydratePayload } from '../../../shared/ipcContract'
 import { applySearchHydration } from '../../../shared/searchHydration'
 import {
   DEFAULT_SEARCH_LIMIT,
@@ -308,7 +309,30 @@ export function setAllResultsSelected(select: boolean): void {
 }
 
 if (typeof window !== 'undefined' && window.mf?.onSearchEntry) {
+  // P5: batch progressive hydration patches. Federated hydration emits one
+  // `search:entry` per result (up to 50); applying each eagerly cloned the whole
+  // results array per patch — a full list re-render per entry. Buffer patches for
+  // one macrotask window and commit a single exact-key merged array instead
+  // (the same batching T10 applied to playlist hydration).
+  let pendingPatches: SearchHydratePayload[] = []
+  let flushScheduled = false
+
+  const flushHydration = (): void => {
+    flushScheduled = false
+    if (pendingPatches.length === 0) return
+    let next = searchResults.value
+    for (const patch of pendingPatches) {
+      next = applySearchHydration(next, patch)
+    }
+    pendingPatches = []
+    searchResults.value = next
+  }
+
   window.mf.onSearchEntry((item) => {
-    searchResults.value = applySearchHydration(searchResults.value, item)
+    pendingPatches.push(item)
+    if (!flushScheduled) {
+      flushScheduled = true
+      setTimeout(flushHydration, 50)
+    }
   })
 }

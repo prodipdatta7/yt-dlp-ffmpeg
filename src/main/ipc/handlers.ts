@@ -77,6 +77,7 @@ import type {
   UploadRecency,
 } from '../../shared/models'
 import {
+  AUDIO_BOOST_OPTIONS,
   BITRATE_TIERS,
   CONTAINERS,
   LOSSLESS_AUDIO_FORMATS,
@@ -86,6 +87,7 @@ import {
   RESOLUTION_TIERS,
   getSearchPlatform,
   ERROR_MESSAGES,
+  type AudioBoostOption,
   type AudioFormat,
   type BitrateTier,
 } from '../../shared/models'
@@ -633,7 +635,7 @@ function readUpdaterKind(payload: unknown): UpdaterDriverKind {
 
 const FORMAT_ID_PATTERN = /^[\w.-]{1,64}$/
 
-function parseJobConfig(payload: unknown): JobConfig | null {
+export function parseJobConfig(payload: unknown): JobConfig | null {
   if (!payload || typeof payload !== 'object') return null
   const raw = payload as Record<string, unknown>
 
@@ -676,16 +678,43 @@ function parseJobConfig(payload: unknown): JobConfig | null {
     playlistTitle = raw.playlistTitle
   }
 
+  // L-03 repair (P4): audioBoost and isLive were declared on JobConfig but never
+  // parsed or forwarded, which silently killed the Audio Boost selector and the
+  // live "Stop & Save" path. Parse them once here, into the shared base every
+  // mode branch spreads, so future fields cannot be dropped the same way.
+  let audioBoost: AudioBoostOption | undefined
+  if (raw.audioBoost !== undefined) {
+    if (
+      typeof raw.audioBoost !== 'string' ||
+      !AUDIO_BOOST_OPTIONS.includes(raw.audioBoost as never)
+    ) {
+      return null
+    }
+    audioBoost = raw.audioBoost as AudioBoostOption
+  }
+
+  let isLive: boolean | undefined
+  if (raw.isLive !== undefined) {
+    if (typeof raw.isLive !== 'boolean') return null
+    isLive = raw.isLive
+  }
+
+  const base = {
+    url,
+    destDir: raw.destDir,
+    estimatedBytes,
+    playlistTitle,
+    audioBoost,
+    isLive,
+  } as const
+
   switch (raw.mode) {
     case 'video-audio':
       return {
-        url,
+        ...base,
         mode: 'video-audio',
         tier,
         container,
-        destDir: raw.destDir,
-        estimatedBytes,
-        playlistTitle,
       }
 
     case 'audio-only': {
@@ -703,13 +732,10 @@ function parseJobConfig(payload: unknown): JobConfig | null {
         bitrate = raw.bitrate as BitrateTier
       }
       return {
-        url,
+        ...base,
         mode: 'audio-only',
         audioFormat: format as AudioFormat,
         bitrate,
-        destDir: raw.destDir,
-        estimatedBytes,
-        playlistTitle,
       }
     }
 
@@ -725,14 +751,11 @@ function parseJobConfig(payload: unknown): JobConfig | null {
         return null
       }
       return {
-        url,
+        ...base,
         mode: 'advanced',
         container,
         videoFormatId,
         audioFormatId,
-        destDir: raw.destDir,
-        estimatedBytes,
-        playlistTitle,
       }
     }
 

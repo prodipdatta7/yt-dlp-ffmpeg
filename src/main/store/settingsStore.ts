@@ -103,6 +103,13 @@ function isAppSettings(value: unknown): value is AppSettings {
 }
 
 export class SettingsStore {
+  /**
+   * In-memory copy of the last loaded/saved settings (P2). The file can only change
+   * through this process, so the cache is invalidated solely by `save()`. `load()`
+   * stays the cold-read path (startup, corruption recovery) and always hits disk.
+   */
+  private cache: AppSettings | null = null
+
   constructor(private readonly filePath: string) {}
 
   load(): AppSettings {
@@ -122,6 +129,12 @@ export class SettingsStore {
     }
   }
 
+  /** Cached read: one disk hit per process until the next `save()`. */
+  get(): AppSettings {
+    if (this.cache === null) this.cache = this.load()
+    return this.cache
+  }
+
   save(settings: AppSettings): void {
     try {
       mkdirSync(dirname(this.filePath), { recursive: true })
@@ -134,6 +147,9 @@ export class SettingsStore {
       }
       writeFileSync(tmpPath, JSON.stringify(normalized, null, 2), 'utf8')
       renameSync(tmpPath, this.filePath)
+      // Only replace the cache after the atomic write succeeded; on failure the
+      // previous cache (matching what's still on disk) stays authoritative.
+      this.cache = normalized
     } catch {
       return
     }

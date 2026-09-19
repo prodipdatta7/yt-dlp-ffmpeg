@@ -59,6 +59,8 @@ export interface RawInfo {
   thumbnail?: string | null
   thumbnails?: RawThumbnail[] | null
   webpage_url?: string
+  original_url?: string
+  chapters?: Array<{ start_time?: number; end_time?: number; title?: string }> | null
   is_live?: boolean
   live_status?: string
   formats?: RawFormat[]

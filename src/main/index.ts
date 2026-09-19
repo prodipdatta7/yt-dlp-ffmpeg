@@ -1,4 +1,4 @@
-import { existsSync, copyFileSync, rmSync, writeFileSync } from 'node:fs'
+﻿import { existsSync, copyFileSync, rmSync, writeFileSync } from 'node:fs'
 import * as fsp from 'node:fs/promises'
 import { join } from 'node:path'
 import {
@@ -9,6 +9,7 @@ import {
   Menu,
   Tray,
   nativeTheme,
+  powerMonitor,
   shell,
   nativeImage,
   Notification,
@@ -128,7 +129,7 @@ async function ensureTray(win: BrowserWindow): Promise<void> {
     .getFileIcon(app.getPath('exe'), { size: 'small' })
     .catch(() => nativeImage.createEmpty())
   tray = new Tray(icon)
-  tray.setToolTip('MediaForge Desktop — download running in background')
+  tray.setToolTip('MediaForge Desktop â€” download running in background')
   const show = (): void => {
     win.show()
     disposeTray()
@@ -187,10 +188,10 @@ app.whenReady().then(() => {
   /**
    * Every root a partial job dir can live under: the userData staging area, plus the
    * in-destination staging dir used when the output folder is on another volume (R-03).
-   * Resolved at call time — the output folder can change while the app runs.
+   * Resolved at call time â€” the output folder can change while the app runs.
    */
   const stagingRoots = (): string[] => {
-    const outputDir = settings.load().lastOutputDir || app.getPath('downloads')
+    const outputDir = settings.get().lastOutputDir || app.getPath('downloads')
     return [...new Set([tempRoot, join(outputDir, STAGING_DIR_NAME)])]
   }
 
@@ -239,7 +240,9 @@ app.whenReady().then(() => {
     logger,
     getCookiesPath: resolveCookiesPath,
     onProcessLine: tapProcessLines,
-    getMaxConcurrent: () => clampPlaylistConcurrency(settings.load().playlistConcurrency),
+    getMaxConcurrent: () => clampPlaylistConcurrency(settings.get().playlistConcurrency),
+    // P6: let the orchestrator clamp parallel concurrency while on battery power.
+    isOnBattery: () => powerMonitor.isOnBatteryPower(),
   })
 
   const overrideDir = join(userDataDir, 'binaries', platformDirName(process.platform, process.arch))
@@ -321,7 +324,7 @@ app.whenReady().then(() => {
             if (done.status === 'completed' && done.outputPath) {
               completedOutputPaths.add(done.outputPath)
             }
-            const s = settings.load()
+            const s = settings.get()
             if (s.notifyOnComplete === false) return
             const focused = BrowserWindow.getAllWindows().some(
               (w) => !w.isDestroyed() && w.isFocused(),
@@ -362,13 +365,13 @@ app.whenReady().then(() => {
         }
       },
       cancelDownload: (jobId: string) => ({ ok: orchestrator.cancel(jobId || undefined) }),
-      getDefaultDestDir: () => settings.load().lastOutputDir || app.getPath('downloads'),
+      getDefaultDestDir: () => settings.get().lastOutputDir || app.getPath('downloads'),
       getClipboardUrl: async () => {
         const text = (clipboard.readText() ?? '').trim()
         return /^https?:\/\/\S+$/i.test(text) ? text : null
       },
       chooseDirectory: async () => {
-        const current = settings.load()
+        const current = settings.get()
         const result = await dialog.showOpenDialog({
           title: 'Choose download destination',
           defaultPath: current.lastOutputDir || app.getPath('downloads'),
@@ -376,7 +379,7 @@ app.whenReady().then(() => {
         })
         if (result.canceled || result.filePaths.length === 0) return null
         const chosen = result.filePaths[0]
-        settings.save({ ...settings.load(), lastOutputDir: chosen })
+        settings.save({ ...settings.get(), lastOutputDir: chosen })
         logger.info('destination folder chosen', { dirSet: true })
         return chosen
       },
@@ -389,7 +392,7 @@ app.whenReady().then(() => {
         if (result.canceled || result.filePaths.length === 0) return false
         try {
           copyFileSync(result.filePaths[0], cookiesFile)
-          settings.save({ ...settings.load(), cookieFileSet: true })
+          settings.save({ ...settings.get(), cookieFileSet: true })
           logger.info('cookies file imported')
           return true
         } catch {
@@ -399,7 +402,7 @@ app.whenReady().then(() => {
       clearCookies: () => {
         try {
           rmSync(cookiesFile, { force: true })
-          settings.save({ ...settings.load(), cookieFileSet: false })
+          settings.save({ ...settings.get(), cookieFileSet: false })
           logger.info('cookies cleared')
           return true
         } catch {
@@ -420,9 +423,9 @@ app.whenReady().then(() => {
         logger.info('live console cleared by user')
         return { ok: true }
       },
-      getSettings: () => toSettingsView(settings.load()),
+      getSettings: () => toSettingsView(settings.get()),
       setSettings: (patch) => {
-        const current = settings.load()
+        const current = settings.get()
         const next = { ...current }
         if (patch.theme) next.theme = patch.theme
         if (typeof patch.lastOutputDir === 'string') next.lastOutputDir = patch.lastOutputDir
@@ -441,7 +444,7 @@ app.whenReady().then(() => {
         return toSettingsView(next)
       },
       markFirstRunSeen: () => {
-        settings.save({ ...settings.load(), firstRunNoticeSeen: true })
+        settings.save({ ...settings.get(), firstRunNoticeSeen: true })
         return true
       },
       listPartials: async () => ({
@@ -579,7 +582,7 @@ app.whenReady().then(() => {
         if (orchestrator.isBusy()) {
           return {
             ok: false,
-            error: 'A download is in progress — cancel or wait for it to finish, then try again.',
+            error: 'A download is in progress â€” cancel or wait for it to finish, then try again.',
           }
         }
         const result = await downloadAndInstallAppUpdate({
@@ -633,7 +636,7 @@ app.whenReady().then(() => {
       },
       saveTextFile: async (defaultFilename: string, content: string) => {
         const safeName = sanitizeFileName(defaultFilename)
-        const current = settings.load()
+        const current = settings.get()
         const defaultPath = join(current.lastOutputDir || app.getPath('downloads'), safeName)
         const opts = {
           title: 'Save Transcript',
@@ -662,7 +665,7 @@ app.whenReady().then(() => {
     logger,
   )
 
-  mainWindow = createMainWindow(resolvedTheme(settings.load().theme))
+  mainWindow = createMainWindow(resolvedTheme(settings.get().theme))
 
   // Off the critical path: sweeping stale job dirs used to run before the window existed,
   // so it landed directly on cold-start time. The window never waits on it (P-02).
@@ -675,7 +678,7 @@ app.whenReady().then(() => {
   })
 
   nativeTheme.on('updated', () => {
-    applyChromeTheme(resolvedTheme(settings.load().theme))
+    applyChromeTheme(resolvedTheme(settings.get().theme))
   })
 
   mainWindow.on('close', (event) => {
@@ -707,7 +710,7 @@ app.whenReady().then(() => {
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0)
-      createMainWindow(resolvedTheme(settings.load().theme))
+      createMainWindow(resolvedTheme(settings.get().theme))
   })
 })
 

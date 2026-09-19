@@ -29,6 +29,19 @@ import {
 
 export const DEFAULT_RETRY_DELAYS_MS: readonly number[] = [5000, 15000, 30000]
 
+/** P6: concurrency ceiling applied while the host is on battery power. */
+export const BATTERY_MAX_CONCURRENT = 2
+
+/**
+ * P6: admission concurrency. Pure so the battery clamp is unit-testable without an
+ * orchestrator. On battery the configured value is clamped down; on AC it passes
+ * through unchanged.
+ */
+export function effectiveMaxConcurrent(configured: number, onBattery: boolean): number {
+  if (!onBattery) return configured
+  return Math.max(1, Math.min(configured, BATTERY_MAX_CONCURRENT))
+}
+
 /** Cadence of the `finalizing` heartbeat emitted while a cross-volume copy is in flight. */
 export const FINALIZE_HEARTBEAT_MS = 500
 
@@ -72,6 +85,12 @@ export interface OrchestratorDeps {
    * playlist parallel mode; sequential UI still launches one at a time.
    */
   getMaxConcurrent?: () => number
+  /**
+   * P6: true when the host is on battery power. When set, the effective concurrency
+   * is clamped (see {@link effectiveMaxConcurrent}) so a parallel playlist doesn't
+   * spin up N simultaneous CPU-heavy ffmpeg transcodes on a throttling laptop.
+   */
+  isOnBattery?: () => boolean
   /** Test seam: override free-disk probe. */
   getFreeDiskBytes?: (destDir: string) => Promise<number | null>
   /** Test seam: flush cadence for coalesced progress events. */
@@ -177,6 +196,15 @@ export class DownloadOrchestrator {
     return Number.isFinite(n) && n >= 1 ? Math.min(5, Math.floor(n)) : 1
   }
 
+  /**
+   * P6: the concurrency actually used for admission. On battery we clamp to
+   * `BATTERY_MAX_CONCURRENT` so a parallel run doesn't saturate a throttled CPU with
+   * simultaneous downloads + transcodes; on AC the configured value passes through.
+   */
+  private effectiveMaxConcurrent(): number {
+    return effectiveMaxConcurrent(this.maxConcurrent(), this.deps.isOnBattery?.() ?? false)
+  }
+
   /** Bytes already reserved by in-flight jobs (sum of positive estimates). */
   private reservedEstimateBytes(): number {
     let sum = 0
@@ -206,7 +234,7 @@ export class DownloadOrchestrator {
   }
 
   async launch(config: JobConfig, sendEvent: SendEvent, sendDone: SendDone): Promise<string> {
-    if (this.activeJobs.size >= this.maxConcurrent()) {
+    if (this.activeJobs.size >= this.effectiveMaxConcurrent()) {
       throw new MfLaunchError(null, 'Download concurrency limit reached.')
     }
 
