@@ -75,7 +75,7 @@ export function AboutSection() {
               >
                 Check for Updates
               </button>
-              {check?.updateAvailable && (
+              {check?.updateAvailable && !check.managedByStore && (
                 <>
                   <button
                     onClick={() => void window.mf.openAppReleasePage()}
@@ -101,7 +101,15 @@ export function AboutSection() {
                 Checking the release feed…
               </p>
             )}
-            {check && !check.error && !check.updateAvailable && (
+            {check?.managedByStore && (
+              <p class="text-slate-400">
+                This copy came from the Microsoft Store, so the Store keeps MediaForge up to date —
+                check <span class="text-slate-200">Microsoft Store &rarr; Library</span> for
+                updates. The yt-dlp/FFmpeg engines bundled inside still update from Settings &rarr;
+                Drivers.
+              </p>
+            )}
+            {check && !check.error && !check.updateAvailable && !check.managedByStore && (
               <p class="text-slate-400">You&rsquo;re on the latest version.</p>
             )}
             {check && !check.error && check.updateAvailable && !installing && !installResult && (

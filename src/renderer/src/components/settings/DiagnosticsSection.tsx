@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'preact/hooks'
+import type { BinariesInfoResult } from '../../../../shared/ipcContract'
 import { CheckIcon, DocIcon, ShieldIcon, TerminalIcon } from '../icons'
 import { SettingsCard } from '../SettingsCard'
 import { btnGhost, btnPrimary } from './buttonStyles'
 
 export function DiagnosticsSection() {
   const [version, setVersion] = useState<string | null>(null)
-  const [engineInfo, setEngineInfo] = useState<{
-    ytdlp: { version: string | null; source: string | null }
-    ffmpeg: { version: string | null; source: string | null }
-  } | null>(null)
+  const [engineInfo, setEngineInfo] = useState<BinariesInfoResult | null>(null)
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
@@ -22,6 +20,14 @@ export function DiagnosticsSection() {
       .catch(() => undefined)
   }, [])
 
+  // AM-21: yt-dlp needs an external JS runtime for YouTube. Report it as a first-class engine so
+  // "some formats are missing" is diagnosable without reading the debug log.
+  const jsRuntime = engineInfo?.jsRuntime ?? null
+  const jsRuntimeLabel = jsRuntime?.name
+    ? `${jsRuntime.name} ${jsRuntime.version ?? '(version unknown)'}`
+    : 'not detected'
+  const jsRuntimeHealthy = Boolean(jsRuntime?.usable)
+
   async function copyDiagnosticReport() {
     const report = [
       `MediaForge Desktop Diagnostic Report`,
@@ -29,6 +35,7 @@ export function DiagnosticsSection() {
       `App Version: ${version ?? 'unknown'}`,
       `yt-dlp Engine: ${engineInfo?.ytdlp.version ?? 'unknown'} (${engineInfo?.ytdlp.source ?? 'bundled'})`,
       `FFmpeg Engine: ${engineInfo?.ffmpeg.version ?? 'unknown'} (${engineInfo?.ffmpeg.source ?? 'bundled'})`,
+      `JS Runtime: ${jsRuntimeLabel} (${jsRuntime?.source ?? 'none'})${jsRuntimeHealthy ? '' : ' — DEGRADED YouTube extraction'}`,
       `Platform: Windows (win32-x64)`,
       `User Agent: ${navigator.userAgent}`,
       `Screen Viewport: ${window.innerWidth}x${window.innerHeight} (${window.devicePixelRatio}x HiDPI)`,
@@ -96,6 +103,22 @@ export function DiagnosticsSection() {
               Execution Architecture
             </span>
             <p class="mt-1 text-xs font-mono font-bold text-ink">Isolated 3-Process Model</p>
+          </div>
+          <div class="rounded-xl border border-line bg-wash-1 p-3">
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              YouTube JS Runtime
+            </span>
+            <p
+              class={`mt-1 text-xs font-bold ${jsRuntimeHealthy ? 'text-emerald-500' : 'text-amber-500'}`}
+            >
+              {jsRuntimeLabel}
+            </p>
+            {!jsRuntimeHealthy && (
+              <p class="mt-1 text-[10.5px] leading-snug text-slate-500">
+                Without this, yt-dlp cannot solve YouTube's JS challenges and may list incomplete
+                formats. Reinstall or run <code class="text-ink">npm run fetch-binaries</code>.
+              </p>
+            )}
           </div>
         </div>
 

@@ -78,6 +78,8 @@ export interface OrchestratorDeps {
   retryDelaysMs?: readonly number[]
   /** cookies.txt path appended as --cookies when present. */
   getCookiesPath?: () => string | null
+  /** `--js-runtimes` argv pair (AM-21); required for YouTube format resolution. */
+  getJsRuntimeArgs?: () => readonly string[]
   /** Raw CLI line tap (stdout/stderr of yt-dlp) for the live console. */
   onProcessLine?: (line: string, stream: 'out' | 'err') => void
   /**
@@ -368,7 +370,13 @@ export class DownloadOrchestrator {
 
         const args = [
           ...(this.deps.spawnArgPrefix ?? []),
-          ...buildDownloadArgs(job.config, ffmpegPath, outputTemplateFor(job.tempDir), cookiesPath),
+          ...buildDownloadArgs(
+            job.config,
+            ffmpegPath,
+            outputTemplateFor(job.tempDir),
+            cookiesPath,
+            this.deps.getJsRuntimeArgs?.() ?? [],
+          ),
         ]
 
         this.deps.onProcessLine?.(`$ yt-dlp ${args.join(' ')}`, 'out')

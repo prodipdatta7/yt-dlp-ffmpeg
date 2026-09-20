@@ -16,7 +16,16 @@ export function outputTemplateFor(tempJobDir: string): string {
   return join(tempJobDir, '%(title).200B [%(id)s].%(ext)s')
 }
 
-export function buildBaseDownloadArgs(ffmpegPath: string, outputTemplate: string): string[] {
+/**
+ * `jsRuntimeArgs` is the `--js-runtimes RUNTIME[:PATH]` pair from `binaries/jsRuntime.ts`. It is
+ * appended last (argv order is order-insensitive per AGENTS.md §7.2) so every existing snapshot
+ * that calls this without a runtime stays byte-identical.
+ */
+export function buildBaseDownloadArgs(
+  ffmpegPath: string,
+  outputTemplate: string,
+  jsRuntimeArgs: readonly string[] = [],
+): string[] {
   return [
     '--newline',
     '--progress',
@@ -39,6 +48,7 @@ export function buildBaseDownloadArgs(ffmpegPath: string, outputTemplate: string
     POSTPROCESS_PROGRESS_TEMPLATE,
     '--print',
     'after_move:filepath',
+    ...jsRuntimeArgs,
   ]
 }
 
@@ -109,6 +119,7 @@ export function buildDownloadArgs(
   ffmpegPath: string,
   outputTemplate: string,
   cookiesPath?: string | null,
+  jsRuntimeArgs: readonly string[] = [],
 ): string[] {
   let modeArgs: string[]
   switch (config.mode) {
@@ -126,7 +137,7 @@ export function buildDownloadArgs(
       )
       break
   }
-  const base = buildBaseDownloadArgs(ffmpegPath, outputTemplate)
+  const base = buildBaseDownloadArgs(ffmpegPath, outputTemplate, jsRuntimeArgs)
   if (cookiesPath) base.push('--cookies', cookiesPath)
   const boost = buildAudioBoostArgs(config)
   return [...modeArgs, ...base, ...boost, config.url]

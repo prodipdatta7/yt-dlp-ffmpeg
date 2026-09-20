@@ -1,12 +1,19 @@
 import type { SearchFilterCriteria, SearchPlatform } from '../../shared/models'
 
+/**
+ * `jsRuntimeArgs` is the `--js-runtimes RUNTIME[:PATH]` pair from `binaries/jsRuntime.ts`.
+ * Every yt-dlp spawn needs it: YouTube metadata extraction solves the same JS challenges a
+ * download does, so an analyze call without it reports the degraded format list.
+ */
 export function buildAnalyzeArgs(
   url: string,
   cookiesPath?: string | null,
   extraFlags?: readonly string[],
+  jsRuntimeArgs: readonly string[] = [],
 ): string[] {
   const args: string[] = ['-J', '--no-warnings', '--flat-playlist']
   if (cookiesPath) args.push('--cookies', cookiesPath)
+  if (jsRuntimeArgs.length > 0) args.push(...jsRuntimeArgs)
   if (extraFlags && extraFlags.length > 0) args.push(...extraFlags)
   args.push(url)
   return args
@@ -58,9 +65,14 @@ export function buildFilterFlags(filters?: SearchFilterCriteria): string[] {
   return flags
 }
 
-export function buildEntryInfoArgs(url: string, cookiesPath?: string | null): string[] {
+export function buildEntryInfoArgs(
+  url: string,
+  cookiesPath?: string | null,
+  jsRuntimeArgs: readonly string[] = [],
+): string[] {
   const args: string[] = ['-J', '--no-warnings']
   if (cookiesPath) args.push('--cookies', cookiesPath)
+  if (jsRuntimeArgs.length > 0) args.push(...jsRuntimeArgs)
   args.push(url)
   return args
 }

@@ -37,6 +37,8 @@ export interface SearchServiceOptions {
   resolveYtDlp: () => Promise<LocatedBinary | null>
   logger?: Logger
   getCookiesPath?: () => string | null
+  /** `--js-runtimes` argv pair (AM-21); every yt-dlp spawn in this service needs it. */
+  getJsRuntimeArgs?: () => readonly string[]
   /** Raw CLI line tap (stdout/stderr of yt-dlp) for the live console. */
   onProcessLine?: (line: string, stream: 'out' | 'err') => void
   onEntryHydrated?: (item: SearchHydratePayload) => void
@@ -611,7 +613,12 @@ export class SearchService {
       effectiveFilters,
     )
     // Never send imported cookies to Google discovery. Target hydration may still use them.
-    const args = buildAnalyzeArgs(urlOrQuery, this.opts.getCookiesPath?.() ?? null, extraFlags)
+    const args = buildAnalyzeArgs(
+      urlOrQuery,
+      this.opts.getCookiesPath?.() ?? null,
+      extraFlags,
+      this.opts.getJsRuntimeArgs?.() ?? [],
+    )
 
     this.opts.logger?.debug('search spawn started', {
       platform: platformId,
@@ -919,6 +926,7 @@ export class SearchService {
         ]
         const cookies = this.opts.getCookiesPath?.()
         if (cookies) args.push('--cookies', cookies)
+        args.push(...(this.opts.getJsRuntimeArgs?.() ?? []))
         args.push(...urls)
 
         const handle = (this.opts.spawn ?? spawnProcess)(binaryPath, args, {
@@ -959,7 +967,11 @@ export class SearchService {
     const worker = async (): Promise<void> => {
       while (nextEntry < entries.length && generation === this.searchGeneration) {
         const entry = entries[nextEntry++]
-        const args = buildEntryInfoArgs(entry.url, this.opts.getCookiesPath?.() ?? null)
+        const args = buildEntryInfoArgs(
+          entry.url,
+          this.opts.getCookiesPath?.() ?? null,
+          this.opts.getJsRuntimeArgs?.() ?? [],
+        )
         const handle = (this.opts.spawn ?? spawnProcess)(binaryPath, args, {
           // stdout is the -J JSON payload and must be complete (P-01).
           capture: { stdout: 'full', stderr: 'tail', tailLines: 100 },
@@ -1041,6 +1053,7 @@ export class SearchService {
     ]
     const cookies = this.opts.getCookiesPath?.()
     if (cookies) args.push('--cookies', cookies)
+    args.push(...(this.opts.getJsRuntimeArgs?.() ?? []))
     args.push(url)
 
     const handle = (this.opts.spawn ?? spawnProcess)(binaryPath, args, {
@@ -1102,6 +1115,7 @@ export class SearchService {
       ]
       const cookies = this.opts.getCookiesPath?.()
       if (cookies) primaryArgs.push('--cookies', cookies)
+      primaryArgs.push(...(this.opts.getJsRuntimeArgs?.() ?? []))
       primaryArgs.push(url)
 
       // Subtitles land on disk; stdout is never read (P-01).
@@ -1140,6 +1154,7 @@ export class SearchService {
           path.join(tmpDir, '%(id)s.%(ext)s'),
         ]
         if (cookies) fallbackArgs.push('--cookies', cookies)
+        fallbackArgs.push(...(this.opts.getJsRuntimeArgs?.() ?? []))
         fallbackArgs.push(url)
 
         const fbHandle = (this.opts.spawn ?? spawnProcess)(binaryPath, fallbackArgs, {

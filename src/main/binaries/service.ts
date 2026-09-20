@@ -1,4 +1,5 @@
-import type { BinariesInfoResult } from '../../shared/ipcContract'
+import type { BinariesInfoResult, JsRuntimeInfo } from '../../shared/ipcContract'
+import { NO_JS_RUNTIME } from './jsRuntimeService'
 import type { BinaryCandidate, LocatedBinary } from './locator'
 import { locateBinary } from './locator'
 import { VersionProber } from './versions'
@@ -10,6 +11,8 @@ export interface BinariesServiceOptions {
   candidates: readonly BinaryCandidate[]
   prober?: VersionProber
   logger?: Logger
+  /** Reports which JavaScript runtime yt-dlp will use (AM-21); defaults to "none". */
+  jsRuntime?: () => Promise<JsRuntimeInfo>
 }
 
 export class BinariesService {
@@ -52,6 +55,7 @@ export class BinariesService {
       })
     )
     const byKind = Object.fromEntries(entries)
-    return { ytdlp: byKind['yt-dlp'], ffmpeg: byKind.ffmpeg }
+    const jsRuntime = this.opts.jsRuntime ? await this.opts.jsRuntime() : NO_JS_RUNTIME
+    return { ytdlp: byKind['yt-dlp'], ffmpeg: byKind.ffmpeg, jsRuntime }
   }
 }

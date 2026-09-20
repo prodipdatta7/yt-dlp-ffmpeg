@@ -183,6 +183,14 @@ runtime could be found … YouTube extraction without a JS runtime has been depr
 every YouTube call by this binary. Chapter availability must always be treated as per-video, never
 inferred from the platform.
 
+> **Resolved by AM-21 (implemented).** The JS-runtime warning recorded here was treated as an
+> observation, but it is the reason YouTube format lists can come back incomplete: yt-dlp needs an
+> external runtime to solve YouTube's challenges, and the app shipped none. MediaForge now bundles
+> QuickJS-NG `qjs.exe` and passes `--js-runtimes` on every yt-dlp spawn (download, analyze,
+> entry-info, search hydration, chapters, transcript). This paragraph's *other* claim still stands
+> unchanged — chapter availability remains a per-video runtime fact that must never be inferred
+> from the platform.
+
 ---
 
 ## 4. Product decisions

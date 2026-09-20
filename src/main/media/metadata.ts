@@ -212,6 +212,8 @@ export interface AnalyzeServiceOptions {
   resolveYtDlp: () => Promise<LocatedBinary | null>
   logger?: Logger
   getCookiesPath?: () => string | null
+  /** `--js-runtimes` argv pair (AM-21); without it YouTube metadata is degraded. */
+  getJsRuntimeArgs?: () => readonly string[]
   onEntryHydrated?: (event: Extract<AnalyzeStreamEvent, { kind: 'entry' }>) => void
   /** Raw CLI line tap (stdout/stderr of yt-dlp) for the live console. */
   onProcessLine?: (line: string, stream: 'out' | 'err') => void
@@ -370,9 +372,10 @@ export class AnalyzeService {
     url: string,
     flatPlaylist: boolean,
   ): Promise<AnalyzeResult> {
+    const jsRuntimeArgs = this.opts.getJsRuntimeArgs?.() ?? []
     const args = flatPlaylist
-      ? buildAnalyzeArgs(url, this.opts.getCookiesPath?.() ?? null)
-      : buildEntryInfoArgs(url, this.opts.getCookiesPath?.() ?? null)
+      ? buildAnalyzeArgs(url, this.opts.getCookiesPath?.() ?? null, undefined, jsRuntimeArgs)
+      : buildEntryInfoArgs(url, this.opts.getCookiesPath?.() ?? null, jsRuntimeArgs)
     this.opts.logger?.debug('analyze spawn started', { url, flatPlaylist })
     this.opts.onProcessLine?.(`$ yt-dlp ${args.join(' ')}`, 'out')
     const handle = (this.opts.spawn ?? spawnProcess)(binaryPath, args, {

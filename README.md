@@ -17,7 +17,8 @@
 
 ## ✨ Key Features
 
-- 🚀 **Zero Host Dependencies**: Comes pre-packaged with stable `yt-dlp` and `FFmpeg` binaries. No external Python or command-line setup required.
+- 🚀 **Zero Host Dependencies**: Comes pre-packaged with stable `yt-dlp`, `FFmpeg` and the QuickJS-NG JavaScript runtime. No external Python, Node or Deno setup required.
+- ▶️ **Full YouTube Support Out of the Box**: yt-dlp solves YouTube's JavaScript challenges through an external runtime; MediaForge ships one and wires it into every extraction, so format lists are never silently incomplete. Power users can drop in `deno.exe` for faster solves.
 - 🎯 **Streamlined Modes**:
   - **Video + Audio**: Download in 4K, 1440p, 1080p, 720p, or 480p with auto-muxing to MP4, MKV, or WebM.
   - **Audio Only**: Extract audio to MP3, M4A, OGG (with 320k, 192k, 128k bitrate options) or lossless FLAC and WAV.
@@ -116,3 +117,4 @@ The packaged installer will be generated in the `dist/` directory.
 - **MediaForge Desktop** is licensed under the [MIT License](LICENSE).
 - **yt-dlp**: Released under The Unlicense ([yt-dlp license](resources/LICENSES/yt-dlp-Unlicense.txt)).
 - **FFmpeg**: Licensed under the GNU LGPL v2.1+ ([FFmpeg notice](resources/LICENSES/ffmpeg-LGPL-notice.txt)).
+- **QuickJS-NG**: Released under the MIT License ([QuickJS-NG notice](resources/LICENSES/quickjs-ng-MIT.txt)) — bundled as the JavaScript runtime yt-dlp needs for YouTube.

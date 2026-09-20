@@ -1,0 +1,52 @@
+name: Store Package (MSIX)
+
+# Manual only, on purpose: the MSIX target is beta in electron-builder v27 (AM-22), so it must
+# never be able to gate or break a GitHub release. Run this from the Actions tab, download the
+# artifact, and upload it on the Partner Center Packages page.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  msix:
+    name: Build MSIX upload package
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # electron-builder v27 is native ESM and requires Node >= 22.12.0 (AM-22).
+          node-version: 22.12.0
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fetch driver binaries
+        run: npm run fetch-binaries
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Type check and test
+        run: |
+          npm run typecheck
+          npm run test
+
+      # Produces MediaForge-Desktop-<version>-store.msix and .msixupload. `dist:store` first runs
+      # `fetch-binaries --verify`, which fails the job if a bundled binary (yt-dlp/ffmpeg/qjs) is
+      # missing — the extraResources filter would otherwise omit it silently (AM-21/AM-22).
+      - name: Build MSIX Store package
+        run: npm run dist:store
+
+      - name: Upload Store package for Partner Center
+        uses: actions/upload-artifact@v4
+        with:
+          name: mediaforge-msixupload
+          path: dist/*.msixupload
+          if-no-files-found: error

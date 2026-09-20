@@ -45,6 +45,8 @@ These amend the PRD. Traceability: `AM-nn` may appear in commit messages and tes
 | AM-14 | — | In-app keyword search (M8, new — not in the original PRD) has two explicit discovery strategies. YouTube, SoundCloud, and Bilibili use native yt-dlp query extractors (`ytsearch`/`ytsearchdate`, `scsearch`, `bilisearch`). Facebook, Instagram, X, TikTok, and Reddit use best-effort cookie-free DuckDuckGo public-web discovery scoped with fixed `site:` expressions, with Brave Search as a fallback when DuckDuckGo returns a challenge page or no usable links; every discovered URL is then allowlist/path validated and hydrated by its native yt-dlp extractor. Federated discovery is relevance-only and may be incomplete because it uses public result HTML rather than a supported API. `gvsearch` must not be used here: Google currently responds with a JavaScript challenge and yt-dlp returns an empty success playlist. Do not add another platform without defining and testing its discovery strategy, media-URL policy, and capabilities in `SEARCH_PLATFORMS`. |
 | AM-15 | 6.3/AM-08 | AM-08's "check-for-updates" covered only the core drivers (yt-dlp/FFmpeg, §7.6) — the app itself had no version-check surface, leaving users with no in-app way to learn a new MediaForge release exists or install it. Closed with a Settings **About** section: resolves the latest tag from `github.com/<owner>/<repo>/releases/latest` (same no-REST-API redirect pattern as §7.6, reusing `resolveLatestTag`/`isNewerVersion`) and compares it against `app.getVersion()`. "View Release" opens that page via `shell.openExternal`. "Download & Install" goes further than the drivers do — it downloads the NSIS installer asset, checksum-verifies it against a `SHA256SUMS` sidecar `release.yml` now publishes (added there for this; same shape as yt-dlp's SHA2-256SUMS), writes it to `<userData>/updates/`, launches it detached, then quits the app so the installer isn't fighting file locks on its own running executable. Still no silent/background auto-update (no `electron-updater`, no differential patching) — this is a user-initiated foreground action, refused while `orchestrator.isBusy()` (an active download would otherwise be killed by the quit). The app never swaps its **own** installed files itself (AM-03's Program-Files rationale applies harder here) — the downloaded installer wizard does that. |
 | AM-16 | 5.2/AM-10 | AM-10's idle ceiling (≤120MB) is withdrawn as unachievable and is replaced. Measured on the reference host (Electron 43, Win11), a **bare** Electron window with a blank document costs 310MB summed `workingSetSize` / 142MB summed `privateBytes` across its four processes — the 120MB target fails on both metrics before any application code loads. MediaForge's own marginal cost over that baseline is ~47MB working set / ~46MB private. New budget: **idle ≤200MB summed private, ≤380MB summed working set; marginal cost over a bare-window baseline ≤60MB private**, which is the tracked regression signal. Peak ≤450MB (AM-10) is retained. Both `workingSetSize` and `privateBytes` are recorded; `privateBytes` is the primary figure because working set double-counts shared pages. Baseline is re-measured whenever the Electron major version changes. Evidence: `specs/performance-memory-deep-research.md` §R-01. |
+| AM-21 | 5.1/§7 | **yt-dlp cannot extract YouTube without an external JavaScript runtime.** yt-dlp's EJS wiki is explicit ("To download from YouTube, yt-dlp needs to solve JavaScript challenges presented by YouTube using an external JavaScript runtime"), and its `--js-runtimes` default is `['deno']` only. The official `yt-dlp.exe` already bundles the `yt-dlp-ejs` solver scripts, so the **runtime binary is the only missing piece** — MediaForge shipped none, which is precisely the `No supported JavaScript runtime could be found` warning plan v2 recorded as **V-10** and treated as informational. It is not informational: it is why YouTube format lists can come back incomplete. MediaForge now **bundles QuickJS-NG `qjs.exe`** (~2 MB; yt-dlp supports it as a first-class runtime but it MUST be ≥ 0.12.0, since earlier builds take minutes per solve) and passes `--js-runtimes` on **every** yt-dlp spawn — download, analyze, entry-info, search hydration, chapters and transcript — through the §7 choke points. A user-supplied `deno.exe` in `<userData>/binaries/win32/` (AM-03 override; ~42 MB, **never** bundled) is **preferred when present**, because Deno solves fastest. Runtime preference deliberately dominates directory preference, so the Deno override beats the bundled QuickJS while AM-03 ordering is preserved within one runtime. The flag is emitted **bare** (`--js-runtimes quickjs`) when the runtime sits beside the resolved `yt-dlp.exe`, because yt-dlp auto-discovers it there, and as `name:path` otherwise — keeping Windows drive-letter paths out of the `RUNTIME[:PATH]` grammar in the common case. Selection is main-process only (`binaries/jsRuntime.ts` + `jsRuntimeService.ts`); the renderer never picks a runtime, and `binaries:getInfo` now reports it so Settings → Diagnostics and the copyable diagnostic report can distinguish "runtime missing/too old" from a genuine extractor failure. |
+| AM-22 | 6.3/AM-15 + §14 | **Microsoft Store (MSIX/AppX) distribution is now a target, which changes two runtime contracts.** `process.windowsStore` is Electron's documented signal that the process is running inside an MSIX/AppX package, and Electron's own Store guidance is to use it to "disable or adapt features that are not allowed or that behave differently in the store (e.g. auto-updater)". Accordingly: (1) **AM-15 self-update is disabled and hidden under a Store install** — the Store owns updates for Store-installed apps, and AM-15's flow is non-functional by construction anyway (a packaged app cannot replace its own install directory, and there is no NSIS install to replace). `checkAppUpdate` returns `storeManagedUpdateCheck()` **without any network call**, `downloadAndInstallAppUpdate` refuses with `STORE_MANAGED_UPDATE_NOTICE` (defense in depth: the handler refuses on its own rather than trusting the renderer), and Settings → About explains that the Store owns updates while the **drivers** still update from Settings → Drivers — that part is unaffected and must stay working. (2) **The package directory is read-only and virtualized**, so AM-03's "never write into the install directory" rule stops being merely good practice and becomes load-bearing; binary overrides, the AM-21 runtime override and temp staging all continue from `<userData>` (which is redirected to the package's private AppData). `src/main/app/packaging.ts` holds the pure gate (`appDistribution`/`allowsSelfUpdate`/`storeManagedUpdateCheck`) and is unit-tested without Electron. **AppUserModelId is deliberately NOT set**: Electron derives toast identity from the packaged app's manifest, and forcing an explicit AUMID inside a package risks breaking the notifications the app already ships (`notifyOnComplete`) — so the AUMID stays untouched and Store notifications are a smoke-test item, not an assumption. **Toolchain (implemented):** electron-builder is pinned exactly to **`27.0.0-alpha.8`** — v27 exists on npm only as a prerelease (`latest` is still 26.x) and its `msix` target is documented as beta; the pin is deliberate because the MSIX docs require pinning. v27 is native ESM and needs **Node ≥ 22.12.0**, so the §3 Node floor moved from ≥20 and both existing workflows now pin `22.12.0`. **Verified locally rather than assumed:** the v27 alpha still builds the NSIS installer (165.4 MiB — see §9/M7's budget), and `npm run dist:store` emits `MediaForge-Desktop-<version>-store.msix` plus `.msixupload`; the manifest was read back out of the built package and confirms `Identity Name="com.mediaforge.desktop"`, `Application Id="MediaForge"`, `Publisher='CN=ms'` (the placeholder the Store replaces when it re-signs), `MinVersion 10.0.17763.0`, and exactly the three capabilities above. Note MSIX is a deflate ZIP, so the same payload is **larger** than the NSIS installer (~220 MiB vs 165 MiB). NSIS stays the default target and `.github/workflows/store.yml` is `workflow_dispatch`-only, so the beta target can never gate a release. **Packaging now runs `fetch-binaries --verify` first**: electron-builder's `extraResources` filter is an allowlist that *silently skips absent files* — the first MSIX build here shipped **without `qjs.exe`** and reported no error, which is precisely how AM-21's fix could silently regress, so a missing bundled binary is now a hard failure before the build starts. **Store-install smoke tests still owed** (none can be verified from CI): PyInstaller onefile `yt-dlp.exe` extracting under a packaged filesystem, spawning the bundled `yt-dlp`/`ffmpeg`/`qjs` from `WindowsApps`, the Local Share LAN server against the `privateNetworkClientServer` capability, and toast notifications. |
 
 ## 3. Locked Technology Decisions
 
@@ -57,12 +59,12 @@ Do not introduce alternatives without updating this section first.
 | Renderer framework | **Preact** (+ JSX) | Per owner decision; tiny runtime honors PRD §5.3 |
 | State management | `@preact/signals` | Signals only; no Redux/Zustand |
 | Styling | Tailwind CSS v4 (build-time only) + plain CSS / CSS Modules | Per AM-12: Tailwind compiles to static CSS pre-packaging, so it adds zero runtime weight. No UI kits, no icon libraries (inline SVG only) |
-| Packaging | `electron-builder`, target `nsis` (win32 x64) | Phase 1 ships Windows only |
+| Packaging | `electron-builder`, targets `nsis` (win32 x64, default) + `msix` (Microsoft Store, AM-22, built on demand) | Phase 1 ships Windows only |
 | Persistence | Hand-rolled JSON store in `<userData>` (atomic write + backup) | No electron-store dependency |
 | Unit testing | Vitest | Pure functions must be testable without Electron |
 | Lint/format | ESLint (flat config, `typescript-eslint`) + Prettier | CI-equivalent local gate |
 | Runtime deps budget | Renderer: Preact + signals ONLY. Main: none beyond Electron itself unless justified in the PR. Build-time tooling (Tailwind, etc.) exempt — it must not ship in the bundle | Keeps installer small (PRD §5.3) |
-| Node.js | ≥ 20 LTS | |
+| Node.js | ≥ 22.12 | Required by electron-builder v27 (native ESM + stabilized `require(esm)`); the MSIX target also requires it. Was ≥ 20 LTS before AM-22. |
 
 ### 3.1 Design tokens (renderer)
 
@@ -135,7 +137,7 @@ mediaforge/
 ├── electron-builder.yml
 ├── tsconfig.json                  (+ per-target refs)
 ├── binaries/                      ← dev-time binaries, GITIGNORED (see §13)
-│   └── win32/{yt-dlp.exe, ffmpeg.exe}
+│   └── win32/{yt-dlp.exe, ffmpeg.exe, qjs.exe}   (+ optional deno.exe override, AM-21)
 ├── resources/                     ← packaged assets (icon, license texts)
 ├── scripts/
 │   └── fetch-binaries.mjs         ← dev helper: download current stable binaries
@@ -222,7 +224,13 @@ format_id, ext, vcodec/acodec, height, fps, abr/tbr, filesize/filesize_approx).
 --progress-template "download:MF|%(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s"
 --progress-template "postprocess:MFPOST|%(progress._percent_str)s"
 --print after_move:filepath
+--js-runtimes <deno|quickjs>[:<path>]        # AM-21; bare form when the runtime sits beside yt-dlp.exe
 ```
+
+Every yt-dlp spawn — download (§7.2), metadata (§7.1), search (§7.7), chapters and transcript —
+carries `--js-runtimes` (AM-21). Without it YouTube extraction degrades to an incomplete format
+list. The pair is built once in `binaries/jsRuntimeService.ts` and appended by the §7 choke points;
+it is appended **last** so argv with no runtime available stays byte-identical to pre-AM-21.
 
 Progress protocol: lines beginning `MF|` are pipe-delimited machine records → `JobEvent`;
 `MFPOST|NN.N%` covers the merge/transcode phase. Any `[Merger]`/`[ExtractAudio]` line also flips
@@ -352,10 +360,10 @@ All channel names + payload types live in `src/shared/ipcContract.ts`. Handlers 
 | R→M invoke | `download:cancel` | `{jobId}` → `{ok}` |
 | R→M invoke | `dialog:chooseDirectory` | `{}` → `{path|null}` (native dialog, defaults last-used) |
 | R→M invoke | `settings:get` / `settings:set` | `Settings` / `Partial<Settings>` → `Settings` |
-| R→M invoke | `binaries:getInfo` | `{}` → `{ytdlp:{version,source:bundled\|override}, ffmpeg:{version}}` |
+| R→M invoke | `binaries:getInfo` | `{}` → `{ytdlp:{version,source}, ffmpeg:{version,source}, jsRuntime:{name,version,source,usable,minVersion}}` — `jsRuntime` is AM-21: the external JS runtime yt-dlp needs for YouTube (`deno`\|`quickjs`\|null) |
 | R→M invoke | `updater:check` / `updater:apply` | `{}` → `{current,latest}` / `{ok,newVersion}` |
 | R→M invoke | `app:version` (AM-15) | `{}` → `{version}` |
-| R→M invoke | `app:update-check` / `app:update-open-release` (AM-15) | `{}` → `{currentVersion,latestVersion,updateAvailable,error?}` / `{ok}` |
+| R→M invoke | `app:update-check` / `app:update-open-release` (AM-15) | `{}` → `{currentVersion,latestVersion,updateAvailable,managedByStore?,error?}` / `{ok}` — `managedByStore` is AM-22: true under an MSIX/AppX install, where the Store owns updates and no self-install is offered |
 | R→M invoke | `app:update-download-install` (AM-15) | `{}` → `{ok,error?}` |
 | M→R event | `app:update-phase` (AM-15) | `{phase: checking\|downloading\|verifying\|launching-installer}` |
 | R→M invoke | `search:start` (M8) | `SearchRequest{platform, query, limit, sort, filters?}` → `{kind:'ok', results: SearchResultItem[]}` or `{kind:'error', code, message}` |
@@ -490,13 +498,14 @@ every `MF_*` error logs full sanitized stderr under DEBUG for diagnostics.
 
 ```bash
 npm install
-npm run fetch-binaries   # dev only: downloads current stable yt-dlp.exe + ffmpeg essentials build → ./binaries/win32 (gitignored; never commit binaries)
+npm run fetch-binaries   # dev only: downloads yt-dlp.exe + ffmpeg (LGPL) + qjs.exe (QuickJS-NG, AM-21) → ./binaries/win32 (gitignored; never commit binaries). Add --deno to also fetch deno.exe for the AM-21 override path (never bundled). --verify skips all downloads and only asserts the bundled set is complete.
 npm run dev              # electron-vite dev (HMR renderer, watch main)
 npm run typecheck
 npm run lint             # eslint + prettier --check
 npm run test             # vitest run
 npm run build            # typecheck + electron-vite build
-npm run dist             # build + electron-builder --win nsis
+npm run dist             # verify binaries + build + electron-builder --win nsis (default release target)
+npm run dist:store       # verify binaries + build + electron-builder --win msix (Microsoft Store package, AM-22)
 MEDIAFORGE_BIN_DIR=D:\path\to\bins   # dev override for BinaryLocator
 ```
 
@@ -505,7 +514,10 @@ Gate before any commit: `npm run typecheck && npm run lint && npm run test`.
 ## 14. Licensing & Distribution Notes
 
 - Bundle FFmpeg **LGPL-based** builds where possible (no `--enable-gpl` components) to minimize
-  obligations; ship `resources/LICENSES/` with yt-dlp (Unlicense), FFmpeg license, Electron.
+  obligations; ship `resources/LICENSES/` with yt-dlp (Unlicense), FFmpeg license, Electron, and
+  **QuickJS-NG** (MIT, `quickjs-ng-MIT.txt`) — AM-21 bundles `qjs.exe` inside the installer, so its
+  notice must ship with it. `fetch-binaries.mjs` verifies the runtime against the SHA-256 the
+  GitHub release API publishes before it is ever placed in a build.
 - yt-dlp.exe is a PyInstaller onefile (~17MB) — acceptable size cost; do not substitute pip installs.
 - Windows code signing (OV at minimum) removes SmartScreen's "Unknown publisher" warning, but an
   OV cert alone doesn't grant instant trust — only a pricier EV cert does; unsigned installers keep

@@ -174,9 +174,25 @@ export interface BinaryInfo {
   source: BinarySource | null
 }
 
+/**
+ * The external JavaScript runtime yt-dlp needs to solve YouTube's JS challenges (AM-21).
+ * Reported alongside the drivers so "YouTube formats are missing" is diagnosable in-app
+ * instead of only in the debug log.
+ */
+export interface JsRuntimeInfo {
+  /** `deno` | `quickjs`, or null when no runtime is available. */
+  name: string | null
+  version: string | null
+  source: BinarySource | null
+  /** False when the runtime is absent or older than the version yt-dlp supports. */
+  usable: boolean
+  minVersion: string | null
+}
+
 export interface BinariesInfoResult {
   ytdlp: BinaryInfo
   ffmpeg: BinaryInfo
+  jsRuntime: JsRuntimeInfo
 }
 
 export type AnalyzeResponse =
@@ -247,6 +263,11 @@ export interface AppUpdateCheckResult {
   currentVersion: string
   latestVersion: string | null
   updateAvailable: boolean
+  /**
+   * True when this installation is Store-managed (MSIX/AppX), in which case the Microsoft Store
+   * delivers updates and the app must not fetch or launch its own installer (AM-22).
+   */
+  managedByStore?: boolean
   error?: string
 }
 

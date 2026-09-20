@@ -16,6 +16,14 @@ import {
   session,
 } from 'electron'
 import { BinariesService } from './binaries/service'
+import { JsRuntimeService } from './binaries/jsRuntimeService'
+import {
+  allowsSelfUpdate,
+  appDistribution,
+  storeManagedUpdateCheck,
+  STORE_MANAGED_UPDATE_NOTICE,
+  type PackagingEnvironment,
+} from './app/packaging'
 import { platformDir, type BinaryCandidate } from './binaries/locator'
 import { registerIpcHandlers } from './ipc/handlers'
 import { MemoryProbe } from './telemetry/memoryProbe'
@@ -24,6 +32,7 @@ import { SearchService } from './media/search'
 import { DownloadOrchestrator } from './jobs/orchestrator'
 import type {
   AnalyzeResponse,
+  AppUpdateCheckResult,
   DownloadStartResponse,
   JobConfig,
   JobDonePayload,
@@ -173,7 +182,19 @@ app.whenReady().then(() => {
   const cookiesFile = join(userDataDir, 'cookies.txt')
 
   const logger = createLogger({ dir: logsDir })
-  logger.info(`app starting v${app.getVersion()}`, { packaged: app.isPackaged })
+
+  /**
+   * AM-22: an MSIX/AppX (Microsoft Store) install behaves differently in two ways that matter —
+   * the package directory is read-only, and the Store owns app updates. Resolved once, before
+   * anything that depends on it, so the updater gates and the About surface cannot disagree.
+   */
+  const packagingEnv: PackagingEnvironment = { windowsStore: process.windowsStore }
+  const distribution = appDistribution(packagingEnv)
+
+  logger.info(`app starting v${app.getVersion()}`, {
+    packaged: app.isPackaged,
+    distribution,
+  })
 
   const settings = new SettingsStore(join(userDataDir, 'settings.json'))
   const completedOutputPaths = new Set<string>()
@@ -195,11 +216,25 @@ app.whenReady().then(() => {
     return [...new Set([tempRoot, join(outputDir, STAGING_DIR_NAME)])]
   }
 
+  const binaryDirs = binaryCandidates(logger)
+
+  /**
+   * yt-dlp needs an external JS runtime for YouTube (AM-21). One service owns that decision so
+   * every spawn site — download, analyze, search, chapters, transcript — asks the same question.
+   */
+  const jsRuntimeService = new JsRuntimeService({
+    platform: process.platform,
+    candidates: binaryDirs,
+    logger,
+  })
+  const resolveJsRuntimeArgs = (): readonly string[] => jsRuntimeService.args()
+
   const binariesService = new BinariesService({
     platform: process.platform,
     arch: process.arch,
-    candidates: binaryCandidates(logger),
+    candidates: binaryDirs,
     logger,
+    jsRuntime: () => jsRuntimeService.info(),
   })
 
   const resolveCookiesPath = (): string | null => (existsSync(cookiesFile) ? cookiesFile : null)
@@ -216,6 +251,7 @@ app.whenReady().then(() => {
     resolveYtDlp: () => binariesService.locate('yt-dlp'),
     logger,
     getCookiesPath: resolveCookiesPath,
+    getJsRuntimeArgs: resolveJsRuntimeArgs,
     onProcessLine: tapProcessLines,
   })
 
@@ -229,6 +265,7 @@ app.whenReady().then(() => {
     resolveYtDlp: () => binariesService.locate('yt-dlp'),
     logger,
     getCookiesPath: resolveCookiesPath,
+    getJsRuntimeArgs: resolveJsRuntimeArgs,
     onProcessLine: tapProcessLines,
     onEntryHydrated: sendSearchEntry,
   })
@@ -239,6 +276,7 @@ app.whenReady().then(() => {
     tempRoot,
     logger,
     getCookiesPath: resolveCookiesPath,
+    getJsRuntimeArgs: resolveJsRuntimeArgs,
     onProcessLine: tapProcessLines,
     getMaxConcurrent: () => clampPlaylistConcurrency(settings.get().playlistConcurrency),
     // P6: let the orchestrator clamp parallel concurrency while on battery power.
@@ -565,11 +603,23 @@ app.whenReady().then(() => {
         kind === 'ffmpeg' ? ffmpegUpdater.check() : updater.check(),
       updaterApply: async (kind: UpdaterDriverKind) => {
         const result = kind === 'ffmpeg' ? await ffmpegUpdater.apply() : await updater.apply()
-        if (result.ok) binariesService.invalidate()
+        if (result.ok) {
+          binariesService.invalidate()
+          // A swapped yt-dlp can live in a different directory than before, which changes
+          // whether the runtime beside it is discoverable (AM-21).
+          jsRuntimeService.invalidate()
+        }
         return result
       },
       getAppVersion: () => app.getVersion(),
-      checkAppUpdate: () => checkAppUpdate(app.getVersion()),
+      checkAppUpdate: async (): Promise<AppUpdateCheckResult> => {
+        // Under a Store package the Store delivers updates; there is nothing useful to offer and
+        // no reason to make an unrequested network call (AM-22).
+        if (!allowsSelfUpdate(packagingEnv)) {
+          return storeManagedUpdateCheck(app.getVersion())
+        }
+        return { ...(await checkAppUpdate(app.getVersion())), managedByStore: false }
+      },
       openAppReleasePage: async () => {
         try {
           await shell.openExternal(appReleasesUrl())
@@ -579,6 +629,12 @@ app.whenReady().then(() => {
         }
       },
       downloadAndInstallAppUpdate: async () => {
+        // Defense in depth: the About UI hides this action under a Store package, but the handler
+        // must refuse on its own rather than trust the renderer (§6.3, AM-22).
+        if (!allowsSelfUpdate(packagingEnv)) {
+          logger.warn('refused self-update: Store-managed installation')
+          return { ok: false, error: STORE_MANAGED_UPDATE_NOTICE }
+        }
         if (orchestrator.isBusy()) {
           return {
             ok: false,
