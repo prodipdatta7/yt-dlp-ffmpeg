@@ -966,6 +966,20 @@ textarea {
   animation: mf-rise 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+@keyframes mf-toast-progress {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.mf-toast-progress {
+  transform-origin: left;
+  animation: mf-toast-progress 7000ms linear forwards;
+}
+
 @keyframes mf-stripes {
   from {
     background-position-x: 0;

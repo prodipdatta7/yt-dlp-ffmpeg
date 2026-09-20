@@ -22,7 +22,9 @@ import {
 import { InlineVideoPreview, VolumeBoosterControl } from './InlineVideoPreview'
 import { VirtualList } from './VirtualList'
 import {
+  ArrowRightIcon,
   CalendarIcon,
+  CameraIcon,
   CheckCircleFilledIcon,
   CheckIcon,
   ChevronLeftIcon,
@@ -30,11 +32,25 @@ import {
   ClipboardIcon,
   ClockIcon,
   CloseIcon,
+  DocIcon,
   DownloadIcon,
+  ExternalLinkIcon,
   FilmIcon,
-  LinkIcon,
+  FolderIcon,
   RotateCcwIcon,
 } from './icons'
+
+function formatVideoTime(seconds: number, forceHours = false): string {
+  if (!Number.isFinite(seconds) || seconds < 0) seconds = 0
+  const total = Math.floor(seconds)
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
+  if (forceHours || h > 0) {
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  }
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
 
 /**
  * The expanded "theater" preview: player, chapters, transcript and info tabs.
@@ -102,10 +118,73 @@ export function TheaterPreview({
   }, [])
   const activeChapterRef = useRef<HTMLDivElement>(null)
   const leftColRef = useRef<HTMLDivElement>(null)
+  const playerContainerRef = useRef<HTMLDivElement>(null)
   const [leftColHeight, setLeftColHeight] = useState<number | null>(null)
   const [seekSec, setSeekSec] = useState<number | undefined>(undefined)
   const [copiedLink, setCopiedLink] = useState(false)
   const [chapterFilter, setChapterFilter] = useState('')
+  const [takingScreenshot, setTakingScreenshot] = useState(false)
+  const [lastCaptured, setLastCaptured] = useState<{ fileName: string; filePath: string } | null>(
+    null,
+  )
+  const [snapshotToast, setSnapshotToast] = useState<{
+    id: number
+    filePath: string
+    fileName: string
+  } | null>(null)
+  const [toastCopiedPath, setToastCopiedPath] = useState(false)
+  const [isToastHovered, setIsToastHovered] = useState(false)
+  const [toastRemainingMs, setToastRemainingMs] = useState(6000)
+
+  useEffect(() => {
+    if (!snapshotToast) return
+    setToastRemainingMs(6000)
+  }, [snapshotToast?.id])
+
+  useEffect(() => {
+    if (!snapshotToast || isToastHovered) return
+    const interval = setInterval(() => {
+      setToastRemainingMs((prev) => {
+        if (prev <= 100) {
+          setSnapshotToast(null)
+          return 0
+        }
+        return prev - 100
+      })
+    }, 100)
+    return () => clearInterval(interval)
+  }, [snapshotToast?.id, isToastHovered])
+
+  const toastSecondsLeft = Math.max(1, Math.ceil(toastRemainingMs / 1000))
+
+  const handleTakeScreenshot = useCallback(async () => {
+    if (!playerContainerRef.current || takingScreenshot) return
+    setTakingScreenshot(true)
+    try {
+      const rect = playerContainerRef.current.getBoundingClientRect()
+      const res = await window.mf.capturePreviewSnapshot({
+        rect: {
+          x: Math.round(rect.left),
+          y: Math.round(rect.top),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        },
+        title: entry.title,
+        currentTimeSec,
+      })
+      if (res.ok && res.filePath) {
+        const item = { fileName: res.fileName || 'Snapshot', filePath: res.filePath }
+        setLastCaptured(item)
+        setSnapshotToast({ id: Date.now(), ...item })
+        setToastCopiedPath(false)
+        setTimeout(() => setLastCaptured(null), 7000)
+      }
+    } catch (err) {
+      console.error('[TheaterPreview] screenshot error:', err)
+    } finally {
+      setTakingScreenshot(false)
+    }
+  }, [entry.title, currentTimeSec, takingScreenshot])
 
   // Sync right-column height to video column on md+ screens to eliminate empty space and tab height jumps
   useEffect(() => {
@@ -405,6 +484,18 @@ export function TheaterPreview({
     return '1920x1080 (16:9)'
   }, [specs.resolutionBadge, currentPreset.id])
 
+  const forceHours = (entry.durationSec ?? 0) >= 3600 || currentTimeSec >= 3600
+  const currentFormatted = formatVideoTime(currentTimeSec, forceHours)
+  const totalFormatted = entry.durationSec
+    ? formatVideoTime(entry.durationSec, forceHours)
+    : '--:--'
+  const remainingSec =
+    entry.durationSec && entry.durationSec > 0
+      ? Math.max(0, entry.durationSec - currentTimeSec)
+      : null
+  const remainingFormatted =
+    remainingSec !== null ? `-${formatVideoTime(remainingSec, forceHours)}` : null
+
   return (
     <div
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-5 backdrop-blur-md animate-in fade-in duration-150"
@@ -448,35 +539,57 @@ export function TheaterPreview({
             </div>
           </div>
 
-          {/* Right Header action */}
-          <div class="flex shrink-0 items-center gap-2">
+          {/* Right Header actions */}
+          <div class="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            {entry.url && (
+              <button
+                type="button"
+                onClick={() => window.open(entry.url, '_blank', 'noopener,noreferrer')}
+                title="Open original webpage in browser"
+                class="flex items-center gap-1.5 rounded-lg border border-sky-200/90 bg-sky-50/70 px-2.5 py-1 text-xs font-semibold text-sky-700 shadow-2xs transition hover:border-sky-300 hover:bg-sky-100 hover:text-sky-800 active:scale-[0.98] dark:border-sky-800/60 dark:bg-sky-950/40 dark:text-sky-300 dark:hover:border-sky-700 dark:hover:bg-sky-900/60 dark:hover:text-sky-200"
+              >
+                <ExternalLinkIcon class="size-3.5 text-sky-500 dark:text-sky-400" />
+                <span class="hidden sm:inline">Open Webpage</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handleCopyLink}
-              title="Copy Video URL"
-              class="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-xs font-semibold text-neutral-700 shadow-2xs transition hover:bg-neutral-100 hover:text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-200 dark:hover:bg-neutral-700"
+              title="Copy video link to clipboard"
+              class={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold shadow-2xs transition active:scale-[0.98] ${
+                copiedLink
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                  : 'border-indigo-200/90 bg-indigo-50/70 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100 hover:text-indigo-800 dark:border-indigo-800/60 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:border-indigo-700 dark:hover:bg-indigo-900/60 dark:hover:text-indigo-200'
+              }`}
             >
               {copiedLink ? (
                 <>
-                  <CheckIcon class="size-3.5 text-emerald-500" />
-                  <span class="text-emerald-600 dark:text-emerald-400">Copied!</span>
+                  <CheckIcon class="size-3.5 text-emerald-500 dark:text-emerald-400" />
+                  <span>Copied!</span>
                 </>
               ) : (
                 <>
-                  <ClipboardIcon class="size-3.5 text-neutral-500 dark:text-neutral-400" />
-                  <span>Copy URL</span>
+                  <ClipboardIcon class="size-3.5 text-indigo-500 dark:text-indigo-400" />
+                  <span>Copy Link</span>
                 </>
               )}
             </button>
 
+            <div class="h-4 w-px bg-neutral-200 dark:bg-neutral-700/80 mx-0.5" />
+
             <button
               type="button"
               onClick={() => onClose()}
-              title="Collapse Preview (Esc)"
-              class="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-xs font-semibold text-neutral-700 shadow-2xs transition hover:bg-neutral-100 hover:text-neutral-900 dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-200 dark:hover:bg-neutral-700"
+              title="Close Focused Preview (Esc)"
+              aria-label="Close Focused Preview"
+              class="group flex items-center gap-1.5 rounded-lg border border-rose-200/90 bg-rose-50/70 px-2.5 py-1 text-xs font-semibold text-rose-700 shadow-2xs transition hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 active:scale-[0.98] dark:border-rose-800/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:border-rose-700 dark:hover:bg-rose-900/60 dark:hover:text-rose-200"
             >
-              <CloseIcon class="size-3.5 text-neutral-500 dark:text-neutral-400" />
-              <span>Collapse Preview</span>
+              <CloseIcon class="size-3.5 text-rose-500 transition-transform duration-150 group-hover:rotate-90 dark:text-rose-400" />
+              <span>Close</span>
+              <kbd class="hidden rounded border border-rose-200 bg-white/80 px-1 py-0.5 font-mono text-[9px] font-medium text-rose-600 sm:inline-block dark:border-rose-800 dark:bg-rose-900/50 dark:text-rose-300">
+                Esc
+              </kbd>
             </button>
           </div>
         </div>
@@ -488,7 +601,10 @@ export function TheaterPreview({
             ref={leftColRef}
             class="flex-1 min-w-0 w-full flex flex-col items-center justify-start"
           >
-            <div class="relative aspect-video w-full max-h-[48vh] sm:max-h-[54vh] md:max-h-[60vh] lg:max-h-[66vh] xl:max-h-[72vh] overflow-hidden rounded-xl border border-neutral-200/80 bg-black shadow-inner dark:border-white/10">
+            <div
+              ref={playerContainerRef}
+              class="relative aspect-video w-full max-h-[48vh] sm:max-h-[54vh] md:max-h-[60vh] lg:max-h-[66vh] xl:max-h-[72vh] overflow-hidden rounded-xl border border-neutral-200/80 bg-black shadow-inner dark:border-white/10"
+            >
               {/* Inline Video Player */}
               <InlineVideoPreview
                 url={entry.url}
@@ -503,11 +619,27 @@ export function TheaterPreview({
               />
             </div>
 
-            {/* Video Quick Navigation Bar below player */}
-            <div class="mt-2.5 flex w-full flex-wrap items-center justify-between gap-2 px-1">
-              {/* Quick Seek Scrubbing & Volume Booster */}
-              <div class="flex flex-wrap items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
-                <div class="flex items-center gap-1.5">
+            {/* Video Media Control Dock below player */}
+            <div class="mt-2.5 flex w-full flex-wrap items-center justify-between gap-2 rounded-xl border border-neutral-200/80 bg-neutral-50/70 px-2.5 py-1.5 dark:border-white/5 dark:bg-neutral-900/40">
+              {/* Left: Playback Transport & Audio Booster Dock */}
+              <div class="flex flex-wrap items-center gap-2 text-xs">
+                {/* Transport Button Pill */}
+                <div class="inline-flex items-center rounded-lg border border-neutral-200/90 bg-white p-0.5 shadow-2xs dark:border-neutral-700/80 dark:bg-neutral-800/90">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSeekSec(0)
+                      setCurrentTimeSec(0)
+                    }}
+                    title="Restart from beginning (0:00)"
+                    class="group flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-amber-700 transition hover:bg-amber-50 hover:text-amber-800 active:scale-95 dark:text-amber-400 dark:hover:bg-amber-950/50 dark:hover:text-amber-300"
+                  >
+                    <RotateCcwIcon class="size-3 text-amber-500 transition group-hover:rotate-[-45deg] dark:text-amber-400" />
+                    <span>Restart</span>
+                  </button>
+
+                  <div class="h-3 w-px bg-neutral-200 dark:bg-neutral-700/80" />
+
                   <button
                     type="button"
                     onClick={() => {
@@ -515,12 +647,15 @@ export function TheaterPreview({
                       setSeekSec(target)
                       setCurrentTimeSec(target)
                     }}
-                    title="Jump 10 seconds backward"
-                    class="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:border-orange-400 hover:bg-orange-50 hover:text-[var(--mf-detail-accent)] transition dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-300 dark:hover:bg-[var(--mf-detail-active)]"
+                    title="Jump 10 seconds backward (←)"
+                    class="group flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-sky-700 transition hover:bg-sky-50 hover:text-sky-800 active:scale-95 dark:text-sky-400 dark:hover:bg-sky-950/50 dark:hover:text-sky-300"
                   >
-                    <RotateCcwIcon class="size-3 text-neutral-400" />
+                    <RotateCcwIcon class="size-3 text-sky-500 transition group-hover:-translate-x-0.5 dark:text-sky-400" />
                     <span>-10s</span>
                   </button>
+
+                  <div class="h-3 w-px bg-neutral-200 dark:bg-neutral-700/80" />
+
                   <button
                     type="button"
                     onClick={() => {
@@ -528,48 +663,83 @@ export function TheaterPreview({
                       setSeekSec(target)
                       setCurrentTimeSec(target)
                     }}
-                    title="Jump 10 seconds forward"
-                    class="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:border-orange-400 hover:bg-orange-50 hover:text-[var(--mf-detail-accent)] transition dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-300 dark:hover:bg-[var(--mf-detail-active)]"
+                    title="Jump 10 seconds forward (→)"
+                    class="group flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-50 hover:text-emerald-800 active:scale-95 dark:text-emerald-400 dark:hover:bg-emerald-950/50 dark:hover:text-emerald-300"
                   >
+                    <RotateCcwIcon class="size-3 text-emerald-500 transition group-hover:translate-x-0.5 dark:text-emerald-400 scale-x-[-1]" />
                     <span>+10s</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSeekSec(0)
-                      setCurrentTimeSec(0)
-                    }}
-                    title="Restart from beginning"
-                    class="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:border-orange-400 hover:bg-orange-50 hover:text-[var(--mf-detail-accent)] transition dark:border-neutral-700 dark:bg-neutral-800/80 dark:text-neutral-300 dark:hover:bg-[var(--mf-detail-active)]"
-                  >
-                    <span>Restart (0:00)</span>
                   </button>
                 </div>
 
-                <div class="hidden h-3.5 w-px bg-neutral-300 sm:block dark:bg-neutral-700" />
+                <div class="hidden h-4 w-px bg-neutral-300 sm:block dark:bg-neutral-700" />
 
                 <VolumeBoosterControl
                   volumeBoost={previewVolumeBoost}
                   onChange={setPreviewVolumeBoost}
                   isIframe={true}
+                  className="border-neutral-200/80 bg-white dark:border-neutral-700/80 dark:bg-neutral-800/90"
                 />
               </div>
 
-              {/* Shortcuts & Webpage link */}
-              <div class="hidden sm:flex items-center gap-3 text-[10.5px] text-neutral-400 dark:text-neutral-500">
-                <span>
-                  <kbd class="rounded border border-neutral-300 px-1 py-0.5 font-mono text-[9.5px] dark:border-neutral-700">
-                    Esc
-                  </kbd>{' '}
-                  Close
-                </span>
-                {entry.url && (
+              {/* Right: Time Readout Pill & Take Screenshot Button */}
+              <div class="flex items-center gap-2">
+                {/* Time Readout Pill (Current / Duration with Remaining time badge) */}
+                <div
+                  title="Playback Time: Current / Total (Remaining)"
+                  class="inline-flex items-center gap-1.5 sm:gap-2 rounded-lg border border-neutral-200/90 bg-white px-2 sm:px-2.5 py-1 text-xs shadow-2xs dark:border-neutral-700/80 dark:bg-neutral-800/90"
+                >
+                  <ClockIcon class="size-3.5 text-neutral-400 dark:text-neutral-500 shrink-0" />
+                  <div class="flex items-center gap-1 font-mono text-[11px] sm:text-xs font-medium text-neutral-800 dark:text-neutral-200">
+                    <span>{currentFormatted}</span>
+                    <span class="text-neutral-300 dark:text-neutral-600 font-sans">/</span>
+                    <span class="text-neutral-500 dark:text-neutral-400">{totalFormatted}</span>
+                  </div>
+                  {remainingFormatted && (
+                    <span class="rounded-md bg-neutral-100 px-1.5 py-0.5 font-mono text-[10px] sm:text-[10.5px] font-semibold text-neutral-600 dark:bg-neutral-700/60 dark:text-neutral-300">
+                      {remainingFormatted}
+                    </span>
+                  )}
+                </div>
+
+                {/* Take Screenshot Button */}
+                <button
+                  type="button"
+                  onClick={handleTakeScreenshot}
+                  disabled={takingScreenshot}
+                  title={
+                    lastCaptured
+                      ? `Saved: ${lastCaptured.filePath}\n(Copied to Clipboard)`
+                      : 'Take screenshot of current video frame (saves to Screenshots folder & copies to clipboard)'
+                  }
+                  class={`group flex items-center gap-1.5 rounded-lg border px-2 sm:px-2.5 py-1 text-xs font-semibold shadow-2xs transition active:scale-[0.98] ${
+                    lastCaptured
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                      : 'border-neutral-200/90 bg-white text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-900 dark:border-neutral-700/80 dark:bg-neutral-800/90 dark:text-neutral-200 dark:hover:border-neutral-600 dark:hover:bg-neutral-700/60 dark:hover:text-white'
+                  }`}
+                >
+                  {lastCaptured ? (
+                    <>
+                      <CheckIcon class="size-3.5 text-emerald-500 dark:text-emerald-400" />
+                      <span>Captured!</span>
+                    </>
+                  ) : (
+                    <>
+                      <CameraIcon class="size-3.5 text-neutral-500 transition group-hover:text-neutral-700 dark:text-neutral-400 dark:group-hover:text-neutral-200" />
+                      <span class="whitespace-nowrap">Take Screenshot</span>
+                    </>
+                  )}
+                </button>
+
+                {/* Show in Folder button when snapshot captured */}
+                {lastCaptured && (
                   <button
                     type="button"
-                    onClick={() => window.open(entry.url, '_blank', 'noopener,noreferrer')}
-                    class="hover:text-neutral-600 dark:hover:text-neutral-300 transition underline underline-offset-2"
+                    onClick={() => void window.mf?.revealPath?.(lastCaptured.filePath)}
+                    title={`Open in File Explorer:\n${lastCaptured.filePath}`}
+                    class="flex items-center gap-1.5 rounded-lg border border-emerald-300/90 bg-white px-2 sm:px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 hover:border-emerald-400 dark:border-emerald-700/80 dark:bg-neutral-800/90 dark:text-emerald-300 dark:hover:bg-neutral-700/80 shadow-2xs transition active:scale-[0.98]"
                   >
-                    Open Original Webpage ↗
+                    <FolderIcon class="size-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span class="whitespace-nowrap">Show in Folder</span>
                   </button>
                 )}
               </div>
@@ -925,7 +1095,11 @@ export function TheaterPreview({
                         onClick={handleDownloadTranscriptTxt}
                         disabled={downloadingTxt}
                         title="Download full transcript as formatted .txt file"
-                        class="flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-neutral-200 bg-white px-2 text-[10.5px] font-semibold text-neutral-700 shadow-xs transition hover:border-[var(--mf-detail-accent)] hover:bg-orange-50/50 hover:text-[var(--mf-detail-accent)] disabled:opacity-40 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:border-orange-500 dark:hover:bg-[var(--mf-detail-active)]"
+                        class={`flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-md border px-2 text-[10.5px] font-semibold shadow-xs transition disabled:opacity-40 ${
+                          downloadedTxt
+                            ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                            : 'border-emerald-200/90 bg-emerald-50/70 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/60'
+                        }`}
                       >
                         {downloadedTxt ? (
                           <>
@@ -934,7 +1108,7 @@ export function TheaterPreview({
                           </>
                         ) : (
                           <>
-                            <DownloadIcon class="size-3 text-[var(--mf-detail-accent)] dark:text-[var(--mf-detail-bright)]" />
+                            <DownloadIcon class="size-3 text-emerald-600 dark:text-emerald-400" />
                             <span>Export .txt</span>
                           </>
                         )}
@@ -1056,9 +1230,9 @@ export function TheaterPreview({
                   <button
                     type="button"
                     onClick={() => fetchTranscriptForEntry(true)}
-                    class="mt-1 flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 shadow-xs transition hover:border-[var(--mf-detail-accent)] hover:text-[var(--mf-detail-accent)] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:border-orange-500"
+                    class="mt-1 flex items-center gap-1.5 rounded-lg border border-amber-200/90 bg-amber-50/70 px-3 py-1.5 text-xs font-semibold text-amber-700 shadow-xs transition hover:border-amber-300 hover:bg-amber-100 hover:text-amber-800 active:scale-95 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:border-amber-700 dark:hover:bg-amber-900/60 dark:hover:text-amber-200"
                   >
-                    <RotateCcwIcon class="size-3.5" />
+                    <RotateCcwIcon class="size-3.5 text-amber-500 dark:text-amber-400" />
                     <span>Retry Extraction</span>
                   </button>
                 </div>
@@ -1174,23 +1348,186 @@ export function TheaterPreview({
               )}
             </div>
 
-            {/* Bottom Action: Open in Downloader for Format Options */}
-            <div class="mt-auto pt-2.5 border-t border-neutral-100 dark:border-white/5 shrink-0">
+            {/* Bottom Action: Primary Download & Format Hub */}
+            <div class="mt-auto pt-3 border-t border-neutral-100 dark:border-white/5 shrink-0">
               <button
                 type="button"
                 onClick={() => {
                   onClose()
                   onOpenInDownloader(entry)
                 }}
-                class="flex w-full items-center justify-center gap-2 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800/80 px-3.5 py-2 text-xs font-semibold text-neutral-800 dark:text-neutral-200 shadow-2xs transition hover:border-[var(--mf-detail-accent)] hover:text-[var(--mf-detail-accent)] hover:bg-orange-50/50 dark:hover:bg-[var(--mf-detail-active)]"
+                class="group relative flex w-full items-center justify-between overflow-hidden rounded-xl bg-gradient-to-r from-[var(--mf-action-start)] to-[var(--mf-action-end)] px-3.5 py-2.5 text-white shadow-md shadow-orange-500/20 transition-all duration-150 hover:brightness-110 hover:shadow-lg hover:shadow-orange-500/30 active:scale-[0.98]"
               >
-                <LinkIcon class="size-3.5 text-neutral-500 dark:text-neutral-400" />
-                <span>Open in Downloader for Format Options</span>
+                <div class="flex items-center gap-2.5 text-left min-w-0">
+                  <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-white/20 text-white backdrop-blur-xs transition group-hover:scale-110">
+                    <DownloadIcon class="size-4" />
+                  </div>
+                  <div class="flex flex-col min-w-0">
+                    <span class="truncate text-xs font-bold tracking-tight text-white">
+                      Open in Downloader
+                    </span>
+                    <span class="truncate text-[10.5px] font-medium text-white/85">
+                      Configure formats & quality options
+                    </span>
+                  </div>
+                </div>
+
+                <div class="flex shrink-0 items-center gap-1.5 pl-2">
+                  {currentPreset?.shortLabel && (
+                    <span class="rounded-md bg-white/20 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-white backdrop-blur-xs">
+                      {currentPreset.shortLabel}
+                    </span>
+                  )}
+                  <div class="flex items-center text-white/90 transition group-hover:translate-x-0.5 group-hover:text-white">
+                    <ArrowRightIcon class="size-3.5" />
+                  </div>
+                </div>
               </button>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Floating Screenshot Confirmation Toast */}
+      {snapshotToast && (
+        <aside
+          role="status"
+          aria-live="polite"
+          onMouseEnter={() => setIsToastHovered(true)}
+          onMouseLeave={() => setIsToastHovered(false)}
+          class="fixed bottom-3 right-3 z-[70] flex w-full max-w-[340px] flex-col overflow-hidden rounded-xl border border-line-strong bg-white/95 shadow-[0_16px_40px_-10px_rgba(15,23,42,0.18),0_1px_1px_rgba(255,255,255,0.9)_inset] backdrop-blur-xl transition-all dark:bg-[#0d1728]/95 dark:shadow-[0_20px_50px_-12px_rgba(0,0,0,0.8),0_1px_0_0_rgba(255,255,255,0.08)_inset] sm:bottom-5 sm:right-5 animate-in slide-in-from-bottom-2 duration-200"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Top jewel accent line */}
+          <div class="pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-emerald-500 via-teal-400 to-sky-500" />
+
+          <div class="relative z-10 flex flex-col gap-2 p-2.5 sm:p-3">
+            {/* Toast Header */}
+            <div class="flex items-start justify-between gap-2">
+              <div class="flex items-center gap-2 min-w-0">
+                <div class="flex size-7.5 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-xs">
+                  <CameraIcon class="size-4" />
+                </div>
+                <div class="flex flex-col min-w-0 leading-tight">
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="text-xs font-bold tracking-tight text-ink">Snapshot Captured</span>
+                    <span class="inline-flex items-center gap-0.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-1.5 py-0.2 text-[9px] font-semibold text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-400/15 dark:text-emerald-300">
+                      <CheckIcon class="size-2.5" />
+                      Copied
+                    </span>
+                  </div>
+                  <span class="text-[10px] font-medium text-slate-500 truncate">
+                    Saved to Screenshots folder
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSnapshotToast(null)}
+                title="Dismiss notification"
+                class="rounded-md p-1 text-slate-400 transition hover:bg-wash-2 hover:text-ink active:scale-95"
+              >
+                <CloseIcon class="size-3.5" />
+              </button>
+            </div>
+
+            {/* Toast Body: Compact File & Path Capsule */}
+            <div
+              title={snapshotToast.filePath}
+              class="group/path flex flex-col gap-0.5 rounded-lg border border-line bg-recess/75 px-2 py-1.5 transition-colors hover:border-line-strong"
+            >
+              <div class="flex items-center justify-between gap-1.5 min-w-0">
+                <div class="flex items-center gap-1.5 min-w-0">
+                  <DocIcon class="size-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span class="truncate text-[11px] font-bold text-ink">
+                    {snapshotToast.fileName || 'Snapshot.png'}
+                  </span>
+                </div>
+                <span class="shrink-0 rounded border border-emerald-500/20 bg-emerald-500/10 px-1 py-0.2 text-[8.5px] font-bold uppercase tracking-wider text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/15 dark:text-emerald-300">
+                  PNG
+                </span>
+              </div>
+
+              <div class="font-mono text-[9.5px] text-slate-500 dark:text-slate-400 truncate select-all pl-4.5">
+                {snapshotToast.filePath}
+              </div>
+            </div>
+
+            {/* Toast Actions */}
+            <div class="flex items-center justify-between gap-1.5 pt-0.5">
+              {/* Bottom Left: Circular timer countdown */}
+              <div
+                title={isToastHovered ? 'Countdown paused' : `${toastSecondsLeft}s remaining`}
+                class="relative flex size-6 items-center justify-center cursor-default select-none shrink-0"
+              >
+                <svg class="size-full -rotate-90" viewBox="0 0 24 24" aria-hidden="true">
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="9"
+                    class="stroke-line dark:stroke-line/50 fill-none"
+                    stroke-width="2.2"
+                  />
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="9"
+                    class="stroke-emerald-500 dark:stroke-emerald-400 fill-none transition-[stroke-dashoffset] duration-100 ease-linear"
+                    stroke-width="2.2"
+                    stroke-linecap="round"
+                    stroke-dasharray="56.55"
+                    stroke-dashoffset={(56.55 * (1 - toastRemainingMs / 6000)).toFixed(2)}
+                  />
+                </svg>
+                <span class="absolute font-mono text-[9px] font-bold text-ink leading-none">
+                  {toastSecondsLeft}
+                </span>
+              </div>
+
+              {/* Bottom Right: Action Buttons */}
+              <div class="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(snapshotToast.filePath)
+                    setToastCopiedPath(true)
+                    setTimeout(() => setToastCopiedPath(false), 2000)
+                  }}
+                  title="Copy file path to clipboard"
+                  class={`flex items-center gap-1 rounded-md border px-2.5 py-1 text-[10.5px] font-semibold shadow-2xs transition-all active:scale-95 ${
+                    toastCopiedPath
+                      ? 'border-emerald-500/40 bg-emerald-50 text-emerald-700 dark:border-emerald-400/40 dark:bg-emerald-950/60 dark:text-emerald-300'
+                      : 'border-line bg-white text-ink hover:border-line-strong hover:bg-wash-1 dark:bg-slate-800 dark:text-ink'
+                  }`}
+                >
+                  {toastCopiedPath ? (
+                    <>
+                      <CheckIcon class="size-2.5 text-emerald-600 dark:text-emerald-400" />
+                      <span>Path Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <ClipboardIcon class="size-2.5 text-slate-400" />
+                      <span>Copy Path</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void window.mf?.revealPath?.(snapshotToast.filePath)}
+                  title="Reveal image in Windows File Explorer"
+                  class="flex items-center gap-1 rounded-md bg-gradient-to-r from-emerald-600 to-teal-600 px-2.5 py-1 text-[10.5px] font-semibold text-white shadow-xs transition-all hover:from-emerald-500 hover:to-teal-500 hover:shadow-sm hover:brightness-105 active:scale-95"
+                >
+                  <FolderIcon class="size-3 text-white" />
+                  <span>Show in Folder</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </aside>
+      )}
     </div>
   )
 }

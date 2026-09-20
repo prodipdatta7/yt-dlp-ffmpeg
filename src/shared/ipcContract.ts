@@ -68,6 +68,20 @@ export const MF_PREVIEW_CANCEL = 'mf:media:preview-cancel' as const
 export const MF_PROBE_SCENARIO = 'mf:probe:scenario' as const
 export const MF_SAVE_TEXT_FILE = 'mf:dialog:save-text-file' as const
 export const MF_PREVIEW_SET_VOLUME_BOOST = 'mf:preview:set-volume-boost' as const
+export const MF_PREVIEW_CAPTURE_SNAPSHOT = 'mf:preview:capture-snapshot' as const
+
+export interface CaptureSnapshotPayload {
+  rect: { x: number; y: number; width: number; height: number }
+  title?: string
+  currentTimeSec?: number
+}
+
+export interface CaptureSnapshotResult {
+  ok: boolean
+  filePath?: string
+  fileName?: string
+  error?: string
+}
 
 export interface SaveTextFileResult {
   ok: boolean
@@ -356,6 +370,7 @@ export interface MfApi {
   previewCancel(requestId: string): Promise<{ ok: boolean }>
   saveTextFile(defaultFilename: string, content: string): Promise<SaveTextFileResult>
   setPreviewVolumeBoost(boost: number): Promise<boolean>
+  capturePreviewSnapshot(payload: CaptureSnapshotPayload): Promise<CaptureSnapshotResult>
   /**
    * Labels subsequent memory-probe samples so a benchmark run can mark phases. No-op
    * unless MF_MEMORY_PROBE=1 (P-10).

@@ -39,6 +39,7 @@ import {
   MF_PROBE_SCENARIO,
   MF_SAVE_TEXT_FILE,
   MF_PREVIEW_SET_VOLUME_BOOST,
+  MF_PREVIEW_CAPTURE_SNAPSHOT,
   MF_SETTINGS_CLEAR_COOKIES,
   MF_SETTINGS_GET,
   MF_SETTINGS_IMPORT_COOKIES,
@@ -58,6 +59,8 @@ import {
   type AppUpdateInstallResult,
   type AppUpdatePhaseEvent,
   type BinariesInfoResult,
+  type CaptureSnapshotPayload,
+  type CaptureSnapshotResult,
   type DownloadStartResponse,
   type JobConfig,
   type JobDonePayload,
@@ -198,6 +201,8 @@ const api: MfApi = {
     ipcRenderer.invoke(MF_SAVE_TEXT_FILE, defaultFilename, content),
   setPreviewVolumeBoost: (boost: number): Promise<boolean> =>
     ipcRenderer.invoke(MF_PREVIEW_SET_VOLUME_BOOST, boost),
+  capturePreviewSnapshot: (payload: CaptureSnapshotPayload): Promise<CaptureSnapshotResult> =>
+    ipcRenderer.invoke(MF_PREVIEW_CAPTURE_SNAPSHOT, payload),
   setProbeScenario: (scenario: string): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke(MF_PROBE_SCENARIO, scenario),
 }

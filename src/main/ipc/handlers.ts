@@ -41,6 +41,7 @@ import {
   MF_PROBE_SCENARIO,
   MF_SAVE_TEXT_FILE,
   MF_PREVIEW_SET_VOLUME_BOOST,
+  MF_PREVIEW_CAPTURE_SNAPSHOT,
   MF_UPDATER_APPLY,
   MF_UPDATER_CHECK,
   MF_APP_VERSION,
@@ -52,6 +53,8 @@ import {
   type AppUpdateCheckResult,
   type AppUpdateInstallResult,
   type BinariesInfoResult,
+  type CaptureSnapshotPayload,
+  type CaptureSnapshotResult,
   type Container,
   type DownloadStartResponse,
   type JobConfig,
@@ -175,6 +178,10 @@ export interface IpcDeps {
   cancelPreview: (requestId: string) => Promise<{ ok: boolean }>
   setProbeScenario: (scenario: string) => { ok: boolean }
   saveTextFile: (defaultFilename: string, content: string) => Promise<SaveTextFileResult>
+  captureSnapshot?: (
+    webContents: Electron.WebContents,
+    payload: CaptureSnapshotPayload,
+  ) => Promise<CaptureSnapshotResult>
 }
 
 function invalidUrl(): AnalyzeResponse {
@@ -538,6 +545,41 @@ export function registerIpcHandlers(deps: IpcDeps, logger?: Logger): void {
     }
     return true
   })
+
+  ipcMain.handle(
+    MF_PREVIEW_CAPTURE_SNAPSHOT,
+    async (event, rawPayload: unknown): Promise<CaptureSnapshotResult> => {
+      if (!rawPayload || typeof rawPayload !== 'object') {
+        return { ok: false, error: 'Invalid snapshot payload' }
+      }
+      const p = rawPayload as Record<string, unknown>
+      const r = p.rect as Record<string, unknown> | undefined
+      if (
+        !r ||
+        typeof r.x !== 'number' ||
+        typeof r.y !== 'number' ||
+        typeof r.width !== 'number' ||
+        typeof r.height !== 'number' ||
+        r.width <= 0 ||
+        r.height <= 0
+      ) {
+        return { ok: false, error: 'Invalid capture rect' }
+      }
+      if (deps.captureSnapshot) {
+        return await deps.captureSnapshot(event.sender, {
+          rect: {
+            x: Math.max(0, r.x),
+            y: Math.max(0, r.y),
+            width: r.width,
+            height: r.height,
+          },
+          title: typeof p.title === 'string' ? p.title : undefined,
+          currentTimeSec: typeof p.currentTimeSec === 'number' ? p.currentTimeSec : undefined,
+        })
+      }
+      return { ok: false, error: 'Snapshot handler not registered' }
+    },
+  )
 }
 
 function parseSearchRequest(payload: unknown): {

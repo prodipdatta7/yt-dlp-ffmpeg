@@ -52,6 +52,16 @@ export function LinkIcon({ class: cls }: IconProps) {
   )
 }
 
+export function ExternalLinkIcon({ class: cls }: IconProps) {
+  return (
+    <Svg class={cls}>
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <polyline points="15 3 21 3 21 9" />
+      <line x1="10" y1="14" x2="21" y2="3" />
+    </Svg>
+  )
+}
+
 export function ArrowRightIcon({ class: cls }: IconProps) {
   return (
     <Svg class={cls}>
@@ -457,6 +467,15 @@ export function VolumeIcon({ class: cls }: IconProps) {
       <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
       <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
       <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+    </Svg>
+  )
+}
+
+export function CameraIcon({ class: cls }: IconProps) {
+  return (
+    <Svg class={cls}>
+      <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+      <circle cx="12" cy="13" r="3" />
     </Svg>
   )
 }

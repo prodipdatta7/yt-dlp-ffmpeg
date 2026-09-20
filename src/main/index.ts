@@ -1,4 +1,4 @@
-﻿import { existsSync, copyFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, copyFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import * as fsp from 'node:fs/promises'
 import { join } from 'node:path'
 import {
@@ -659,6 +659,43 @@ app.whenReady().then(() => {
         } catch (err) {
           logger.error('failed to write transcript text file', { error: String(err) })
           return { ok: false }
+        }
+      },
+      captureSnapshot: async (webContents, payload) => {
+        try {
+          const rect = payload.rect
+          const image = await webContents.capturePage({
+            x: Math.round(rect.x),
+            y: Math.round(rect.y),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+          })
+          if (image.isEmpty()) {
+            return { ok: false, error: 'Captured frame is empty' }
+          }
+          clipboard.writeImage(image)
+
+          const safeTitle = sanitizeFileName(payload.title || 'Snapshot')
+          const timePart =
+            typeof payload.currentTimeSec === 'number' ? Math.floor(payload.currentTimeSec) : 0
+          const h = Math.floor(timePart / 3600)
+          const m = Math.floor((timePart % 3600) / 60)
+          const s = timePart % 60
+          const timeStr = `${String(h).padStart(2, '0')}-${String(m).padStart(2, '0')}-${String(s).padStart(2, '0')}`
+          const fileName = `${safeTitle}_${timeStr}.png`
+
+          const current = settings.get()
+          const baseOutputDir = current.lastOutputDir || app.getPath('downloads')
+          const screenshotsDir = join(baseOutputDir, 'Screenshots')
+          mkdirSync(screenshotsDir, { recursive: true })
+          const filePath = join(screenshotsDir, fileName)
+
+          writeFileSync(filePath, image.toPNG())
+          logger.info('preview snapshot saved', { filePath })
+          return { ok: true, filePath, fileName }
+        } catch (err) {
+          logger.error('failed to capture preview snapshot', { error: String(err) })
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }
       },
     },
