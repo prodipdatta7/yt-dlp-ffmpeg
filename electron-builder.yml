@@ -52,8 +52,8 @@ nsis:
 # Built on demand with `npm run dist:store` (or the Store workflow). NSIS above stays the default
 # target, so a problem with the beta MSIX target can never block a GitHub release.
 msix:
-  # MUST equal the Package/Identity Name reserved in Partner Center for this app, otherwise the
-  # submission is rejected on identity mismatch. Rename here when the Store assigns its own value.
+  # Equal to the Package/Identity Name reserved in Partner Center for this app — already set to
+  # the assigned value, not a placeholder. A mismatch is rejected at submission.
   identityName: prodip-datta.MediaForgeDesktop
   # Field of the Application Id; with the package family name this forms the AppUserModelID that
   # Windows uses for toast notifications. AM-22 leaves the AUMID to the manifest rather than
@@ -61,11 +61,15 @@ msix:
   applicationId: MediaForge
   displayName: MediaForge Desktop
   publisherDisplayName: prodip-datta
+  # Taken verbatim from the app's Product identity page in Partner Center; the Store rejects the
+  # submission if it disagrees with the manifest. It is an *identity*, not a signing certificate:
+  # no certificate is configured here, so the emitted .msix is unsigned (no AppxSignature.p7x)
+  # and Partner Center signs it on submission.
+  #
+  # An unsigned package cannot be sideloaded, so sideload testing (the AM-22 smoke tests) needs a
+  # certificate whose Subject is exactly this value. scripts/smoke-msix.ps1 does that itself by
+  # reading the Publisher back out of the built package, so the value is never duplicated there.
   publisher: CN=A7495C95-C0D6-45CC-8B46-EFECB9B25924
-  # `publisher` is deliberately omitted: with no signing certificate configured, electron-builder
-  # emits the `CN=ms` placeholder that the Store replaces when it re-signs on submission.
-  # Sideload testing instead needs a certificate whose Subject matches a publisher you pass:
-  #   npx electron-builder --win msix -c.msix.publisher="CN=Your Name"
   #
   # runFullTrust is always injected for Electron apps. internetClient covers yt-dlp's downloads;
   # privateNetworkClientServer covers the Local Share LAN server (a packaged app that accepts
