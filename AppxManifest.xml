@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--suppress XmlUnusedNamespaceDeclaration -->
+<Package
+   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+   xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+   xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+   xmlns:desktop6="http://schemas.microsoft.com/appx/manifest/desktop/windows10/6"
+   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+   IgnorableNamespaces="uap10 desktop6">
+  <!-- use single quotes to avoid double quotes escaping in the publisher value  -->
+  <Identity Name="prodip-datta.MediaForgeDesktop"
+    ProcessorArchitecture="x64"
+    Publisher='CN=ms'
+    Version="0.4.0.0" />
+  <Properties>
+    <DisplayName>MediaForge Desktop</DisplayName>
+    <PublisherDisplayName>prodip-datta</PublisherDisplayName>
+    <Description>Zero-dependency GUI wrapper around the yt-dlp and FFmpeg CLIs.</Description>
+    <Logo>assets\StoreLogo.png</Logo>
+    
+  </Properties>
+  <Resources>
+    <Resource Language="en-US" />
+  </Resources>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.17763.0" />
+  </Dependencies>
+  <Capabilities>
+  <Capability Name="internetClient"/>
+  <Capability Name="privateNetworkClientServer"/>
+  <rescap:Capability Name="runFullTrust"/>
+</Capabilities>
+  <Applications>
+    <Application Id="MediaForge" Executable="app\MediaForge Desktop.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+       BackgroundColor="#464646"
+       DisplayName="MediaForge Desktop"
+       Square150x150Logo="assets\Square150x150Logo.png"
+       Square44x44Logo="assets\Square44x44Logo.png"
+       Description="Zero-dependency GUI wrapper around the yt-dlp and FFmpeg CLIs.">
+        <uap:DefaultTile Wide310x150Logo="assets\Wide310x150Logo.png" />
+        
+        
+      </uap:VisualElements>
+      
+    </Application>
+  </Applications>
+</Package>

@@ -54,13 +54,14 @@ nsis:
 msix:
   # MUST equal the Package/Identity Name reserved in Partner Center for this app, otherwise the
   # submission is rejected on identity mismatch. Rename here when the Store assigns its own value.
-  identityName: com.mediaforge.desktop
+  identityName: prodip-datta.MediaForgeDesktop
   # Field of the Application Id; with the package family name this forms the AppUserModelID that
   # Windows uses for toast notifications. AM-22 leaves the AUMID to the manifest rather than
   # calling app.setAppUserModelId, which is what makes notifications work in a packaged app.
   applicationId: MediaForge
   displayName: MediaForge Desktop
-  publisherDisplayName: MediaForge contributors
+  publisherDisplayName: prodip-datta
+  publisher: CN=A7495C95-C0D6-45CC-8B46-EFECB9B25924
   # `publisher` is deliberately omitted: with no signing certificate configured, electron-builder
   # emits the `CN=ms` placeholder that the Store replaces when it re-signs on submission.
   # Sideload testing instead needs a certificate whose Subject matches a publisher you pass:
