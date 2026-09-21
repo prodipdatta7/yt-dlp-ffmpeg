@@ -184,8 +184,16 @@ export interface JsRuntimeInfo {
   name: string | null
   version: string | null
   source: BinarySource | null
-  /** False when the runtime is absent or older than the version yt-dlp supports. */
+  /**
+   * False only when the runtime is absent, would not report a version, or is older than the
+   * version yt-dlp documents as supported. A supported-but-unoptimized runtime stays usable —
+   * it is merely slower at solving challenges.
+   */
   usable: boolean
+  /**
+   * Lowest version yt-dlp accepts, or null when it accepts every version of this runtime (all
+   * QuickJS-NG releases). Null here means "no floor", not "no runtime".
+   */
   minVersion: string | null
 }
 

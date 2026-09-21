@@ -2,13 +2,19 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   JS_RUNTIME_PREFERENCE,
   jsRuntimeArgs,
+  jsRuntimeDescriptor,
   jsRuntimeFileNames,
   locateJsRuntime,
   meetsMinimumVersion,
   parseDenoVersion,
   parseQuickJsVersion,
 } from '../../src/main/binaries/jsRuntime'
-import { JsRuntimeService, NO_JS_RUNTIME } from '../../src/main/binaries/jsRuntimeService'
+import {
+  isBelowOptimizedFloor,
+  isRuntimeUsable,
+  JsRuntimeService,
+  NO_JS_RUNTIME,
+} from '../../src/main/binaries/jsRuntimeService'
 import { buildBaseDownloadArgs } from '../../src/main/jobs/argBuilders'
 import { buildAnalyzeArgs, buildEntryInfoArgs } from '../../src/main/media/argBuilders'
 
@@ -125,20 +131,70 @@ describe('version parsing and the minimum-version gate', () => {
     expect(parseDenoVersion(['nonsense'])).toBeNull()
   })
 
-  it('parses the QuickJS banner on either spelling', () => {
+  it('parses the REAL QuickJS-NG output, which is a bare version with no banner', () => {
+    // Regression test for the bug this file previously asserted past: the bundled
+    // binaries/win32/qjs.exe prints exactly `0.17.0` on stdout and nothing else. The old parser
+    // required the line to mention quickjs/qjs, so it skipped the only useful line, returned
+    // null, and the runtime was reported as "version unknown — below the minimum yt-dlp
+    // supports" while yt-dlp was using it successfully.
+    //
+    // Captured verbatim from `binaries/win32/qjs.exe --version`; do not "tidy" this fixture.
+    expect(parseQuickJsVersion(['0.17.0'])).toBe('0.17.0')
+    // Bare form with real-world noise around it still resolves.
+    expect(parseQuickJsVersion(['', '0.17.0', ''])).toBe('0.17.0')
+  })
+
+  it('still parses the banner spellings other builds and forks emit', () => {
     expect(parseQuickJsVersion(['QuickJS-ng version 0.17.0'])).toBe('0.17.0')
     expect(parseQuickJsVersion(['qjs 0.12.1'])).toBe('0.12.1')
+  })
+
+  it('never invents a version from unrelated output', () => {
     expect(parseQuickJsVersion(['unrelated output'])).toBeNull()
+    expect(parseQuickJsVersion(['v1.2'])).toBeNull()
+    expect(parseQuickJsVersion([])).toBeNull()
+    // A date-style bellard QuickJS version is not a semver and must not be mistaken for one.
+    expect(parseQuickJsVersion(['QuickJS version 2025-04-26'])).toBeNull()
   })
 
   it('gates on the version yt-dlp documents as the minimum', () => {
-    // yt-dlp: QuickJS < 2025-04-26 / QuickJS-NG < 0.12.0 can take minutes per solve.
-    expect(meetsMinimumVersion('0.17.0', '0.12.0')).toBe(true)
-    expect(meetsMinimumVersion('0.12.0', '0.12.0')).toBe(true)
-    expect(meetsMinimumVersion('0.11.9', '0.12.0')).toBe(false)
-    expect(meetsMinimumVersion('2.9.7', '2.3.0')).toBe(true)
-    expect(meetsMinimumVersion('2.2.0', '2.3.0')).toBe(false)
-    expect(meetsMinimumVersion(null, '0.12.0')).toBe(false)
+    // EJS wiki: deno minimum is 2.0.0. The QuickJS floor is a *speed* threshold, not a support
+    // threshold (all QuickJS-NG versions are supported), so it lives in optimizedMinVersion.
+    expect(meetsMinimumVersion('2.9.7', '2.0.0')).toBe(true)
+    expect(meetsMinimumVersion('2.0.0', '2.0.0')).toBe(true)
+    expect(meetsMinimumVersion('1.9.0', '2.0.0')).toBe(false)
+    expect(meetsMinimumVersion(null, '2.0.0')).toBe(false)
+  })
+})
+
+describe('usability vs the optimization floor (the two are not the same thing)', () => {
+  const quickjs = jsRuntimeDescriptor('quickjs')
+  const deno = jsRuntimeDescriptor('deno')
+
+  it('treats every QuickJS-NG version as usable, per the EJS wiki', () => {
+    expect(quickjs.minVersion).toBeNull()
+    expect(isRuntimeUsable('0.9.0', quickjs)).toBe(true)
+    expect(isRuntimeUsable('0.11.9', quickjs)).toBe(true)
+    expect(isRuntimeUsable('0.17.0', quickjs)).toBe(true)
+  })
+
+  it('reports an unoptimized runtime as slow without calling it unusable', () => {
+    expect(isBelowOptimizedFloor('0.11.9', quickjs)).toBe(true)
+    expect(isBelowOptimizedFloor('0.12.0', quickjs)).toBe(false)
+    expect(isBelowOptimizedFloor('0.17.0', quickjs)).toBe(false)
+    // Deno has no documented optimization floor, so it never trips this.
+    expect(isBelowOptimizedFloor('2.0.0', deno)).toBe(false)
+  })
+
+  it('keeps the deno support floor at the documented 2.0.0', () => {
+    expect(isRuntimeUsable('2.9.7', deno)).toBe(true)
+    expect(isRuntimeUsable('2.1.0', deno)).toBe(true)
+    expect(isRuntimeUsable('1.9.0', deno)).toBe(false)
+  })
+
+  it('treats a runtime that reported no version as unusable', () => {
+    expect(isRuntimeUsable(null, quickjs)).toBe(false)
+    expect(isRuntimeUsable(null, deno)).toBe(false)
   })
 })
 
@@ -165,18 +221,37 @@ describe('JsRuntimeService', () => {
       version: '0.17.0',
       source: 'bundled',
       usable: true,
-      minVersion: '0.12.0',
+      // null = yt-dlp accepts every QuickJS-NG version, which is what the EJS wiki says.
+      // Reporting 0.12.0 here previously implied a support floor that does not exist.
+      minVersion: null,
     })
   })
 
-  it('flags a runtime that is older than yt-dlp supports as unusable', async () => {
+  it('keeps an unoptimized but supported runtime usable, warning only about speed', async () => {
+    // The bug this replaces: 0.9.0 was reported as unusable with the message "below the minimum
+    // yt-dlp supports". The wiki says all QuickJS-NG versions are supported; they are just slow.
     const service = new JsRuntimeService({
       platform: 'win32',
       candidates: [{ dir: 'C:/bundled', source: 'bundled' }],
       exists: existsIn(['C:/bundled/qjs.exe']),
       probe: async () => '0.9.0',
     })
-    expect((await service.info()).usable).toBe(false)
+    const info = await service.info()
+    expect(info.usable).toBe(true)
+    expect(info.minVersion).toBeNull()
+  })
+
+  it('still fails a deno older than the documented 2.0.0 floor', async () => {
+    const service = new JsRuntimeService({
+      platform: 'win32',
+      candidates: [{ dir: 'C:/bundled', source: 'bundled' }],
+      exists: existsIn(['C:/bundled/deno.exe']),
+      probe: async () => '1.9.0',
+    })
+    const info = await service.info()
+    expect(info.name).toBe('deno')
+    expect(info.usable).toBe(false)
+    expect(info.minVersion).toBe('2.0.0')
   })
 
   it('probes once, caches, and re-probes after invalidate()', async () => {
@@ -210,7 +285,7 @@ describe('JsRuntimeService', () => {
       version: null,
       source: 'bundled',
       usable: false,
-      minVersion: '0.12.0',
+      minVersion: null,
     })
   })
 })

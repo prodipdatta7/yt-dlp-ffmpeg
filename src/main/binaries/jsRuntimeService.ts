@@ -8,6 +8,7 @@ import {
   locateJsRuntime,
   meetsMinimumVersion,
   parseJsRuntimeVersion,
+  type JsRuntimeDescriptor,
   type LocatedJsRuntime,
 } from './jsRuntime'
 import { locateBinary, type BinaryCandidate } from './locator'
@@ -42,6 +43,31 @@ async function defaultProbe(runtime: LocatedJsRuntime): Promise<string | null> {
   // QuickJS prints its banner on stdout; keep stderr in the haystack so a runtime that
   // reports on the other stream still yields a version.
   return parseJsRuntimeVersion(runtime.name, [...result.stdoutLines, ...result.stderrLines])
+}
+
+/**
+ * True when yt-dlp will accept this runtime.
+ *
+ * A `null` descriptor minimum means "yt-dlp supports every version of this runtime" (all
+ * QuickJS-NG releases), which is **not** a missing requirement — treating it as one is what made
+ * a working runtime report as unusable.
+ */
+export function isRuntimeUsable(
+  version: string | null,
+  descriptor: JsRuntimeDescriptor,
+): boolean {
+  if (version === null) return false
+  if (descriptor.minVersion === null) return true
+  return meetsMinimumVersion(version, descriptor.minVersion)
+}
+
+/** Supported but below the optimization floor: a challenge solve can take minutes. */
+export function isBelowOptimizedFloor(
+  version: string | null,
+  descriptor: JsRuntimeDescriptor,
+): boolean {
+  if (version === null || !descriptor.optimizedMinVersion) return false
+  return !meetsMinimumVersion(version, descriptor.optimizedMinVersion)
 }
 
 /**
@@ -111,11 +137,21 @@ export class JsRuntimeService {
     const descriptor = jsRuntimeDescriptor(runtime.name)
     const probe = this.opts.probe ?? defaultProbe
     const version = await probe(runtime).catch(() => null)
-    const usable = meetsMinimumVersion(version, descriptor.minVersion)
+    const usable = isRuntimeUsable(version, descriptor)
 
     if (!usable) {
+      // Only reachable when the probe yielded nothing, or the version is genuinely below the
+      // floor yt-dlp documents. A runtime that is merely unoptimized is handled below instead.
       this.opts.logger?.warn(
-        `JavaScript runtime ${runtime.name} ${version ?? '(version unknown)'} is below the minimum yt-dlp supports (${descriptor.minVersion})`,
+        version === null
+          ? `JavaScript runtime ${runtime.name} did not report a version; treating it as unusable`
+          : `JavaScript runtime ${runtime.name} ${version} is below the minimum yt-dlp supports (${descriptor.minVersion})`,
+        { path: runtime.path },
+      )
+    } else if (isBelowOptimizedFloor(version, descriptor)) {
+      // Supported, just slow — must NOT be surfaced as unusable.
+      this.opts.logger?.warn(
+        `JavaScript runtime ${runtime.name} ${version} is supported but below ${descriptor.optimizedMinVersion}; YouTube challenge solving will be slower than usual`,
         { path: runtime.path },
       )
     }
