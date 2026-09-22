@@ -181,7 +181,7 @@ export function AppearanceSection() {
                 <div class="flex items-center gap-1.5">
                   <span class="text-[13px] font-bold tracking-tight text-ink">{t.title}</span>
                   {isSelected && (
-                    <span class="rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-sky-400">
+                    <span class="rounded-full bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase text-sky-600 dark:bg-sky-500/15 dark:text-sky-300">
                       Active
                     </span>
                   )}

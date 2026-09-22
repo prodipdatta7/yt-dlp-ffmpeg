@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { getEmbedInfo } from '../utils/source'
+import { useDialogFocus } from '../utils/useDialogFocus'
 import { CloseIcon, DownloadIcon, FilmIcon, LinkIcon, MaximizeIcon, VolumeIcon } from './icons'
 
 export interface InlineVideoPreviewProps {
@@ -415,18 +416,14 @@ export function InlineVideoPreviewModal({
 }: InlineVideoPreviewModalProps) {
   const [modalVolumeBoost, setModalVolumeBoost] = useState<number>(1)
   const lastTimeRef = useRef<number | undefined>(startSec)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const closeRef = useRef<HTMLButtonElement>(null)
 
   const handleClose = () => {
     onClose(lastTimeRef.current)
   }
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') handleClose()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+  useDialogFocus(dialogRef, true, { initialFocusRef: closeRef, onEscape: handleClose })
 
   return (
     <div
@@ -435,20 +432,33 @@ export function InlineVideoPreviewModal({
         if (e.target === e.currentTarget) handleClose()
       }}
     >
-      <div class="flex w-full max-w-[96vw] xl:max-w-6xl 2xl:max-w-7xl max-h-[95vh] flex-col overflow-hidden rounded-2xl border border-white/10 bg-neutral-900 shadow-2xl">
+      <div
+        ref={dialogRef}
+        class="flex w-full max-w-[96vw] xl:max-w-6xl 2xl:max-w-7xl max-h-[95vh] flex-col overflow-hidden rounded-2xl border border-white/10 bg-neutral-900 shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mf-inline-preview-title"
+        tabIndex={-1}
+      >
         {/* Modal Header */}
         <div class="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
           <div class="flex min-w-0 flex-1 flex-col">
-            <h3 class="truncate text-sm font-bold text-white sm:text-base" title={title}>
+            <h3
+              id="mf-inline-preview-title"
+              class="truncate text-sm font-bold text-white sm:text-base"
+              title={title}
+            >
               {title}
             </h3>
             {uploader && <p class="text-xs text-neutral-400">{uploader}</p>}
           </div>
           <button
+            ref={closeRef}
             type="button"
             onClick={handleClose}
             title="Close modal (Esc)"
-            class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-neutral-300 transition hover:bg-white/15 hover:text-white"
+            aria-label="Close preview"
+            class="mf-focus-ring flex size-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-neutral-300 transition hover:bg-white/15 hover:text-white"
           >
             <CloseIcon class="size-4" />
           </button>

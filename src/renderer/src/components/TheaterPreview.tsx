@@ -9,6 +9,7 @@ import {
 import { fmtCount, fmtDuration, fmtUploadedAgo, formatTranscriptAsText } from '../utils/format'
 import { findActiveIndex } from '../utils/activeIndex'
 import { useFeedbackTimer } from '../utils/useFeedbackTimer'
+import { useDialogFocus } from '../utils/useDialogFocus'
 import {
   chaptersCache,
   extractRealChapters,
@@ -72,6 +73,9 @@ export function TheaterPreview({
   onOpenInDownloader: (item: SearchResultItem) => void
 }) {
   const [previewVolumeBoost, setPreviewVolumeBoost] = useState<number>(1)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const closeRef = useRef<HTMLButtonElement>(null)
+  useDialogFocus(dialogRef, true, { initialFocusRef: closeRef, onEscape: onClose })
   const specs = useMemo(() => detectVideoTechSpecs(entry.title), [entry.title])
   const audioSub = useMemo(
     () => detectAudioSubtitleSpecs(entry.title, entry.uploader),
@@ -507,8 +511,13 @@ export function TheaterPreview({
       onWheel={(e) => e.stopPropagation()}
     >
       <div
+        ref={dialogRef}
         class="flex w-full max-w-[96vw] xl:max-w-[94vw] 2xl:max-w-[1560px] max-h-[96vh] flex-col overflow-y-auto rounded-2xl border-2 border-[var(--mf-detail-accent)] bg-white p-3 sm:p-4 md:p-5 shadow-2xl ring-1 ring-[var(--mf-detail-accent)]/30 text-left transition-[background-color,border-color,box-shadow] dark:border-[var(--mf-detail-accent)] dark:bg-[var(--mf-surface)]"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mf-theater-preview-title"
+        tabIndex={-1}
       >
         {/* Header Row */}
         <div class="flex flex-wrap items-center justify-between gap-2.5 border-b border-neutral-100 pb-2.5 mb-3 dark:border-white/5">
@@ -523,6 +532,7 @@ export function TheaterPreview({
             {/* Title & Author */}
             <div class="flex min-w-0 flex-1 items-center gap-1.5 truncate">
               <span
+                id="mf-theater-preview-title"
                 class="truncate text-xs sm:text-sm font-bold text-neutral-900 transition hover:text-[var(--mf-detail-accent)] dark:text-white"
                 title={entry.title}
               >
@@ -579,11 +589,12 @@ export function TheaterPreview({
             <div class="h-4 w-px bg-neutral-200 dark:bg-neutral-700/80 mx-0.5" />
 
             <button
+              ref={closeRef}
               type="button"
               onClick={() => onClose()}
               title="Close Focused Preview (Esc)"
               aria-label="Close Focused Preview"
-              class="group flex items-center gap-1.5 rounded-lg border border-rose-200/90 bg-rose-50/70 px-2.5 py-1 text-xs font-semibold text-rose-700 shadow-2xs transition hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 active:scale-[0.98] dark:border-rose-800/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:border-rose-700 dark:hover:bg-rose-900/60 dark:hover:text-rose-200"
+              class="mf-focus-ring group flex items-center gap-1.5 rounded-lg border border-rose-200/90 bg-rose-50/70 px-2.5 py-1 text-xs font-semibold text-rose-700 shadow-2xs transition hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 active:scale-[0.98] dark:border-rose-800/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:border-rose-700 dark:hover:bg-rose-900/60 dark:hover:text-rose-200"
             >
               <CloseIcon class="size-3.5 text-rose-500 transition-transform duration-150 group-hover:rotate-90 dark:text-rose-400" />
               <span>Close</span>

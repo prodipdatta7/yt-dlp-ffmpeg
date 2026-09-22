@@ -127,6 +127,7 @@ export function FormatMatrix({
               value={query}
               onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
               placeholder="Filter streams…"
+              aria-label="Filter available streams"
               class="w-40 rounded-lg border border-line bg-recess py-1.5 pl-8 pr-2 text-xs text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-sky-500/50"
             />
           </div>
@@ -199,7 +200,7 @@ export function FormatMatrix({
                   }
                   tabIndex={activate ? 0 : undefined}
                   role={activate ? 'button' : undefined}
-                  aria-selected={picked}
+                  aria-pressed={activate ? picked : undefined}
                   class={`mf-focus-ring transition-colors odd:bg-wash-1 ${activate ? 'cursor-pointer' : ''} ${
                     picked ? 'bg-sky-500/[0.09] hover:bg-sky-500/[0.12]' : 'hover:bg-sky-500/[0.06]'
                   }`}

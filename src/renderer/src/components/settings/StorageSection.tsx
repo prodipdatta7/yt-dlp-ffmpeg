@@ -92,8 +92,8 @@ export function StorageSection({
         ) : undefined
       }
     >
-      <div class="mb-3 flex items-start gap-2.5 rounded-lg border border-sky-500/25 bg-sky-500/10 px-3 py-2.5 text-xs leading-relaxed text-sky-200">
-        <InfoIcon class="mt-0.5 size-3.5 shrink-0 text-sky-400" />
+      <div class="mb-3 flex items-start gap-2.5 rounded-lg border border-sky-500/25 bg-sky-500/10 px-3 py-2.5 text-xs leading-relaxed text-slate-300">
+        <InfoIcon class="mt-0.5 size-3.5 shrink-0 text-sky-500 dark:text-sky-400" />
         <p>
           Kept for <strong class="font-semibold text-ink">{LEFTOVER_RETENTION_DAYS} days</strong> as
           a safety net in case you want to resume, then deleted automatically.

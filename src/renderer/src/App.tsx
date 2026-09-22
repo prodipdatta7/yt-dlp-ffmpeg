@@ -88,6 +88,7 @@ import {
 import { estimateEntryBytes, estimatePresetBytes, type FormatPresetOption } from './utils/estimate'
 import { fmtSize } from './utils/format'
 import { POPULAR_SOURCES } from './utils/source'
+import { useDialogFocus } from './utils/useDialogFocus'
 
 type EngineInfo = { version: string | null; source: string | null }
 type QueueEntry = { url: string; title: string; isLive?: boolean }
@@ -174,21 +175,21 @@ function FloatingDownloadBadge() {
 function EngineBadge({ label, info, role }: { label: string; info: EngineInfo; role: string }) {
   if (!info.version || !info.source) {
     return (
-      <span class="flex items-center gap-1.5" title={`${label}: missing — ${role}`}>
+      <span class="mf-engine-badge flex items-center gap-1.5" title={`${label}: missing — ${role}`}>
         <span class="size-1.5 rounded-full bg-red-500" />
-        <span>{label}: missing</span>
+        <span class="mf-engine-label">{label}: missing</span>
       </span>
     )
   }
   return (
     <span
-      class="flex items-center gap-1.5"
+      class="mf-engine-badge flex min-w-0 items-center gap-1.5"
       title={`${label} ${info.version} (${info.source}) — ${role}`}
     >
       <span class="size-1.5 rounded-full bg-emerald-500" />
-      <span>
-        {label} <span class="mf-num text-slate-400">{info.version}</span>
-        <span class="ml-1 rounded border border-line-strong px-1 text-[9px] uppercase">
+      <span class="mf-engine-label min-w-0 truncate">
+        {label} <span class="mf-engine-version mf-num text-slate-400">{info.version}</span>
+        <span class="mf-engine-source ml-1 rounded border border-line-strong px-1 text-[9px] uppercase">
           {info.source === 'override' ? 'env' : info.source}
         </span>
       </span>
@@ -208,7 +209,7 @@ function EnginesStatus() {
   if (!info) return <span>engines: probing…</span>
 
   return (
-    <span class="flex items-center gap-4">
+    <span class="mf-engine-status flex min-w-0 items-center gap-4">
       <EngineBadge label="yt-dlp" info={info.ytdlp} role="extracts info and downloads streams" />
       <EngineBadge
         label="ffmpeg"
@@ -491,13 +492,30 @@ function QueueDraftModal({
   onConfirm: (selection: JobSelection) => void
 }) {
   const [selection, setSelection] = useState<JobSelection | null>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const cancelRef = useRef<HTMLButtonElement>(null)
+  useDialogFocus(dialogRef, true, { initialFocusRef: cancelRef, onEscape: onCancel })
+
   return (
-    <div class="fixed inset-0 z-30 flex items-center justify-center bg-scrim/60 p-4">
-      <div class="mf-card mf-rise w-full max-w-md p-4">
-        <h2 class="text-sm font-bold tracking-tight text-ink">
+    <div
+      class="fixed inset-0 z-30 flex items-center justify-center bg-scrim/60 p-4"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onCancel()
+      }}
+    >
+      <div
+        ref={dialogRef}
+        class="mf-card mf-rise w-full max-w-md p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mf-queue-draft-title"
+        aria-describedby="mf-queue-draft-description"
+        tabIndex={-1}
+      >
+        <h2 id="mf-queue-draft-title" class="text-sm font-bold tracking-tight text-ink">
           Queue {items.length} search result{items.length === 1 ? '' : 's'}
         </h2>
-        <p class="mt-1 text-xs leading-relaxed text-slate-500">
+        <p id="mf-queue-draft-description" class="mt-1 text-xs leading-relaxed text-slate-500">
           Pick one quality preset applied to every selected result, same as queuing a playlist.
         </p>
         <div class="mt-3">
@@ -510,6 +528,7 @@ function QueueDraftModal({
         </div>
         <div class="mt-4 flex justify-end gap-2">
           <button
+            ref={cancelRef}
             onClick={onCancel}
             class="mf-focus-ring rounded-xl border border-line-strong px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-rose-500/60 hover:text-rose-300"
           >
@@ -1285,9 +1304,32 @@ export function App() {
                         {tabs.map(({ id, label }) => (
                           <button
                             key={id}
+                            id={`analysis-tab-${id}`}
                             role="tab"
                             aria-selected={streamTab === id}
+                            aria-controls="analysis-panel"
+                            tabIndex={streamTab === id ? 0 : -1}
                             onClick={() => setStreamTab(id)}
+                            onKeyDown={(event) => {
+                              const currentIndex = tabs.findIndex((tab) => tab.id === id)
+                              let nextIndex: number | null = null
+                              if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+                                nextIndex = (currentIndex + 1) % tabs.length
+                              } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+                                nextIndex = (currentIndex - 1 + tabs.length) % tabs.length
+                              } else if (event.key === 'Home') {
+                                nextIndex = 0
+                              } else if (event.key === 'End') {
+                                nextIndex = tabs.length - 1
+                              }
+                              if (nextIndex === null) return
+                              event.preventDefault()
+                              const nextId = tabs[nextIndex].id
+                              setStreamTab(nextId)
+                              requestAnimationFrame(() =>
+                                document.getElementById(`analysis-tab-${nextId}`)?.focus(),
+                              )
+                            }}
                             class={`mf-focus-ring flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-[background-color,color,box-shadow] duration-150 ${
                               streamTab === id
                                 ? 'bg-gradient-to-br from-sky-500 to-indigo-500 text-white shadow shadow-go-500/25'
@@ -1301,7 +1343,13 @@ export function App() {
                     )
                   })()}
 
-                  <div class="flex min-h-0 flex-1 flex-col">
+                  <div
+                    id="analysis-panel"
+                    class="flex min-h-0 flex-1 flex-col"
+                    role="tabpanel"
+                    aria-labelledby={`analysis-tab-${streamTab}`}
+                    tabIndex={0}
+                  >
                     {streamTab === 'preview' && !isPlaylist && <VideoPreviewTab result={result!} />}
                     {streamTab === 'entries' && isPlaylist && (
                       <PlaylistEntries
@@ -1473,9 +1521,9 @@ export function App() {
 
       <FloatingDownloadBadge />
 
-      <footer class="flex shrink-0 items-center justify-between gap-4 border-t border-line bg-ink-950 px-3 py-1.5 text-xs text-slate-500 sm:px-4">
+      <footer class="mf-app-footer flex shrink-0 items-center justify-between gap-4 border-t border-line bg-ink-950 px-3 py-1.5 text-xs text-slate-500 sm:px-4">
         <EnginesStatus />
-        <span class="flex items-center gap-2">
+        <span class="mf-footer-actions flex shrink-0 items-center gap-2">
           <span class="hidden text-slate-600 md:inline">Local-only processing</span>
           <span aria-hidden="true" class="hidden text-slate-700 md:inline">
             •
@@ -1495,7 +1543,8 @@ export function App() {
           </button>
           <span
             class="mf-num rounded-full border border-line bg-wash-1 px-2 py-0.5 text-[11px] text-slate-500"
-            aria-label={bridgeNote}
+            role="status"
+            title={bridgeNote}
           >
             {bridgeNote === 'ipc ready' ? 'System ready' : bridgeNote}
           </span>

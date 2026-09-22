@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import { createPortal } from 'preact/compat'
 import QRCode from 'qrcode'
 import type { AnalyzeResult } from '../../../shared/models'
@@ -8,6 +8,7 @@ import type {
   LocalShareInfo,
 } from '../../../shared/ipcContract'
 import { fmtDuration, fmtSize } from '../utils/format'
+import { useDialogFocus } from '../utils/useDialogFocus'
 import { VideoBanner } from './PreviewPanel'
 import {
   CheckIcon,
@@ -79,6 +80,12 @@ export function DownloadCompleteSummary({
   const [shareSheetOpen, setShareSheetOpen] = useState(false)
   const [shareSecondsRemaining, setShareSecondsRemaining] = useState(0)
   const [shareActivity, setShareActivity] = useState<LocalShareActivity>(EMPTY_SHARE_ACTIVITY)
+  const shareDialogRef = useRef<HTMLElement>(null)
+  const shareCloseRef = useRef<HTMLButtonElement>(null)
+  useDialogFocus(shareDialogRef, shareSheetOpen, {
+    initialFocusRef: shareCloseRef,
+    onEscape: () => setShareSheetOpen(false),
+  })
   const outputPath = done.outputPath ?? ''
   const metadata = result.metadata
   const [outputBytes, setOutputBytes] = useState<number | null>(done.outputBytes ?? null)
@@ -196,15 +203,6 @@ export function DownloadCompleteSummary({
     const timer = window.setInterval(updateCountdown, 250)
     return () => window.clearInterval(timer)
   }, [share])
-
-  useEffect(() => {
-    if (!shareSheetOpen) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setShareSheetOpen(false)
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [shareSheetOpen])
 
   return (
     <section class="mf-download-summary mf-rise" aria-labelledby="download-complete-title">
@@ -353,10 +351,12 @@ export function DownloadCompleteSummary({
             }}
           >
             <section
+              ref={shareDialogRef}
               class="mf-share-sheet mf-rise"
               role="dialog"
               aria-modal="true"
               aria-labelledby="local-share-title"
+              tabIndex={-1}
             >
               <header>
                 <div>
@@ -365,6 +365,7 @@ export function DownloadCompleteSummary({
                   <span>Keep this window open while the other device downloads your file.</span>
                 </div>
                 <button
+                  ref={shareCloseRef}
                   type="button"
                   class="mf-focus-ring"
                   onClick={() => setShareSheetOpen(false)}
