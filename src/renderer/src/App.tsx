@@ -28,7 +28,6 @@ import {
   FolderIcon,
   GearIcon,
   LinkIcon,
-  LogoBolt,
   QueueIcon,
   SearchIcon,
   ShareIcon,
@@ -89,6 +88,7 @@ import { estimateEntryBytes, estimatePresetBytes, type FormatPresetOption } from
 import { fmtSize } from './utils/format'
 import { POPULAR_SOURCES } from './utils/source'
 import { useDialogFocus } from './utils/useDialogFocus'
+import storeLogoUrl from '../../../build/store-logo.png'
 
 type EngineInfo = { version: string | null; source: string | null }
 type QueueEntry = { url: string; title: string; isLive?: boolean }
@@ -102,9 +102,13 @@ function isSearchItemReadyToDownload(item: SearchResultItem): boolean {
 
 function LogoMark() {
   return (
-    <span class="mf-logo-mark app-no-drag flex size-8 items-center justify-center rounded-[10px] border border-sky-400/30 bg-gradient-to-br from-sky-500/25 to-indigo-500/25 shadow-inner">
-      <LogoBolt class="size-5" />
-    </span>
+    <img
+      src={storeLogoUrl}
+      alt=""
+      aria-hidden="true"
+      draggable={false}
+      class="mf-logo-mark app-no-drag block size-8 rounded-[10px] border object-cover"
+    />
   )
 }
 
