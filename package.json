@@ -22,7 +22,7 @@
     "release-version": "node scripts/release-version.mjs",
     "perf": "npm run build && node scripts/perf-bench.mjs",
     "dist": "node scripts/fetch-binaries.mjs --verify && npm run build && electron-builder --win nsis --publish never",
-    "dist:store": "node scripts/fetch-binaries.mjs --verify && npm run build && electron-builder --win msix --publish never"
+    "dist:store": "node scripts/verify-store-assets.mjs && node scripts/fetch-binaries.mjs --verify && npm run build && electron-builder --win msix --publish never"
   },
   "engines": {
     "node": ">=22.12.0"

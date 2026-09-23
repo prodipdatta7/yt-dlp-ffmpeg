@@ -52,6 +52,9 @@ nsis:
 # Built on demand with `npm run dist:store` (or the Store workflow). NSIS above stays the default
 # target, so a problem with the beta MSIX target can never block a GitHub release.
 msix:
+  # MSIX tile PNGs live in build/appx (win.icon only sets the executable icon).
+  # Missing assets silently become electron-builder defaults: rejected by Store 10.1.1.11.
+  backgroundColor: '#0b1220'
   # Equal to the Package/Identity Name reserved in Partner Center for this app — already set to
   # the assigned value, not a placeholder. A mismatch is rejected at submission.
   identityName: prodip-datta.MediaForgeDesktop
