@@ -15,6 +15,13 @@ The Store build checks that all six logos/tiles exist with the expected dimensio
 The wide tile centers the square artwork without stretching it. No new runtime
 dependency is needed.
 
+The Windows executable icon also derives from `build/store-logo.png`. Both packaging
+commands run `npm run make-icon` before building, producing 16–256px ICO frames
+using PowerShell 7 (`pwsh`, also available on the Windows CI runner). The Windows
+regression test regenerates the frames in memory and compares them to `build/icon.ico`.
+After installing a rebuilt app, restart it; re-pin its taskbar shortcut if Windows
+still displays an older cached icon.
+
 ## Submission and manual verification
 
 1. Build the current version (0.4.3, newer than the rejected 0.4.0 package).

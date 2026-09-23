@@ -3,9 +3,25 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL, URL } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { storeAssetSizes, verifyStoreAssets } from '../../scripts/verify-store-assets.mjs'
 
 describe('Store tile assets (certification 10.1.1.11)', () => {
+  it.skipIf(process.platform !== 'win32')(
+    'keeps every Windows icon frame in sync with the header artwork',
+    () => {
+      const result = spawnSync(
+        process.execPath,
+        [fileURLToPath(new URL('../../scripts/make-icon.mjs', import.meta.url)), '--check'],
+        { encoding: 'utf8', windowsHide: true, timeout: 15000 },
+      )
+      expect(result.error).toBeUndefined()
+      expect(result.status, result.stdout + result.stderr).toBe(0)
+    },
+    20000,
+  )
+
   it('supplies all required tiles and logos at their manifest dimensions', () => {
     expect(() => verifyStoreAssets()).not.toThrow()
   })
