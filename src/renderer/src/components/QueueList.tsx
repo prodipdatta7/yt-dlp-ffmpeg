@@ -77,18 +77,21 @@ function QueuePipelineArt() {
 
       {/* Stream Lanes */}
       <path
+        class="mf-queue-art-lane"
         d="M20 75 C 80 75, 100 115, 170 115"
         stroke="url(#queue-stream-grad)"
         stroke-width="2"
         stroke-linecap="round"
       />
       <path
+        class="mf-queue-art-lane"
         d="M20 115 L 170 115"
         stroke="url(#queue-stream-grad)"
         stroke-width="2"
         stroke-linecap="round"
       />
       <path
+        class="mf-queue-art-lane"
         d="M20 155 C 80 155, 100 115, 170 115"
         stroke="url(#queue-stream-grad)"
         stroke-width="2"
@@ -97,14 +100,22 @@ function QueuePipelineArt() {
 
       {/* Outflow Parallel Worker Channels */}
       <path
+        class="mf-queue-art-outflow"
         d="M170 115 C 220 115, 240 65, 310 65"
         stroke="currentColor"
         stroke-opacity="0.45"
         stroke-width="2"
         stroke-dasharray="4 3"
       />
-      <path d="M170 115 L 310 115" stroke="currentColor" stroke-opacity="0.65" stroke-width="2" />
       <path
+        class="mf-queue-art-outflow"
+        d="M170 115 L 310 115"
+        stroke="currentColor"
+        stroke-opacity="0.65"
+        stroke-width="2"
+      />
+      <path
+        class="mf-queue-art-outflow"
         d="M170 115 C 220 115, 240 165, 310 165"
         stroke="currentColor"
         stroke-opacity="0.45"
@@ -140,6 +151,7 @@ function QueuePipelineArt() {
 
       {/* Center Engine Hub */}
       <circle
+        class="mf-queue-art-hub"
         cx="170"
         cy="115"
         r="32"
@@ -166,9 +178,9 @@ function QueuePipelineArt() {
       <circle cx="175" cy="123" r="1.5" fill="var(--mf-teal)" />
 
       {/* Output Stream Badges */}
-      <circle cx="304" cy="65" r="5" fill="var(--mf-teal)" />
-      <circle cx="304" cy="115" r="5" fill="var(--mf-teal)" />
-      <circle cx="304" cy="165" r="5" fill="var(--mf-teal)" />
+      <circle class="mf-queue-art-output" cx="304" cy="65" r="5" fill="var(--mf-teal)" />
+      <circle class="mf-queue-art-output is-second" cx="304" cy="115" r="5" fill="var(--mf-teal)" />
+      <circle class="mf-queue-art-output is-third" cx="304" cy="165" r="5" fill="var(--mf-teal)" />
 
       {/* Telemetry Labels */}
       <text
@@ -498,7 +510,7 @@ export function QueueList({
                 dragFrom.current = null
                 if (from !== null) reorderQueueRows(from, i)
               }}
-              class={`group mf-skip-offscreen-row mf-row-hover rounded-xl border px-3 py-2.5 text-sm ${
+              class={`group mf-skip-offscreen-row mf-row-hover rounded-xl border px-3 py-2.5 text-sm ${isLive ? 'mf-queue-row-active' : ''} ${
                 isLive
                   ? 'border-sky-500/25 bg-sky-500/[0.07]'
                   : dragOver === i

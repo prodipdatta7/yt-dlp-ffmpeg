@@ -120,7 +120,7 @@ export function SideNav({
                 {isActive && (
                   <span
                     aria-hidden="true"
-                    class="absolute -left-2 h-4 w-[3px] rounded-full bg-gradient-to-b from-sky-400 to-indigo-400"
+                    class="mf-nav-active-mark absolute -left-2 h-4 w-[3px] rounded-full bg-gradient-to-b from-sky-400 to-indigo-400"
                   />
                 )}
                 <s.Icon class="size-4 shrink-0" />

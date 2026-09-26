@@ -235,7 +235,7 @@ export function ModeSelector({
                 streamlessAdvanced ? 'Per-stream picking needs a single video analysis' : label
               }
               aria-pressed={active}
-              class={`mf-focus-ring flex flex-col items-center gap-1 rounded-lg px-1 py-1.5 text-[11px] font-semibold leading-none transition-[background-color,border-color,color,box-shadow,transform] duration-150 ${
+              class={`mf-mode-choice mf-focus-ring flex flex-col items-center gap-1 rounded-lg px-1 py-1.5 text-[11px] font-semibold leading-none transition-[background-color,border-color,color,box-shadow,transform] duration-150 ${
                 active
                   ? 'bg-gradient-to-br from-sky-500 to-indigo-500 text-white shadow shadow-sky-500/25'
                   : 'text-slate-400 hover:bg-wash-2 hover:text-ink'

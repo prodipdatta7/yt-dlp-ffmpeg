@@ -415,7 +415,7 @@ export function SearchResultCard({
         clipped inside it. Containment must never wrap the overlay.
       */}
       <div
-        class={`mf-skip-offscreen-card w-full min-w-0 rounded-2xl border p-3.5 transition-[background-color,border-color,box-shadow,transform] duration-150 sm:p-4 text-left ${
+        class={`mf-search-result-card mf-skip-offscreen-card w-full min-w-0 rounded-2xl border p-3.5 transition-[background-color,border-color,box-shadow,transform] duration-150 sm:p-4 text-left ${
           selected
             ? 'border-[var(--mf-detail-bright)]/70 bg-orange-50/40 shadow-md shadow-orange-500/10 dark:border-sky-500/50 dark:bg-[var(--mf-active)]'
             : previewActive

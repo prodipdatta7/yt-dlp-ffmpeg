@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { getEmbedInfo } from '../utils/source'
 import { useDialogFocus } from '../utils/useDialogFocus'
+import { usePreviewMotion } from '../utils/usePreviewMotion'
 import { CloseIcon, DownloadIcon, FilmIcon, LinkIcon, MaximizeIcon, VolumeIcon } from './icons'
 
 export interface InlineVideoPreviewProps {
@@ -419,15 +420,15 @@ export function InlineVideoPreviewModal({
   const dialogRef = useRef<HTMLDivElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
 
-  const handleClose = () => {
-    onClose(lastTimeRef.current)
-  }
+  const { phase, requestClose, mediaReady } = usePreviewMotion(() => onClose(lastTimeRef.current))
+  const handleClose = () => requestClose()
 
   useDialogFocus(dialogRef, true, { initialFocusRef: closeRef, onEscape: handleClose })
 
   return (
     <div
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-in fade-in duration-150"
+      class="mf-preview-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
+      data-phase={phase}
       onClick={(e) => {
         if (e.target === e.currentTarget) handleClose()
       }}
@@ -466,17 +467,19 @@ export function InlineVideoPreviewModal({
 
         {/* 16:9 Video Player Container with responsive max height */}
         <div class="relative flex aspect-video w-full max-h-[78vh] items-center justify-center bg-black">
-          <InlineVideoPreview
-            url={url}
-            title={title}
-            startSec={startSec}
-            volumeBoost={modalVolumeBoost}
-            onTimeUpdate={(sec) => {
-              lastTimeRef.current = sec
-            }}
-            hideHeaderControls
-            className="rounded-none size-full"
-          />
+          {mediaReady && (
+            <InlineVideoPreview
+              url={url}
+              title={title}
+              startSec={startSec}
+              volumeBoost={modalVolumeBoost}
+              onTimeUpdate={(sec) => {
+                lastTimeRef.current = sec
+              }}
+              hideHeaderControls
+              className="rounded-none size-full"
+            />
+          )}
         </div>
 
         {/* Modal Footer Actions */}
@@ -499,8 +502,7 @@ export function InlineVideoPreviewModal({
               <button
                 type="button"
                 onClick={() => {
-                  onClose()
-                  onOpenInDownloader()
+                  requestClose(onOpenInDownloader)
                 }}
                 class="flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-neutral-200 transition hover:bg-white/10 hover:text-white"
               >
@@ -512,8 +514,7 @@ export function InlineVideoPreviewModal({
               <button
                 type="button"
                 onClick={() => {
-                  onClose()
-                  onQuickDownload()
+                  requestClose(onQuickDownload)
                 }}
                 class="flex items-center gap-1.5 rounded-lg bg-[#ff5500] px-4 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#e04e00] active:scale-[0.98]"
               >

@@ -265,7 +265,7 @@ function NavRail({
             }`}
           >
             {isActive && (
-              <span class="absolute -left-2.5 h-5 w-[3px] rounded-full bg-gradient-to-b from-sky-400 to-indigo-400" />
+              <span class="mf-nav-active-mark absolute -left-2.5 h-5 w-[3px] rounded-full bg-gradient-to-b from-sky-400 to-indigo-400" />
             )}
             {id === 'queue' && queueCount > 0 && (
               <span class={`mf-nav-queue-count ${isActive ? 'is-active' : ''}`}>
@@ -425,9 +425,17 @@ function HeroState() {
           >
             <path d="M0 36H480" stroke="currentColor" strokeOpacity="0.12" />
             <path
+              class="mf-signal-trace"
               d="M0 36H56L66 25L78 47L90 13L103 60L116 5L130 66L144 18L158 51L170 28L180 36H216L228 17L240 54L252 6L266 66L280 13L294 58L308 25L320 44L332 36H480"
               stroke="currentColor"
               strokeWidth="2"
+            />
+            <path
+              class="mf-signal-sweep"
+              pathLength="100"
+              d="M0 36H56L66 25L78 47L90 13L103 60L116 5L130 66L144 18L158 51L170 28L180 36H216L228 17L240 54L252 6L266 66L280 13L294 58L308 25L320 44L332 36H480"
+              stroke="currentColor"
+              strokeWidth="3"
             />
             <circle
               cx="392"
@@ -1233,7 +1241,7 @@ export function App() {
         ) : (
           <main
             ref={scrollRef}
-            class={`mf-download-workspace flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pb-3 pt-3.5 ${!analyzing.value && !result ? 'mf-download-idle' : ''}`}
+            class={`mf-download-workspace flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pb-3 pt-3.5 ${!analyzing.value && !result ? 'mf-download-idle' : ''} ${analyzing.value || busy ? 'mf-workspace-processing' : ''}`}
           >
             {!completedDownload && !analyzing.value && !result && (
               <div class="mf-digital-only mf-workspace-heading">
@@ -1349,7 +1357,7 @@ export function App() {
 
                   <div
                     id="analysis-panel"
-                    class="flex min-h-0 flex-1 flex-col"
+                    class="mf-analysis-panel flex min-h-0 flex-1 flex-col"
                     role="tabpanel"
                     aria-labelledby={`analysis-tab-${streamTab}`}
                     tabIndex={0}
@@ -1437,7 +1445,7 @@ export function App() {
                               ? stopAfterCurrent
                               : cancelActive
                           }
-                          class="mt-2 w-full shrink-0 rounded-xl bg-gradient-to-br from-rose-600 to-rose-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-rose-500/25 transition hover:brightness-110 active:scale-[0.98]"
+                          class="mf-action-button mf-focus-ring mt-2 w-full shrink-0 rounded-xl bg-gradient-to-br from-rose-600 to-rose-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-rose-500/25 transition hover:brightness-110 active:scale-[0.98]"
                         >
                           {isPlaylist
                             ? queueRunMode.value === 'parallel'
@@ -1461,7 +1469,7 @@ export function App() {
                           <button
                             onClick={() => void startDownload('parallel')}
                             disabled={!canStart}
-                            className={`mf-focus-ring w-full rounded-xl bg-gradient-to-r from-go-500 to-go-400 px-5 py-3 text-sm font-bold text-white shadow-xl shadow-go-500/30 transition-[background-color,box-shadow,filter,opacity,transform] duration-150 hover:brightness-110 hover:shadow-go-400/40 active:scale-[0.98] ${
+                            className={`mf-action-button mf-focus-ring w-full rounded-xl bg-gradient-to-r from-go-500 to-go-400 px-5 py-3 text-sm font-bold text-white shadow-xl shadow-go-500/30 transition-[background-color,box-shadow,filter,opacity,transform] duration-150 hover:brightness-110 hover:shadow-go-400/40 active:scale-[0.98] ${
                               canStart ? '' : 'cursor-not-allowed opacity-40 shadow-none'
                             }`}
                           >
@@ -1474,7 +1482,7 @@ export function App() {
                         <button
                           onClick={() => void startDownload()}
                           disabled={!canStart}
-                          className={`mf-focus-ring mt-2 w-full shrink-0 rounded-xl bg-gradient-to-r from-go-500 to-go-400 px-5 py-3 text-sm font-bold text-white shadow-xl shadow-go-500/30 transition-[background-color,box-shadow,filter,opacity,transform] duration-150 hover:brightness-110 hover:shadow-go-400/40 active:scale-[0.98] ${
+                          className={`mf-action-button mf-focus-ring mt-2 w-full shrink-0 rounded-xl bg-gradient-to-r from-go-500 to-go-400 px-5 py-3 text-sm font-bold text-white shadow-xl shadow-go-500/30 transition-[background-color,box-shadow,filter,opacity,transform] duration-150 hover:brightness-110 hover:shadow-go-400/40 active:scale-[0.98] ${
                             canStart ? '' : 'cursor-not-allowed opacity-40 shadow-none'
                           }`}
                         >

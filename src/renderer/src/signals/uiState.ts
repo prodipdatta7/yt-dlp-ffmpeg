@@ -68,6 +68,7 @@ export function setUiDensity(d: UiDensity): void {
 
 export function setAmbientGrid(enabled: boolean): void {
   ambientGridEnabled.value = enabled
+  document.documentElement.classList.toggle('mf-no-ambient-grid', !enabled)
   try {
     localStorage.setItem('mf_ambient_grid', JSON.stringify(enabled))
   } catch {
@@ -77,13 +78,9 @@ export function setAmbientGrid(enabled: boolean): void {
 
 export function setAnimationsEnabled(enabled: boolean): void {
   animationsEnabled.value = enabled
+  document.documentElement.classList.toggle('mf-reduced-motion', !enabled)
   try {
     localStorage.setItem('mf_animations', JSON.stringify(enabled))
-    if (!enabled) {
-      document.documentElement.classList.add('mf-reduced-motion')
-    } else {
-      document.documentElement.classList.remove('mf-reduced-motion')
-    }
   } catch {
     /* localStorage may be restricted */
   }
@@ -91,9 +88,8 @@ export function setAnimationsEnabled(enabled: boolean): void {
 
 try {
   document.documentElement.dataset.density = uiDensity.value
-  if (!animationsEnabled.value) {
-    document.documentElement.classList.add('mf-reduced-motion')
-  }
+  document.documentElement.classList.toggle('mf-reduced-motion', !animationsEnabled.value)
+  document.documentElement.classList.toggle('mf-no-ambient-grid', !ambientGridEnabled.value)
 } catch {
   /* SSR or headless protection */
 }

@@ -164,7 +164,7 @@ export function AppearanceSection() {
                 type="button"
                 aria-pressed={isSelected}
                 onClick={() => void chooseTheme(t.id)}
-                class={`mf-focus-ring flex flex-col items-start rounded-2xl border p-3.5 text-left transition-[background-color,border-color,box-shadow,transform] duration-150 ${
+                class={`mf-theme-option mf-focus-ring flex flex-col items-start rounded-2xl border p-3.5 text-left transition-[background-color,border-color,box-shadow,transform] duration-150 ${
                   isSelected
                     ? 'border-sky-500 bg-sky-500/5 shadow-md shadow-sky-500/10'
                     : 'border-line bg-wash-1 hover:border-line-strong hover:bg-wash-2'
@@ -246,13 +246,13 @@ export function AppearanceSection() {
             }
           />
           <SettingsRow
-            label="Fluid Micro-Transitions"
-            description="Smooth CSS transforms and hover interpolations. Disable to minimize motion."
+            label="Motion graphics"
+            description="Animate workspace signals, transfers, and controls. Turn off to minimize motion."
             control={
               <Switch
                 checked={animationsEnabled.value}
                 onChange={(on) => setAnimationsEnabled(on)}
-                label="Fluid Transitions"
+                label="Motion graphics"
               />
             }
           />

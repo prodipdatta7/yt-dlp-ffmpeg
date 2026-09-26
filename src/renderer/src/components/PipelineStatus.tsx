@@ -165,9 +165,23 @@ export function PipelineStatus({
 
   const activeIdx = event ? PHASE_STEPS.findIndex((s) => s.id === event.phase) : -1
   const showStepper = (!!job && !!event) || paused
+  const visualState = failed
+    ? 'failed'
+    : paused
+      ? 'paused'
+      : done?.status === 'cancelled'
+        ? 'cancelled'
+        : completedAll
+          ? 'completed'
+          : job
+            ? 'active'
+            : 'idle'
 
   return (
-    <div class="mf-rise shrink-0 rounded-xl border border-[var(--mf-line)] bg-[var(--surface-card-hi)] shadow-sm">
+    <div
+      class="mf-pipeline mf-rise shrink-0 rounded-xl border border-[var(--mf-line)] bg-[var(--surface-card-hi)] shadow-sm"
+      data-state={visualState}
+    >
       <div class="mf-pipeline-topline grid items-center gap-3 px-3.5 py-2">
         <div class="flex min-w-0 items-center gap-3">
           {job ? (
@@ -213,16 +227,19 @@ export function PipelineStatus({
                   : completedAll || (activeIdx >= 0 && i < activeIdx)
                 const stepActive = !completedAll && !paused && i === activeIdx
                 return (
-                  <span key={step.id} class="flex items-center gap-1">
+                  <span
+                    key={step.id}
+                    class={`mf-phase-step flex items-center gap-1 ${stepActive ? 'is-active' : ''} ${stepDone ? 'is-done' : ''}`}
+                  >
                     {i > 0 && (
                       <span
-                        className={`h-px w-3.5 ${stepDone || (paused && i <= activeIdx) ? 'bg-emerald-400/50' : 'bg-slate-600/50'}`}
+                        className={`mf-phase-connector h-px w-3.5 ${stepDone || (paused && i <= activeIdx) ? 'bg-emerald-400/50' : 'bg-slate-600/50'}`}
                       />
                     )}
                     <span
-                      className={`size-1.5 rounded-full transition-colors duration-300 ${
+                      className={`mf-phase-dot size-1.5 rounded-full transition-colors duration-300 ${
                         stepDone ? 'bg-emerald-400' : stepActive ? 'bg-sky-400' : 'bg-slate-600'
-                      } ${stepActive ? 'mf-breathe' : ''}`}
+                      }`}
                     />
                     <span
                       className={`text-[9px] font-semibold uppercase tracking-wider transition-colors duration-300 ${

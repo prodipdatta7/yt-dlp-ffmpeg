@@ -10,6 +10,7 @@ import { fmtCount, fmtDuration, fmtUploadedAgo, formatTranscriptAsText } from '.
 import { findActiveIndex } from '../utils/activeIndex'
 import { useFeedbackTimer } from '../utils/useFeedbackTimer'
 import { useDialogFocus } from '../utils/useDialogFocus'
+import { usePreviewMotion } from '../utils/usePreviewMotion'
 import {
   chaptersCache,
   extractRealChapters,
@@ -75,7 +76,8 @@ export function TheaterPreview({
   const [previewVolumeBoost, setPreviewVolumeBoost] = useState<number>(1)
   const dialogRef = useRef<HTMLDivElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
-  useDialogFocus(dialogRef, true, { initialFocusRef: closeRef, onEscape: onClose })
+  const { phase, requestClose, mediaReady } = usePreviewMotion(onClose)
+  useDialogFocus(dialogRef, true, { initialFocusRef: closeRef, onEscape: () => requestClose() })
   const specs = useMemo(() => detectVideoTechSpecs(entry.title), [entry.title])
   const audioSub = useMemo(
     () => detectAudioSubtitleSpecs(entry.title, entry.uploader),
@@ -267,7 +269,7 @@ export function TheaterPreview({
   // Fallback playback timer for embeds where postMessage is delayed or not emitted. Paused
   // while the window is hidden — the clock advances on resume from the real player (P-07).
   useEffect(() => {
-    if (!isPlaying) return
+    if (!isPlaying || !mediaReady) return
     let interval: ReturnType<typeof setInterval> | null = null
 
     const tick = (): void => {
@@ -296,7 +298,7 @@ export function TheaterPreview({
       document.removeEventListener('visibilitychange', onVisibility)
       stop()
     }
-  }, [isPlaying, entry.durationSec])
+  }, [isPlaying, entry.durationSec, mediaReady])
 
   // Reset time when a new preview URL opens
   useEffect(() => {
@@ -502,10 +504,11 @@ export function TheaterPreview({
 
   return (
     <div
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-5 backdrop-blur-md animate-in fade-in duration-150"
+      class="mf-preview-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-5 backdrop-blur-md"
+      data-phase={phase}
       onClick={(e) => {
         if (e.target === e.currentTarget) {
-          onClose()
+          requestClose()
         }
       }}
       onWheel={(e) => e.stopPropagation()}
@@ -591,7 +594,7 @@ export function TheaterPreview({
             <button
               ref={closeRef}
               type="button"
-              onClick={() => onClose()}
+              onClick={() => requestClose()}
               title="Close Focused Preview (Esc)"
               aria-label="Close Focused Preview"
               class="mf-focus-ring group flex items-center gap-1.5 rounded-lg border border-rose-200/90 bg-rose-50/70 px-2.5 py-1 text-xs font-semibold text-rose-700 shadow-2xs transition hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 active:scale-[0.98] dark:border-rose-800/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:border-rose-700 dark:hover:bg-rose-900/60 dark:hover:text-rose-200"
@@ -617,17 +620,19 @@ export function TheaterPreview({
               class="relative aspect-video w-full max-h-[48vh] sm:max-h-[54vh] md:max-h-[60vh] lg:max-h-[66vh] xl:max-h-[72vh] overflow-hidden rounded-xl border border-neutral-200/80 bg-black shadow-inner dark:border-white/10"
             >
               {/* Inline Video Player */}
-              <InlineVideoPreview
-                url={entry.url}
-                title={entry.title}
-                startSec={seekSec}
-                volumeBoost={previewVolumeBoost}
-                onClose={() => onClose()}
-                hideHeaderControls
-                onTimeUpdate={handleTimeUpdate}
-                onPlayingChange={handlePlayingChange}
-                className="size-full"
-              />
+              {mediaReady && (
+                <InlineVideoPreview
+                  url={entry.url}
+                  title={entry.title}
+                  startSec={seekSec}
+                  volumeBoost={previewVolumeBoost}
+                  onClose={() => requestClose()}
+                  hideHeaderControls
+                  onTimeUpdate={handleTimeUpdate}
+                  onPlayingChange={handlePlayingChange}
+                  className="size-full"
+                />
+              )}
             </div>
 
             {/* Video Media Control Dock below player */}
@@ -1364,8 +1369,7 @@ export function TheaterPreview({
               <button
                 type="button"
                 onClick={() => {
-                  onClose()
-                  onOpenInDownloader(entry)
+                  requestClose(() => onOpenInDownloader(entry))
                 }}
                 class="group relative flex w-full items-center justify-between overflow-hidden rounded-xl bg-gradient-to-r from-[var(--mf-action-start)] to-[var(--mf-action-end)] px-3.5 py-2.5 text-white shadow-md shadow-orange-500/20 transition-all duration-150 hover:brightness-110 hover:shadow-lg hover:shadow-orange-500/30 active:scale-[0.98]"
               >

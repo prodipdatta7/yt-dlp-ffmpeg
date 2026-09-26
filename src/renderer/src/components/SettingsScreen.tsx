@@ -116,7 +116,7 @@ export function SettingsScreen() {
 
         <div
           id={settingsPanelId(activeSection)}
-          class="min-w-0 flex-1"
+          class="mf-settings-panel min-w-0 flex-1"
           role="tabpanel"
           aria-labelledby={settingsTabId(activeSection)}
         >

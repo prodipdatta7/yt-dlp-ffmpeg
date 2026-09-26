@@ -1,0 +1,467 @@
+/* Motion is scoped to each workspace. State is always conveyed by text, shape, and color too. */
+/* Animate only the dialog panel's transform, keeping the fixed overlay viewport anchored.
+   Durations match usePreviewMotion, which retains the shell until its exit finishes. */
+@keyframes mf-preview-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes mf-preview-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes mf-preview-backdrop-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes mf-preview-panel-out {
+  to {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+
+.mf-preview-backdrop {
+  animation: mf-preview-backdrop-in 280ms ease-out both;
+}
+
+.mf-preview-backdrop > [role='dialog'] {
+  animation: mf-preview-panel-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.mf-preview-backdrop[data-phase='closing'] {
+  animation: mf-preview-backdrop-out 180ms ease-in both;
+}
+
+.mf-preview-backdrop[data-phase='closing'] > [role='dialog'] {
+  animation: mf-preview-panel-out 180ms ease-in both;
+}
+
+@keyframes mf-stage-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+:root .mf-workspace-heading > div:first-child {
+  animation: mf-stage-enter 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* Search: the idle instrument scans; an active query gets its own moving trace. */
+@keyframes mf-search-orbit-one {
+  to {
+    transform: rotate(338deg) scaleX(1.24);
+  }
+}
+
+@keyframes mf-search-orbit-two {
+  to {
+    transform: rotate(-315deg) scaleX(1.2);
+  }
+}
+
+@keyframes mf-search-orbit-three {
+  to {
+    transform: rotate(435deg) scaleX(0.7);
+  }
+}
+
+@keyframes mf-search-core-float {
+  0%,
+  100% {
+    transform: translate(-50%, -50%);
+  }
+  50% {
+    transform: translate(-50%, calc(-50% - 6px));
+  }
+}
+
+:root .mf-search-orbit-ring-one {
+  animation: mf-search-orbit-one 24s linear infinite;
+}
+
+:root .mf-search-orbit-ring-two {
+  animation: mf-search-orbit-two 29s linear infinite;
+}
+
+:root .mf-search-orbit-ring-three {
+  animation: mf-search-orbit-three 21s linear infinite;
+}
+
+:root .mf-search-orbit-core {
+  animation: mf-search-core-float 4s ease-in-out infinite;
+}
+
+:root .mf-search-orbit-node {
+  animation: mf-breathe 2.6s ease-in-out infinite;
+}
+
+:root .mf-search-orbit-node-teal {
+  animation-delay: 1.3s;
+}
+
+:root .mf-search-starter > span {
+  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+:root .mf-search-starter:is(:hover, :focus-visible) > span {
+  transform: translate(4px, -4px);
+}
+
+@keyframes mf-search-scanning {
+  from {
+    background-position: -40% 0;
+  }
+  to {
+    background-position: 140% 0;
+  }
+}
+
+:root .mf-search-form {
+  position: relative;
+}
+
+:root .mf-search-panel.is-searching .mf-search-form::after {
+  position: absolute;
+  bottom: 0;
+  right: 16px;
+  left: 16px;
+  height: 2px;
+  content: '';
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--mf-accent), var(--mf-teal), transparent);
+  /* Move the paint inside a fixed strip; the form stays overflow-visible for its menus. */
+  background-size: 28% 100%;
+  background-repeat: no-repeat;
+  animation: mf-search-scanning 1.4s linear infinite;
+}
+
+.mf-search-result-card:is(:hover, :focus-within) {
+  transform: translateY(-3px);
+}
+
+/* Queue: paths move from ingestion through the hub into the output channels. */
+@keyframes mf-queue-lane-flow {
+  to {
+    stroke-dashoffset: -32;
+  }
+}
+
+.mf-queue-art-lane {
+  stroke-dasharray: 10 7;
+  animation: mf-queue-lane-flow 2s linear infinite;
+}
+
+.mf-queue-art-lane:nth-of-type(2) {
+  animation-delay: 220ms;
+}
+
+.mf-queue-art-lane:nth-of-type(3) {
+  animation-delay: 440ms;
+}
+
+.mf-queue-art-outflow {
+  stroke-dasharray: 10 7;
+  animation: mf-queue-lane-flow 2s linear infinite;
+}
+
+@keyframes mf-queue-hub-beat {
+  0%,
+  100% {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+
+.mf-queue-art-hub,
+.mf-queue-art-output {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: mf-queue-hub-beat 2.8s ease-in-out infinite;
+}
+
+.mf-queue-art-output.is-second {
+  animation-delay: 350ms;
+}
+
+.mf-queue-art-output.is-third {
+  animation-delay: 700ms;
+}
+
+:root .mf-queue-starter > svg {
+  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+:root .mf-queue-starter:is(:hover, :focus-visible) > svg {
+  transform: translateX(3px);
+}
+
+:root .mf-queue-workflow-item {
+  animation: mf-stage-enter 420ms ease-out both;
+}
+
+:root .mf-queue-workflow-item:nth-child(2) {
+  animation-delay: 100ms;
+}
+
+:root .mf-queue-workflow-item:nth-child(3) {
+  animation-delay: 200ms;
+}
+
+/* Local Share: the idle transmitter moves; the QR settles before it is scanned. */
+@keyframes mf-share-ring-one {
+  to {
+    transform: scaleX(1.35) rotate(385deg);
+  }
+}
+
+@keyframes mf-share-ring-two {
+  to {
+    transform: scaleX(1.08) rotate(-408deg);
+  }
+}
+
+@keyframes mf-share-ring-three {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1.75);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.88);
+  }
+}
+
+@keyframes mf-share-core-float {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) rotate(-9deg);
+  }
+  50% {
+    transform: translate(-50%, calc(-50% - 6px)) rotate(-3deg);
+  }
+}
+
+:root .mf-local-share-signal-ring.ring-one {
+  animation: mf-share-ring-one 26s linear infinite;
+}
+
+:root .mf-local-share-signal-ring.ring-two {
+  animation: mf-share-ring-two 31s linear infinite;
+}
+
+:root .mf-local-share-signal-ring.ring-three {
+  animation: mf-share-ring-three 4s ease-in-out infinite;
+}
+
+:root .mf-local-share-signal-core {
+  animation: mf-share-core-float 4s ease-in-out infinite;
+}
+
+@keyframes mf-qr-ready {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+:root .mf-local-share-qr img {
+  animation: mf-qr-ready 420ms ease-out both;
+}
+
+:root .mf-local-share-status.is-live i,
+:root .mf-local-share-receivers > header > span.is-active i {
+  animation: mf-breathe 2s ease-in-out infinite;
+}
+
+:root .mf-local-share-live-actions button:not(:disabled) {
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+:root .mf-local-share-live-actions button:is(:hover, :focus-visible):not(:disabled) {
+  transform: translateY(-2px);
+}
+
+:root .mf-local-share-now-progress > i {
+  position: relative;
+  overflow: hidden;
+}
+
+:root .mf-local-share-now-progress > i::after {
+  position: absolute;
+  inset: 0 auto 0 -55%;
+  width: 55%;
+  content: '';
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.55), transparent);
+  animation: mf-transfer-sweep 2.5s ease-in-out infinite;
+}
+
+/* Help: the numbered path lands in order, then guide cards respond to intent. */
+:root .mf-help-hero-mark {
+  transition: transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+:root .mf-help-hero:hover .mf-help-hero-mark {
+  transform: rotate(3deg) translateY(-4px);
+}
+
+:root .mf-help-quick > ol > li {
+  animation: mf-stage-enter 440ms ease-out both;
+}
+
+:root .mf-help-quick > ol > li:nth-child(2) {
+  animation-delay: 90ms;
+}
+
+:root .mf-help-quick > ol > li:nth-child(3) {
+  animation-delay: 180ms;
+}
+
+:root .mf-help-quick > ol > li:nth-child(4) {
+  animation-delay: 270ms;
+}
+
+:root .mf-help-guide-card {
+  transition:
+    transform 220ms ease,
+    box-shadow 220ms ease,
+    border-color 220ms ease;
+}
+
+:root .mf-help-guide-card:is(:hover, :focus-within) {
+  transform: translateY(-4px);
+  border-color: rgb(var(--mf-primary-rgb) / 0.35);
+  box-shadow: 0 14px 26px rgb(var(--mf-shadow-rgb) / 0.1);
+}
+
+:root .mf-help-guide-card header > span {
+  transition: transform 220ms ease;
+}
+
+:root .mf-help-guide-card:is(:hover, :focus-within) header > span {
+  transform: rotate(-6deg) scale(1.08);
+}
+
+/* Settings: the rail and the selected panel react as one control. */
+.mf-settings-panel > * {
+  animation: mf-stage-enter 300ms ease-out both;
+}
+
+:root .mf-settings-workspace [role='tab'] > svg {
+  transition: transform 200ms ease;
+}
+
+:root .mf-settings-workspace [role='tab']:is(:hover, :focus-visible, [aria-selected='true']) > svg {
+  transform: translateX(3px);
+}
+
+.mf-theme-option[aria-pressed='true'] {
+  animation: mf-choice-settle 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.mf-theme-option:is(:hover, :focus-visible):not([aria-pressed='true']) {
+  transform: translateY(-3px);
+}
+
+/* The existing Appearance switches now control these effects as well as OS reduced motion. */
+:root.mf-no-ambient-grid .mf-search-launchpad::before,
+:root.mf-no-ambient-grid .mf-queue-launchpad::before {
+  opacity: 0;
+}
+
+:root.mf-no-ambient-grid .mf-local-share-station {
+  background-size:
+    0 0,
+    0 0,
+    auto,
+    auto;
+}
+
+:root.mf-no-ambient-grid .mf-help-hero {
+  background-size:
+    0 0,
+    0 0,
+    auto;
+}
+
+:root.mf-reduced-motion *,
+:root.mf-reduced-motion *::before,
+:root.mf-reduced-motion *::after {
+  animation-delay: 0ms !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  transition-delay: 0ms !important;
+  scroll-behavior: auto !important;
+}
+
+:root.mf-reduced-motion .mf-signal-sweep,
+:root.mf-reduced-motion .mf-url-submit::after,
+:root.mf-reduced-motion .mf-action-button::after,
+:root.mf-reduced-motion .mf-download-summary-orbit::after,
+:root.mf-reduced-motion .mf-workflow-card::after,
+:root.mf-reduced-motion .mf-progress-fill::after,
+:root.mf-reduced-motion .mf-search-panel.is-searching .mf-search-form::after,
+:root.mf-reduced-motion .mf-local-share-now-progress > i::after {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root *,
+  :root *::before,
+  :root *::after {
+    animation-delay: 0ms !important;
+    transition-delay: 0ms !important;
+  }
+
+  :root .mf-search-panel.is-searching .mf-search-form::after,
+  :root .mf-local-share-now-progress > i::after {
+    display: none;
+  }
+}
+
+/* Preserve the last measured progress without implying that a stopped job is transferring. */
+.mf-pipeline:not([data-state='active']) .mf-progress-fill::after {
+  display: none;
+}
+
+.mf-pipeline:not([data-state='active']) .mf-phase-dot {
+  animation: none;
+}
+
+/* One visibility listener, no animation timers or renderer work in the background. */
+:root.mf-motion-suspended *,
+:root.mf-motion-suspended *::before,
+:root.mf-motion-suspended *::after {
+  animation-play-state: paused !important;
+}

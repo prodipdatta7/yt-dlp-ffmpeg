@@ -3,8 +3,7 @@
   display: none;
 }
 
-/* Local Share is deliberately a distinct transfer station: the QR is the hero and every
-   supporting control sits around the real-world handoff rather than a generic settings form. */
+/* The live transfer keeps its station frame; the idle handoff fills the page canvas. */
 :root .mf-local-share-workspace {
   background:
     radial-gradient(circle at 84% 10%, rgb(var(--mf-teal-rgb) / 0.13), transparent 26%),
@@ -30,6 +29,34 @@
   box-shadow: 0 18px 42px rgb(var(--mf-shadow-rgb) / 0.1);
 }
 
+:root .mf-local-share-workspace:not(.is-sharing) {
+  padding: 24px 32px 16px;
+}
+
+:root .mf-local-share-station:not(.is-sharing) {
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:root .mf-local-share-station:not(.is-sharing) .mf-local-share-head {
+  padding: 0 0 20px;
+}
+
+:root .mf-local-share-station:not(.is-sharing) .mf-local-share-idle {
+  min-height: 440px;
+  flex: 1;
+  padding-right: clamp(8px, 3vw, 48px);
+  padding-left: clamp(8px, 3vw, 48px);
+}
+
 :root .mf-local-share-station::after {
   position: absolute;
   right: -15%;
@@ -43,6 +70,10 @@
     0 0 0 42px rgb(var(--mf-teal-rgb) / 0.035),
     0 0 0 84px rgb(var(--mf-teal-rgb) / 0.02);
   pointer-events: none;
+}
+
+:root .mf-local-share-station:not(.is-sharing)::after {
+  display: none;
 }
 
 :root .mf-local-share-head {
@@ -1282,22 +1313,16 @@
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(240px, 0.9fr);
-  grid-template-rows: minmax(0, 1fr) auto;
-  min-height: 0;
+  grid-template-rows: minmax(min-content, 1fr) auto;
+  min-height: 400px;
   width: 100%;
-  max-height: 560px;
-  flex: 0 1 560px;
+  flex: 1;
   align-items: center;
   gap: 16px clamp(24px, 4vw, 56px);
-  overflow: hidden;
-  padding: clamp(18px, 3vh, 32px) clamp(16px, 3.5vw, 48px) 16px;
-  border: 1px solid rgb(var(--mf-border-rgb) / 0.86);
-  border-radius: 24px;
+  padding: clamp(18px, 3vh, 32px) clamp(8px, 2vw, 28px) 16px;
   background:
-    radial-gradient(circle at 78% 38%, rgb(var(--mf-primary-rgb) / 0.14), transparent 25%),
-    radial-gradient(circle at 98% 96%, rgb(var(--mf-teal-rgb) / 0.12), transparent 38%),
-    linear-gradient(124deg, rgb(var(--mf-surface-rgb) / 0.76), rgb(var(--mf-surface-rgb) / 0.56));
-  box-shadow: 0 12px 30px rgb(var(--mf-shadow-rgb) / 0.06);
+    radial-gradient(circle at 78% 38%, rgb(var(--mf-primary-rgb) / 0.1), transparent 25%),
+    radial-gradient(circle at 98% 96%, rgb(var(--mf-teal-rgb) / 0.08), transparent 38%);
 }
 
 :root .mf-search-launchpad::before {
@@ -1321,7 +1346,7 @@
 }
 
 :root .mf-search-launchpad-copy {
-  max-width: 520px;
+  max-width: 620px;
 }
 
 :root .mf-search-launchpad-kicker,
@@ -1420,7 +1445,7 @@
 }
 
 :root .mf-search-orbit {
-  width: min(100%, 280px);
+  width: min(100%, clamp(280px, 30vw, 400px));
   aspect-ratio: 1;
   justify-self: center;
   align-self: center;
@@ -1585,6 +1610,7 @@
 :root .mf-search-workspace.mf-search-default-workspace {
   padding: 24px 32px 16px;
   gap: 18px;
+  overflow-y: auto;
 }
 
 :root .mf-search-workspace.mf-search-default-workspace .mf-search-form {
@@ -3136,28 +3162,23 @@
 :root .mf-queue-workspace.mf-queue-idle {
   padding: 24px 32px 16px;
   gap: 18px;
+  overflow-y: auto;
 }
 
 :root .mf-queue-launchpad {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(260px, 0.9fr);
-  grid-template-rows: minmax(0, 1fr) auto;
-  min-height: 0;
+  grid-template-rows: minmax(min-content, 1fr) auto;
+  min-height: 440px;
   width: 100%;
-  max-height: 560px;
-  flex: 0 1 560px;
+  flex: 1;
   align-items: center;
   gap: 16px clamp(24px, 4vw, 56px);
-  overflow: hidden;
-  padding: clamp(18px, 3vh, 32px) clamp(16px, 3.5vw, 48px) 16px;
-  border: 1px solid rgb(var(--mf-border-rgb) / 0.86);
-  border-radius: 24px;
+  padding: clamp(18px, 3vh, 32px) clamp(8px, 2vw, 28px) 16px;
   background:
-    radial-gradient(circle at 80% 36%, rgb(var(--mf-teal-rgb) / 0.12), transparent 26%),
-    radial-gradient(circle at 95% 95%, rgb(var(--mf-primary-rgb) / 0.1), transparent 38%),
-    linear-gradient(124deg, rgb(var(--mf-surface-rgb) / 0.78), rgb(var(--mf-surface-rgb) / 0.58));
-  box-shadow: 0 12px 30px rgb(var(--mf-shadow-rgb) / 0.06);
+    radial-gradient(circle at 80% 36%, rgb(var(--mf-teal-rgb) / 0.09), transparent 26%),
+    radial-gradient(circle at 95% 95%, rgb(var(--mf-primary-rgb) / 0.07), transparent 38%);
 }
 
 :root .mf-queue-launchpad::before {
@@ -3181,7 +3202,7 @@
 }
 
 :root .mf-queue-launchpad-copy {
-  max-width: 520px;
+  max-width: 620px;
 }
 
 :root .mf-queue-launchpad-kicker,
@@ -3271,7 +3292,7 @@
 }
 
 :root .mf-queue-pipeline {
-  width: min(100%, 300px);
+  width: min(100%, clamp(300px, 32vw, 430px));
   aspect-ratio: 1.35;
   justify-self: center;
   align-self: center;
@@ -3288,10 +3309,8 @@
 }
 
 :root .mf-queue-workflow-item {
-  padding: 12px 14px;
-  border: 1px solid var(--mf-border);
-  border-radius: 14px;
-  background: rgb(var(--mf-surface-rgb) / 0.72);
+  padding: 10px 14px;
+  border-left: 1px solid var(--mf-border);
 }
 
 :root .mf-queue-step-num {
@@ -3911,14 +3930,14 @@
 
   :root .mf-search-launchpad {
     min-height: 430px;
-    max-height: none;
-    flex: 0 0 430px;
   }
 
   :root .mf-queue-launchpad {
     min-height: 480px;
-    max-height: none;
-    flex: 0 0 480px;
+  }
+
+  :root .mf-local-share-workspace:not(.is-sharing) {
+    padding: 14px 16px 12px;
   }
 
   :root .mf-home-headline {

@@ -144,7 +144,7 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
   }, [])
 
   return (
-    <div class="mf-search-panel flex min-w-0 flex-col gap-2.5">
+    <div class={`mf-search-panel flex min-w-0 flex-col gap-2.5 ${busy ? 'is-searching' : ''}`}>
       <form
         onSubmit={(e) => {
           e.preventDefault()
@@ -287,7 +287,7 @@ export function SearchBar({ onSubmit }: { onSubmit: () => void }) {
             <button
               type="submit"
               disabled={query.trim().length === 0}
-              className={`mf-search-control mf-search-submit mf-focus-ring inline-flex shrink-0 items-center gap-1.5 px-4 text-xs font-bold text-white transition-[background-color,box-shadow,opacity,transform] duration-150 active:scale-[0.98] ${
+              className={`mf-action-button mf-search-control mf-search-submit mf-focus-ring inline-flex shrink-0 items-center gap-1.5 px-4 text-xs font-bold text-white transition-[background-color,box-shadow,opacity,transform] duration-150 active:scale-[0.98] ${
                 query.trim().length === 0 ? 'cursor-not-allowed opacity-35 shadow-none' : ''
               }`}
               title="Search (Enter)"

@@ -432,7 +432,7 @@ export function LocalShareScreen() {
               </div>
               <button
                 type="button"
-                class="mf-focus-ring mf-local-share-start"
+                class="mf-action-button mf-focus-ring mf-local-share-start"
                 onClick={() => void chooseFile()}
                 disabled={choosing || restoring}
               >
