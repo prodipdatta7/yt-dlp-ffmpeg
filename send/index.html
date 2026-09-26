@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self'; base-uri 'none'; form-action 'none'"
+    />
+    <title>Send to MediaForge</title>
+    <link rel="stylesheet" href="./style.css" />
+    <script type="module" src="./app.mjs"></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <a href="./" class="wordmark">MediaForge<span>DIRECT</span></a
+        ><span class="network">PHONE → DESKTOP</span>
+      </header>
+      <section class="intro">
+        <p class="eyebrow">Your next download starts here.</p>
+        <h1>Found it.<br /><em>Send it home.</em></h1>
+        <p>One video link. Straight to your computer’s MediaForge inbox.</p>
+      </section>
+      <div class="connection">
+        <span aria-hidden="true">↗</span>
+        <p id="connection">Pair your computer to begin</p>
+      </div>
+      <p id="status" role="status" aria-live="polite"></p>
+      <section id="setup-panel" class="panel">
+        <h2>Pair this browser</h2>
+        <ol>
+          <li>Open <strong>Local Share → Receive links</strong> in MediaForge on your computer.</li>
+          <li>
+            Start receiving and scan the <strong>web shortcut pairing code</strong> with your phone.
+          </li>
+          <li>Confirm pairing here, then use this browser whenever you send a link.</li>
+        </ol>
+        <p>Keep both devices on the same Wi-Fi or LAN. No phone app needed.</p>
+      </section>
+      <section id="pair-panel" class="panel" hidden>
+        <h2>Use this computer?</h2>
+        <p>Pair only if you just scanned the code shown in your own MediaForge app.</p>
+        <code id="pair-host"></code>
+        <div class="actions">
+          <button id="pair">Pair this browser</button
+          ><button id="cancel-pair" class="secondary">Cancel</button>
+        </div>
+      </section>
+      <section id="send-panel" class="panel" hidden>
+        <h2>Your shortcut is ready.</h2>
+        <p>Prepend this to the complete video URL in your address bar, then open it:</p>
+        <code id="prefix" class="copy-value"></code
+        ><button id="copy" class="secondary">Copy shortcut prefix</button>
+        <p class="example-label">Example</p>
+        <code id="example" class="example"></code>
+        <p>Click the notification on your computer to open Downloader and start analysis.</p>
+        <form id="send-form">
+          <label for="video">Or paste a video link here</label
+          ><input
+            id="video"
+            type="url"
+            required
+            maxlength="8192"
+            placeholder="https://www.youtube.com/watch?v=…"
+          /><button>Send to MediaForge</button>
+        </form>
+        <div class="session">
+          <p id="expiry"></p>
+          <button id="forget" class="text-button">Forget receiver</button>
+        </div>
+      </section>
+      <footer>
+        The website remembers your receiver in this browser until the session expires. Video links
+        travel directly to your computer. Windows Firewall and your browser’s local-network settings
+        must allow the connection.
+      </footer>
+      <noscript>Enable JavaScript to pair this browser and send video links.</noscript>
+    </main>
+  </body>
+</html>
